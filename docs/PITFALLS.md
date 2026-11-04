@@ -3,6 +3,28 @@
 Every entry below cost a failed run or a wrong assumption that had to be walked
 back. They are written in the order you are likely to meet them.
 
+## How an entry is written
+
+Every entry ends with four fixed single-line fields, in this order, so an agent
+can find the right entry without reading the whole file:
+
+- `Symptom:` what was seen.
+- `Root cause:` why it happened, as far as the entry establishes it. Where the
+  entry gives no cause, the line says so.
+- `Check:` a runnable test or command in backticks, or `none automated:` and
+  the manual step the entry gives.
+- `Touches:` the scripts, files, tools and keywords the entry names, separated
+  by commas.
+
+The fields restate the entry above them and add nothing the entry does not say.
+To find entries by what they touch:
+
+    grep -n '^Touches:.*prepare_launch' docs/PITFALLS.md
+
+To list the pitfalls that no test guards:
+
+    grep -n '^Check: none automated' docs/PITFALLS.md
+
 ## Setting up the agent
 
 **1. The `tw-agent` native binary will not install here.** It needs glibc
@@ -17,8 +39,18 @@ how the files themselves are permissioned - and the same is true of a private
 `/work/<user>`. Put them somewhere every member can read and record the paths
 in the settings file (`agent_java`, `agent_jar`).
 
+Symptom: the `tw-agent` native binary will not install on the login nodes; the jar fails with `UnsupportedClassVersionError: class file version 65.0 vs 61.0` on the cluster's Java 17/8
+Root cause: the native binary needs glibc 2.32/2.34 and the login nodes have 2.28; the jar needs Java 21
+Check: none automated: use `tw-agent.jar` with a private Temurin 21 pointed at only by the agent, in a location every member can read, with the paths recorded in `agent_java` and `agent_jar`
+Touches: tw-agent, tw-agent.jar, Java 21, Temurin, agent_java, agent_jar
+
 **2. Create the agent credential only while the agent is already running.**
 `tw credentials add agent` fails with "The agent is not online" otherwise.
+
+Symptom: `tw credentials add agent` fails with "The agent is not online"
+Root cause: the credential was created while the agent was not running
+Check: none automated: create the agent credential only while the agent is already running
+Touches: tw credentials add agent
 
 **2b. The generated connection identifier had nothing in it that varied per
 person.** `agent_ctl.sh start` assigned `${USER}-$(hostname -s)-$(date
@@ -52,6 +84,11 @@ date-derived, because regenerating it produced the same string until midnight.
 It is not survivable now, and `start` prints the `settings.sh --set
 agent_connection <id>` line for exactly that reason.
 
+Symptom: two setups on one day (two members, or one person on a laptop and on the login node) would be handed the same generated connection identifier, and the collision surfaces later as 3c's permanent refusal
+Root cause: the generated identifier used the user name and short hostname, which do not discriminate here (one shared account, and under `reach: ssh` the login node's hostname), so only the date varied
+Check: `tests/agent_ctl_connection_id_test.sh`
+Touches: agent_ctl.sh, tw, settings.sh, set_setting, agent_connection, reach: ssh
+
 **3. An offline agent makes every run's output look like it does not exist.**
 The run itself is unaffected — Nextflow is on the compute nodes and finishes
 normally — but Platform serves HPC reports *through* the agent, so the Reports
@@ -67,6 +104,11 @@ missing. The agent is deliberately started with nohup + a pid file rather than
 tmux: an earlier tmux-based setup died with its tmux server while the relay,
 started the other way, survived — two daemons with two survival mechanisms, and
 the one that died was the one Platform needs.
+
+Symptom: the Reports tab is empty and the API answers `GET /workflow/<id>/reports  →  400` "No online agent" although the run finished normally
+Root cause: Platform serves HPC reports through the agent, and the agent is offline
+Check: `scripts/agent_ctl.sh online <runId>`
+Touches: scripts/agent_ctl.sh, Tower Agent, nohup, tmux, Nextflow
 
 **3b. Every binary file Platform serves through the Tower Agent is corrupt.**
 Reports open, images do not. The agent's file transfer deletes every `0xFF`
@@ -92,6 +134,11 @@ partial or mangled picture rather than a clearly failed download.
 
 Until Seqera fixes it, read binary outputs from the filesystem - they are
 intact on disk. Platform is reliable for HTML, TSV and logs only.
+
+Symptom: images and PDFs served by Platform through the Tower Agent are corrupt or cut short while HTML, TSV and logs arrive intact
+Root cause: the agent's file transfer deletes every `0xFF` byte from the stream and the first `0xFF 0xFF` pair ends the transfer early
+Check: none automated: compare the served file with the file on disk (the entry measures sizes and `0xFF` counts) and read binary outputs from the filesystem
+Touches: Tower Agent, Platform, nf-core/differentialabundance, multiqc_report.html, 0xFF
 
 **3c. The agent dies quietly, and the first thing that tells you is a refused
 launch.** Its own log explains it afterwards:
@@ -143,6 +190,11 @@ agent again rather than trusting the check from delivery time.
 Note that the connection ID has to be unique per agent. Two members sharing one
 produces exactly the error above, permanently rather than transiently.
 
+Symptom: a launch is refused with `No Tower Agent is online for the selected compute environment`, or a SUCCEEDED run's Reports tab goes blank, after the agent died quietly
+Root cause: after a session drop the agent's reconnect is rejected because the server still considers the old connection live, so the process exits
+Check: `scripts/preflight.sh`
+Touches: scripts/preflight.sh, Tower Agent, connection ID, compute environment, /launch
+
 **3d. `npm install -g` on this NFS home breaks the Claude Code CLI you are
 running from.** npm moves the existing package aside and deletes it. NFS cannot
 unlink a file another process still holds open, so it silly-renames the running
@@ -180,6 +232,11 @@ is safe while a session is running; the cleanup warning about the busy `.nfs`
 file is expected and harmless. That file is only removable once every process
 holding it has exited.
 
+Symptom: after `npm install -g`, `claude` is "command not found" mid-session and the package has no `package.json` and no `bin/claude.exe`
+Root cause: npm moves the existing package aside and deletes it; NFS silly-renames the running binary to `.nfsXXXXXXXX`, npm's cleanup fails, and an interrupted install leaves the package broken
+Check: none automated: `command -v claude` stops answering and `npm ls -g` shows an empty version; re-running `npm install -g @anthropic-ai/claude-code` fixes it
+Touches: npm, claude, NFS, .nfsXXXXXXXX, @anthropic-ai/claude-code, claude plugin update, VS Code
+
 **3e. A live agent and a real SUCCEEDED run can still show zero reports, for a
 reason that has nothing to do with this deployment.** `scripts/agent_ctl.sh
 online <runId>` answering `ONLINE - Platform lists 0 report(s)` is not proof
@@ -201,6 +258,11 @@ output moved into a subdirectory. Every file is on disk, complete and correct
 match, on any deployment, HPC or cloud. `nf-core/rnaseq` showed the same zero
 during this same session, which is what makes "check tower.yml first" worth
 doing before spending time on the agent, the relay, or the compute environment.
+
+Symptom: `scripts/agent_ctl.sh online <runId>` answers `ONLINE - Platform lists 0 report(s)` for a live agent and a real SUCCEEDED run
+Root cause: the pipeline's `tower.yml` (nf-core/ampliseq 2.18.0) names paths relative to the `outdir` root while the pipeline publishes into a subdirectory, so Platform never finds a match
+Check: none automated: check the pipeline's own `tower.yml` before suspecting the agent or the site adapter
+Touches: scripts/agent_ctl.sh, tower.yml, nf-core/ampliseq, nf-core/rnaseq, outdir
 
 **4. Compute nodes have no route out; everything goes through the login-node
 relay, and one missing domain kills the whole run.** There is no published list
@@ -226,6 +288,11 @@ this deployment added itself (`scripts/egress_allow.sh`) that resolves to
 loopback, a private or link-local address: the name is allowed, the connection
 is not (docs/SETTINGS.md, "The extra relay allowlist").
 
+Symptom: a run fails for a network-shaped reason, for example `java.util.UnknownFormatConversionException: Conversion = '4'` when `nextflow.io` is blocked
+Root cause: compute nodes have no route out and everything goes through the login-node relay, where one missing allowlist domain kills the run
+Check: `grep -E 'DENY-(DOMAIN|PRIVATE)' "$LAB_RUNS_DIR/_relay/relay.log" | tail -20`
+Touches: relay.log, scripts/egress_allow.sh, nextflow.io, galaxyproject.org, registry.nextflow.io, pf4j, Singularity, docs/SETTINGS.md
+
 **4b. A CONNECT with no headers used to hang the relay, and only Python
 noticed.** `http.client._tunnel()` - which is what `urllib.request.urlopen`
 uses, and therefore every nf-core helper script written in Python - sends:
@@ -247,12 +314,22 @@ internet from Python, and it failed 100% of the time from the day the relay was
 written. `tests/relay_connect_test.py` covers all four shapes, including the
 headerless one and a denial.
 
+Symptom: Python helper scripts (urllib.request) through the relay get `RemoteDisconnected: Remote end closed connection without response`
+Root cause: a CONNECT with no headers left only the terminating `\r\n` in the socket, which no single chunk could satisfy, so the relay blocked for the full socket timeout
+Check: `tests/relay_connect_test.py`
+Touches: http.client, urllib.request, nf-core/fetchngs, curl, Singularity, tests/relay_connect_test.py
+
 **4c. The relay's DENY log only means something once parsing succeeds.**
 While 4b was live, blocked domains produced `ERROR ... TimeoutError` with no
 domain name rather than a `DENY-DOMAIN` line - the request never got as far as
 the allowlist check. After fixing 4b, the very first run immediately named
 `eutils.ncbi.nlm.nih.gov` as missing. Reading "no DENY lines" as "not a network
 problem" is only safe when the relay is known to be parsing correctly.
+
+Symptom: blocked domains produced `ERROR ... TimeoutError` with no domain name instead of a `DENY-DOMAIN` line
+Root cause: while 4b was live the request never got as far as the allowlist check
+Check: none automated: read "no DENY lines" as "not a network problem" only when the relay is known to be parsing correctly
+Touches: DENY-DOMAIN, TimeoutError, eutils.ncbi.nlm.nih.gov
 
 **5. `tw launch --config` is additive, not a replacement.** Platform uploads the
 file and appends `includeConfig 'https://api.cloud.seqera.io/ephemeral/…'`
@@ -261,15 +338,30 @@ only need to send the difference. The side effect: the head job fetches that URL
 at startup, so `seqera.io` must stay on the allowlist or your config silently
 does not apply. `--params-file` works the same way.
 
+Symptom: a config sent with `tw launch --config` does not apply, silently, if `seqera.io` is not on the allowlist
+Root cause: Platform appends `includeConfig` of an ephemeral URL after the compute environment's own config and the head job fetches that URL at startup
+Check: none automated: keep `seqera.io` on the allowlist; `--params-file` works the same way
+Touches: tw launch --config, --params-file, seqera.io, includeConfig
+
 **4d. The relay only carries HTTP and HTTPS.** `nf-core/fetchngs` offers
 `--download_method aspera`, which moves data over UDP; nothing routed through
 an HTTP proxy can carry it. Use the FTP/HTTP download methods here. The same
 applies to any tool reaching for a native FTP or UDP transport.
 
+Symptom: `nf-core/fetchngs` with `--download_method aspera` cannot move data through the relay
+Root cause: aspera moves data over UDP and the relay carries only HTTP and HTTPS
+Check: none automated: use the FTP/HTTP download methods
+Touches: nf-core/fetchngs, --download_method aspera, UDP, FTP, HTTP proxy
+
 **4e. A denied `169.254.169.254` is expected and harmless.** Several tools
 (sra-tools among them) probe the cloud instance-metadata endpoint to work out
 whether they are running on AWS. On this cluster that address means nothing and
 the relay refuses it, which is the correct outcome - do not add it.
+
+Symptom: the relay denies `169.254.169.254` during runs
+Root cause: several tools (sra-tools among them) probe the cloud instance-metadata endpoint to work out whether they run on AWS, and the address means nothing on this cluster
+Check: none automated: expected and harmless, do not add it
+Touches: 169.254.169.254, sra-tools
 
 **4e2. A denied `multiqc.info` is expected and harmless.** MultiQC checks for a
 newer version of itself on startup and carries on when it cannot. The refusals
@@ -283,6 +375,11 @@ appear in the egress log during otherwise healthy runs:
 Do not add it. Allowing it buys nothing and sends outbound telemetry from every
 run on the cluster.
 
+Symptom: `DENY-DOMAIN multiqc.info` and `api.multiqc.info` lines appear in the egress log during otherwise healthy runs
+Root cause: MultiQC checks for a newer version of itself on startup and carries on when it cannot
+Check: none automated: expected and harmless, do not add it
+Touches: multiqc.info, api.multiqc.info, DENY-DOMAIN, MultiQC
+
 **4f. Check the allowlist before launching, not after.**
 `scripts/check_egress.py <owner/pipeline> <revision>` reads the pipeline's own
 code - `nextflow.config`, `conf/`, `bin/`, `workflows/`, `subworkflows/` and
@@ -292,12 +389,22 @@ each module's `main.nf` - and reports hosts the relay would refuse. Config and
 `meta.yml` and `ro-crate-metadata.json` are nothing but tool homepages and
 including them buries three real hosts under forty citations.
 
+Symptom: a pipeline's hosts the relay would refuse are found only after a launch fails
+Root cause: the allowlist is not checked before launching; config and `bin/` alone do not show every host
+Check: `scripts/check_egress.py <owner/pipeline> <revision>`
+Touches: scripts/check_egress.py, nextflow.config, bin/, funcscan, subworkflows/local/arg.nf, meta.yml, ro-crate-metadata.json
+
 **4g. The static check cannot see a URL that lives inside the tool, and that
 is what the DENY log is for.** nf-core/bacass passes 4f clean, then fails at
 BUSCO: `Cannot reach https://busco-data2.ezlab.org`. That host appears nowhere
 in bacass — the download URL is compiled into BUSCO itself. Expect one round of
 this for a pipeline whose tools fetch their own reference data; the relay log
 names the host on the first failure, which costs one run, not a diagnosis.
+
+Symptom: nf-core/bacass passes the static check and then fails at BUSCO with `Cannot reach https://busco-data2.ezlab.org`
+Root cause: the download URL is compiled into BUSCO itself and appears nowhere in the pipeline code, so the static check cannot see it
+Check: none automated: the relay log names the host on the first failure
+Touches: nf-core/bacass, BUSCO, busco-data2.ezlab.org, relay log
 
 **4h. A plugin version missing from the registry fails in about ten seconds,
 before any task exists, and looks nothing like #4's egress block.** Measured:
@@ -321,6 +428,11 @@ step 8's proof run is pinned to it for exactly this reason. If a different
 pipeline hits the same error, read it as "try an older revision of this
 pipeline," not as a relay or compute-environment problem to chase.
 
+Symptom: a run dies in about ten seconds, before any task exists, with `org.pf4j.PluginRuntimeException: Plugin nf-schema with version @2.7.2 does not exist in the repository`
+Root cause: `nf-schema@2.7.2` is unresolvable from the plugin registry (withdrawn, or an indexing lag - the entry says nothing on this side can tell which)
+Check: none automated: rule out #4 first (`registry.nextflow.io` answers HTTP 200, no `DENY-DOMAIN` line, `scripts/check_egress.py nf-core/demo master` reports nothing missing), then try an older revision
+Touches: nf-schema, nf-core/demo, registry.nextflow.io, scripts/check_egress.py, commands/setup.md, org.pf4j.PluginRuntimeException
+
 ## Resources
 
 **6. NCHC's QOS is a floor, and for most partitions the floor equals the
@@ -332,6 +444,11 @@ keeps reporting the run as RUNNING. Only `scontrol show job <id>` reveals it.
 
 Nextflow provides `resourceLimits` for the ceiling and has no equivalent for the
 floor, which is what `configs/sites/nchc.config` supplies.
+
+Symptom: a job asking for less than its partition's box never schedules and sits at `QOSMinCpuNotSatisfied` or `QOSMinMemory` with no error while Platform keeps reporting RUNNING
+Root cause: NCHC's QOS is a floor, and for most partitions `MinTRES == MaxTRESPerJob`, so a partition is a fixed-size box; Nextflow has `resourceLimits` for the ceiling and nothing for the floor
+Check: `scontrol show job <id>`
+Touches: sacctmgr, scontrol, configs/sites/nchc.config, resourceLimits, QOSMinCpuNotSatisfied, QOSMinMemory
 
 **6b. The seven `ngs` partitions are one node pool wearing seven labels.** The
 box names look like tiers of hardware and are not — the node lists are
@@ -369,6 +486,11 @@ prints nothing of the kind for `QOSMin*`, which is entry 6's stranding and gets
 worse, not better, if you shrink it. And the ladder itself is read out of
 `NCHC_BOXES` in `configs/sites/nchc.config` by `scripts/utils/boxes.sh`, so the
 box numbers exist in exactly one place.
+
+Symptom: moving to a smaller `ngs` partition is expected to land on different hardware, and it does not
+Root cause: the seven `ngs` partitions are one node pool with byte-identical node lists; a smaller box schedules sooner only because more of them fit per node
+Check: `tests/why_pending_test.sh`
+Touches: scripts/why_pending.sh, NCHC_BOXES, configs/sites/nchc.config, scripts/utils/boxes.sh, sinfo, ngs7G
 
 **6c. A queued job cannot be resized here; `scontrol update` is refused
 outright.** Shrinking a request is the lever entry 6b names, which raises the
@@ -408,6 +530,11 @@ of one bacass analysis shared a single Session ID and the last of them reported
 8 of 9 tasks `CACHED` — so the cost is one more spell in the queue, not the
 pipeline over again. That is the only route, and there is no point writing a
 wrapper for the other one.
+
+Symptom: `scontrol update` on a queued job is refused with `Unspecified error for job`, including a plain rename
+Root cause: an ordinary user cannot `scontrol update` their own job at all on this site; the entry does not say why
+Check: `tests/relaunch_override_test.sh`
+Touches: scontrol, sbatch, tw runs relaunch
 
 **6d. A retry DOES escalate here, and the config used to say it did not.**
 Entry 6c leaves relaunching as the only way to change a request. That is true
@@ -449,6 +576,11 @@ The site config still adds no multiplier of its own — not because escalation i
 bad, but because the pipeline already supplies one and a second would compound
 with it.
 
+Symptom: the site config's comment said a retry would strand and an OOM needs its label moved up by hand, which is false
+Root cause: the retry does escalate: nf-core's `conf/base.config` multiplies by `task.attempt`, `nchcBox` rounds up to the smallest box that fits and `resourceLimits` caps the top; the wrong comment reads like it predates `resourceLimits`
+Check: `sacct --format=JobID,JobName,Partition,ReqCPUS,ReqMem,State,ExitCode -X`
+Touches: task.attempt, conf/base.config, configs/sites/nchc.config, nchcBox, resourceLimits, sacct
+
 **7. Map the composed request, never label names.** nf-core labels are partial
 and stackable — `process_long` sets only `time`, `process_low_memory` only
 `memory`, `process_gpu` neither — and one process may carry two of them. A
@@ -457,13 +589,28 @@ label→partition table is also a maintenance trap: rnaseq 3.14 used six labels,
 The config keys off `task.cpus`/`task.memory`/`task.time` instead, so a pipeline
 it has never seen still lands in a valid box.
 
+Symptom: a label-to-partition table breaks when a pipeline's labels change: rnaseq 3.26's `process_low_memory` asks for 1.GB, below every partition minimum
+Root cause: nf-core labels are partial and stackable, so one process may carry two and no single label names the whole request
+Check: none automated: map the composed request (`task.cpus`/`task.memory`/`task.time`), never label names
+Touches: process_long, process_low_memory, process_gpu, task.cpus, task.memory, task.time, rnaseq
+
 **8. Setting `resourceLimits` too low is as fatal as too high.** Capping memory
 at 92 GB turns a 200 GB request into a 92 GB one, which then needs 14 CPUs on
 `ngs92G` and strands if it does not have them.
 
+Symptom: a 200 GB request capped at 92 GB then needs 14 CPUs on `ngs92G` and strands if it does not have them
+Root cause: `resourceLimits` set too low turns a large request into a smaller one that still has to satisfy the box's floor
+Check: none automated: set `resourceLimits` at the real ceiling, not lower
+Touches: resourceLimits, ngs92G
+
 **9. Turn Platform's resource optimization off.** It right-sizes from run
 history, which fights fixed-size boxes — a "helpfully" reduced request lands
 below the floor and stalls. Use `tw launch --disable-optimization`.
+
+Symptom: a "helpfully" reduced request lands below the floor and the job stalls
+Root cause: Platform's resource optimization right-sizes from run history, which fights fixed-size boxes
+Check: none automated: launch with `tw launch --disable-optimization`
+Touches: tw launch --disable-optimization, Platform
 
 **17. The shared image library had three names, and the safety net guarded the
 one nothing used.** `PRINCIPLES.md` lists the shared image cache among the
@@ -496,16 +643,31 @@ narrower than "keep names in sync": **a protective rule and the thing it protect
 must be checked against each other, because divergence between them produces no
 error at all.**
 
+Symptom: the safety net guarded `lab_singularity_library`, a directory that does not exist, while every pulled image lives under `.singularity_cache`, which the rule did not match
+Root cause: the shared image library had three names and the protective rule matched only one literal; divergence between a protective rule and the thing it protects produces no error
+Check: `tests/init_workspace_test.sh`
+Touches: PRINCIPLES.md, hooks/confirm_cleanup.sh, lab_singularity_library, NXF_SINGULARITY_CACHEDIR, configs/sites/nchc.config, _singularity_cache, .singularity_cache
+
 ## Launching
 
 **10. `tw launch <short-name>` only resolves pipelines registered in the
 workspace.** Otherwise pass the full GitHub URL, or register it first with
 `tw pipelines add`.
 
+Symptom: `tw launch <short-name>` does not resolve a pipeline
+Root cause: the short name only resolves pipelines registered in the workspace
+Check: none automated: pass the full GitHub URL, or register it first with `tw pipelines add`
+Touches: tw launch, tw pipelines add, GitHub
+
 **11. Nextflow's work directory must be on a filesystem the compute nodes can
 see.** A work dir under the login node's `/tmp` produces jobs that fail before
 the task script runs, leaving no `.command.log` and no `.exitcode` — only a
 bare exit 1 in `sacct`.
+
+Symptom: jobs fail before the task script runs, leaving no `.command.log` and no `.exitcode`, only a bare exit 1 in `sacct`
+Root cause: Nextflow's work directory is on the login node's `/tmp`, which the compute nodes cannot see
+Check: none automated: the work directory must be on a filesystem the compute nodes can see
+Touches: .command.log, .exitcode, sacct, /tmp, Nextflow
 
 **12. NCHC's sbatch rejects a job name containing `|`, and a task tag can put
 one there.** nf-core/funcscan tags fARGene tasks `<sample>|<hmm model>`;
@@ -523,6 +685,11 @@ message is in the head job log only. `configs/sites/nchc.config` now sets
 `executor.jobName` to a sanitised name, which fixes it for any pipeline rather
 than for this tag.
 
+Symptom: every submission of nf-core/funcscan fARGene tasks dies at once with `sbatch: error: ERROR: Job name contains an invalid character '|'` and there is no `.command.err`
+Root cause: NCHC's sbatch rejects a job name containing `|`, and Nextflow's default job name is `nf-` + `task.name`, which carries the task tag `<sample>|<hmm model>`
+Check: none automated: read the head job log, the only place the message appears
+Touches: sbatch, nf-core/funcscan, executor.jobName, configs/sites/nchc.config, .command.err, fARGene
+
 **13. A compute environment's config cannot be edited in place, and it holds a
 copy, not a reference.**
 `tw compute-envs update` changes only the name and description. Changing
@@ -538,6 +705,11 @@ than a real pipeline — see `docs/SITE_ADAPTER.md`.
 
 To test a config change *without* touching the environment, pass it to
 `tw launch --config`, which is appended after the environment's own config.
+
+Symptom: editing `configs/sites/*.config` changes nothing until it is pushed, and the next run quietly uses the old contract
+Root cause: a compute environment's config cannot be edited in place and holds a copy, not a reference; `tw compute-envs update` changes only name and description
+Check: `scripts/ce_apply.sh`
+Touches: scripts/ce_apply.sh, tw compute-envs update, tw compute-envs import --overwrite, nextflowConfig, configs/sites/*.config, nextflow-io/hello, docs/SITE_ADAPTER.md, tw launch --config
 
 **29. `nf-core pipelines create-params-file` was measured, not assumed, and it
 cleared every bar.** Measured 2026-09-14, this login node, SITE_ADAPTER.md had
@@ -586,6 +758,11 @@ not tested; nf-core/tools' own `Requires-Python` and its dependency list
 (`click`, `pydantic`, `rich`, …, no compiled extension needing a C toolchain)
 make portability there **inferred**, not measured.
 
+Symptom: SITE_ADAPTER.md had only recorded that `nf-core` was not installed here, so whether `nf-core pipelines create-params-file` could be used was unmeasured
+Root cause: not a failure: the question was settled by measurement instead of assumption (nf-core/tools 4.1.0 in a venv, 15.6 s, validates against the pipeline's schema)
+Check: none automated: run `nf-core pipelines create-params-file nf-core/demo -r 1.2.0 -o params.yaml --no-prompts`, then `nf-core pipelines schema validate . params.yaml`
+Touches: nf-core, nf-core pipelines create-params-file, nf-core pipelines schema validate, commands/launch.md, nextflow_schema.json, nf-core/demo, SITE_ADAPTER.md
+
 ## Do not rebuild what nf-core already does
 
 **14.** Before writing a check, read the pipeline's module source. Three checks
@@ -623,6 +800,11 @@ Two pipelines, two different ways to walk into it:
 Neither raises an error. Both produce a report that renders, with the column
 empty. Count the attribute on the line type before trusting the default.
 
+Symptom: a GTF attribute a parameter names is absent on the line type the pipeline parses, so the report renders with an empty column and no error
+Root cause: three checks duplicated what the pipelines already handle, and an attribute has to exist on the line type that pipeline actually parses, which moves per pipeline
+Check: none automated: count the attribute on the line type before trusting the default
+Touches: WorkflowRnaseq.biotypeInGtf(), --genomeSAindexNbases, bin/fastq_dir_to_samplesheet.py, rnaseq, differentialabundance, --gtf_extra_attributes, --features_metadata_cols, --features_gtf_feature_type, --features_name_col, locus_tag
+
 **15. differentialabundance 2.0.0's standalone volcano PNG labels both
 directions `higher in null`.** `conf/modules.config` builds PLOT_DIFFERENTIAL's
 arguments from `meta.params.reference` and `meta.params.target` - paramset-level
@@ -638,6 +820,11 @@ gets the right direction (checked against normalised counts: a `log2FC` of
 report is also correct**, saying `higher in CK` / `higher in SynCom`. Only the
 exported PNGs under `plots/differential/` carry the null labels, so deliver the
 report and treat those PNGs as unlabelled for direction.
+
+Symptom: differentialabundance 2.0.0's standalone volcano PNG labels both directions `higher in null`
+Root cause: `conf/modules.config` builds PLOT_DIFFERENTIAL's arguments from `meta.params.reference` and `meta.params.target`, which do not exist, rather than the contrast's own reference and target
+Check: none automated: the PNGs under `plots/differential/` carry the null labels while the HTML report is correct, so deliver the report and treat those PNGs as unlabelled for direction
+Touches: differentialabundance, conf/modules.config, PLOT_DIFFERENTIAL, plots/differential/, DESeq2
 
 ## Driving the site from a laptop
 
@@ -657,6 +844,11 @@ human typing, not network latency, so the useful threshold is not "how many
 seconds" but "does a session multiplex" — without it, `preflight.sh`'s five
 nested script calls are five OTP prompts, and the OTP lives on a phone the
 agent cannot read. That is not slow, it is unusable.
+
+Symptom: every SSH connection to the site costs an interactive 2FA (one bare round trip measured at 31.3 s), so an agent cannot open one, and `preflight.sh`'s five nested script calls would be five OTP prompts
+Root cause: the server forces keyboard-interactive 2FA and does not accept public-key auth, and the OTP lives on a phone the agent cannot read
+Check: none automated: measure a bare round trip and whether a session multiplexes (the entry's 31.3 s is almost all a human typing)
+Touches: ssh, preflight.sh, ~/.ssh/authorized_keys, t3-c4.nchc.org.tw, 2FA
 
 **16b. On Windows, only WSL can multiplex.** All three shells were measured;
 the two native ones fail for different reasons, and the second failure is the
@@ -678,6 +870,11 @@ must not contain `:` (illegal in an NTFS filename — the usual `%r@%h:%p` canno
 work), and `ssh -M -f` fails to survive backgrounding under MSYS2's fork
 emulation, which looks like the same mux error and sends you chasing the wrong
 cause.
+
+Symptom: on Windows, multiplexing fails in both native shells: `getsockname failed: Not a socket` in PowerShell, and in Git Bash `Master running` from `ssh -O check` followed by `mux_client_request_session: read from master failed: Connection reset by peer`
+Root cause: Win32-OpenSSH does not support multiplexing, and MSYS2's emulated Unix sockets do not implement the fd-passing that opening a session needs; only WSL2 has real AF_UNIX with `SCM_RIGHTS`
+Check: `tests/on_site_test.sh`
+Touches: ssh, on_site.sh, ControlPersist, ControlPath, WSL2, Git Bash, PowerShell, MSYS2
 
 **16c. A `reach=ssh` deployment has to fix the site account's `~/.bashrc`, and
 for two separate reasons — one costs seconds, the other loses the binaries
@@ -733,6 +930,11 @@ env -i HOME="$HOME" PATH=/usr/bin:/bin bash -c \
   'time (source ~/.bashrc); command -v tw nextflow'
 ```
 
+Symptom: over `ssh host <cmd>`, `tw` and `nextflow` are MISSING from PATH and `source ~/.bashrc` costs 3.65 s (the `conda shell.bash hook` alone is 3.3 s)
+Root cause: a non-interactive shell reads `~/.bashrc` but sshd does not read `/etc/profile`, through which `~/bin` reaches PATH
+Check: `env -i HOME="$HOME" PATH=/usr/bin:/bin bash -c 'time (source ~/.bashrc); command -v tw nextflow'`
+Touches: ~/.bashrc, /etc/profile, tw, nextflow, preflight.sh, conda, nvm, sdkman, mamba, npm, ~/bin
+
 **16d. On this cluster, `python3` on PATH is a lockdown, not a stub.**
 `/usr/bin/python3` symlinks to `/usr/libexec/platform-python3.6`, mode `750`
 `root:root` — RHEL's own reserved interpreter, not meant for general use.
@@ -743,6 +945,11 @@ a real one through the module system — `module load python/3.12.2` here — an
 it has to go in `~/.bashrc` **above** the interactive-only guard (16c), the
 same place and for the same reason as `tw`/`nextflow`: a `ssh host <cmd>`
 session never reads the guard's far side.
+
+Symptom: every script that shells out to `python3` fails with a plain `Permission denied`
+Root cause: `/usr/bin/python3` symlinks to `/usr/libexec/platform-python3.6`, mode `750` `root:root`, RHEL's own reserved interpreter, a deliberate fence
+Check: `tests/require_python_test.sh`
+Touches: python3, /usr/libexec/platform-python3.6, egress_ctl.sh, agent_ctl.sh, module load python/3.12.2, ~/.bashrc
 
 **16e. Too many `on_site.sh` calls on one master silently hang, not error.**
 This site's sshd caps concurrent sessions per TCP connection (`MaxSessions`,
@@ -771,6 +978,11 @@ local `timeout` so a hang is caught in seconds, not minutes; a bare `on_site.sh
 --check-reach` passing is not evidence that the next real command will not
 hang.
 
+Symptom: too many `on_site.sh` calls on one master silently hang with no error and no timeout, while `ssh -O check` and `preflight.sh`'s reach line still say OK
+Root cause: this site's sshd caps concurrent sessions per TCP connection (`MaxSessions`, default 10) and the master is carrying that many
+Check: `tests/on_site_parallel_test.sh`, `tests/reset_master_test.sh`
+Touches: on_site.sh, MaxSessions, ssh -O check, ssh -O exit, preflight.sh, scripts/reset_master.sh, timeout, ControlPath, Monitor
+
 **16f. On Windows, `tw`'s native binary segfaults under WSL2 unless the kernel
 allows `vsyscall`.** GraalVM native-image binaries built against older glibc
 sometimes call the legacy vsyscall page (`gettimeofday` and friends) instead of
@@ -794,6 +1006,11 @@ kernelCommandLine = vsyscall=emulate
 then `wsl --shutdown` and reopen — which also drops the master connection
 (16b's "leave that terminal open" does not survive a `--shutdown`), so budget
 a reconnect right after.
+
+Symptom: on Windows, `tw`'s native binary segfaults under WSL2 on `tw --version`, although `install_deps.sh --cli-only` downloaded a correct executable ELF binary
+Root cause: GraalVM native-image binaries built against older glibc call the legacy vsyscall page and WSL2's kernel ships `vsyscall=none`
+Check: none automated: `dmesg` names it (`vsyscall attempted with vsyscall=none`); fix with `vsyscall=emulate` in `.wslconfig` and `wsl --shutdown`
+Touches: tw, install_deps.sh, .wslconfig, vsyscall, WSL2, wsl --shutdown, GraalVM, dmesg
 
 **16g. 16b measured Git Bash's *own* ssh. Calling WSL's ssh from Git Bash
 works, and "start Claude Code from WSL" (25) was an inference, not a
@@ -838,6 +1055,11 @@ single-quoted so Git Bash does not expand `~` to the Windows home first.
 
 Not yet measured: a cold WSL VM's start-up cost on the first call.
 
+Symptom: the inference that Git Bash cannot use ssh and Claude Code must start from WSL was not measured; `on_site.sh` refused MSYS outright and wrote that inference into code and `CONDITIONS.md`
+Root cause: 16b measured only Git Bash's own ssh; calling WSL's ssh from Git Bash works because the ssh client and the master are both inside WSL
+Check: `tests/on_site_test.sh`
+Touches: wsl.exe, ssh, ControlPath, on_site.sh, CONDITIONS.md, MSYS_NO_PATHCONV, docs/LAB_AGENTS.md, Git Bash, PowerShell
+
 **16h. Re-measured 2026-09-16: public-key is not merely refused, it is never
 offered.** Entry 16 (2026-09-04) asked whether a key already in
 `~/.ssh/authorized_keys` gets in, and it did not. This measurement asks a
@@ -859,6 +1081,11 @@ WSL included. One limitation carried forward rather than resolved: this
 measured the login node's own sshd from inside the site; an external `Match
 Address` exception is not ruled out — though it would have to make the policy
 *looser* for outside clients than for inside ones, which no site does.
+
+Symptom: public-key auth is not merely refused but never offered: `Permission denied (keyboard-interactive).` with `publickey` absent from the method list
+Root cause: the server never advertises publickey, so no key, certificate or `ssh-agent` forwarding can remove the human OTP; only the login node's own sshd was measured and an external `Match Address` exception is not ruled out
+Check: none automated: run `ssh -o PreferredAuthentications=none -o BatchMode=yes` against `localhost` and `lgn304` from the login node
+Touches: ssh, authorized_keys, PreferredAuthentications, BatchMode, lgn304, ssh-agent, sshd
 
 **16i. `wsl.exe` inherits the caller's working directory, and a cloud-drive
 one is not a directory it can map.** Measured 2026-09-16 on the member's own
@@ -893,6 +1120,11 @@ present; `python` and `py` both run while `python3` is the Store stub (20c),
 which is the case `pick_python()` exists for; and **`rsync` is not installed at
 all** - Git Bash ships none, so `scripts/fetch.sh` and `scripts/push.sh` have
 nothing to drive until it is installed or replaced.
+
+Symptom: `wsl.exe -e bash -lc 'tw --version'` from a cloud-drive, non-ASCII working directory prints a path translation warning on stderr and starts in a default directory
+Root cause: `wsl.exe` inherits the caller's working directory and a cloud-drive one is not a directory it can map
+Check: `tests/wsl_bridge_test.sh`
+Touches: wsl.exe, scripts/utils/wsl_ssh.sh, bridge_kind(), wsl.exe --cd, ControlPath, rsync, scripts/fetch.sh, scripts/push.sh, pick_python(), jq
 
 **16j. Git Bash cannot hold mode 600 anywhere — and the member's settings file
 was already sitting in the other home, at a real 600.** Measured 2026-09-16, on
@@ -935,6 +1167,11 @@ and `settings.sh` reads and writes them across the bridge (`wsl.exe -e cat` /
 `-e tee`). **Only that one file crosses** — not the execution environment — so
 none of the three failures that sank the whole-environment design
 (`PRINCIPLES.md`, invariant 11) come back. Not built in 2.13.
+
+Symptom: in Git Bash, `chmod 600` followed by `stat -c %a` prints 644 even in `~`, so `set_setting()`'s read-back refused and setup could not complete in a Git Bash window (the entry itself says this was its own mistake; read 16k)
+Root cause: MSYS maps `chmod` onto NTFS ACLs in a way that accepted the call and changed nothing; the member's settings file already existed in the WSL home at a real 600
+Check: `tests/settings_test.sh`
+Touches: set_setting(), refuse_site_shaped_write(), scripts/settings.sh, docs/SETTINGS.md, chmod, MSYS, wsl.exe, PRINCIPLES.md
 
 **16k. The mode Git Bash prints for a Windows file is manufactured, so a check
 that reads it is measuring nothing — and for one release it refused a file that
@@ -992,6 +1229,11 @@ built against fixtures written from the documented output shape, on Linux. One
 real `powershell.exe` answer from the member's own laptop would settle it
 (M17).
 
+Symptom: for one release a settings file that was already private was refused because Git Bash printed mode 644, and the advice (use a location under `$HOME`) named where the file already was
+Root cause: MSYS mounts NTFS without `acl`, so the mode bits are a rendered fiction with no writer; who can open the file is decided by its ACL
+Check: `tests/windows_privacy_test.sh`
+Touches: file_privacy(), scripts/utils/portable.sh, set_setting(), token_state(), --summary, icacls, powershell.exe, SYSTEM
+
 **18. A gate that reads the conversation must separate what the model typed
 from what the user saw — twice this was got wrong, and both times the fix's own
 design conversation was what exposed it.** `hooks/confirm_walkthrough.sh` denies
@@ -1034,6 +1276,11 @@ question is almost always whether the user *saw* X, whether the model *did* X,
 or merely whether it *thought* X, and those live in different blocks of the
 same record.
 
+Symptom: a gate that reads the conversation was satisfied by a URL typed into a heredoc that wrote the gate's own test fixtures, which nobody ever read
+Root cause: the transcript flattening treated an assistant record's `text`, `thinking` and `tool_use` blocks alike, so what the model typed was not separated from what the user saw
+Check: `tests/confirm_walkthrough_test.sh`
+Touches: hooks/confirm_walkthrough.sh, docs/images/, tests/confirm_walkthrough_test.sh, curl, wget, WebFetch
+
 **18b. The third instance, and the part that cannot be closed.** The fix in 18
 was verified against a real transcript and passed. Then the report explaining
 the fix — prose, to the user, containing the example URL — put a
@@ -1065,6 +1312,11 @@ anyone can open.
 The general form is worth more than either fix: **evidence has a subject, and a
 rule that checks the predicate without checking the subject answers a question
 nobody asked.** "A diagram was shown" is not "this pipeline was shown."
+
+Symptom: the gate opened again when the report explaining the fix put a `docs/images/` URL into an assistant `text` block, and a diagram of a different pipeline kept the gate open
+Root cause: a gate whose evidence is a conversation is satisfied by a conversation about the gate, and the evidence never checked which pipeline it was evidence of
+Check: `tests/confirm_walkthrough_test.sh`
+Touches: docs/images/, nf-core, rnaseq, bacass, launch.md, github.com
 
 **19. A reason for not checking something is itself a claim, and it expires
 without a sound.** One afternoon spent running the tools against the live
@@ -1107,6 +1359,11 @@ And the reason all five surfaced at once: fixtures contain only what their
 author thought of. Every one of these tools passed its whole suite before and
 after. What they had never been given was the site.
 
+Symptom: five defects surfaced when the tools ran against the live cluster, each with a comment or document next to it asserting the opposite
+Root cause: a reason for not checking something is itself a claim and expires without a sound; fixtures contain only what their author thought of
+Check: `tests/init_workspace_test.sh`
+Touches: downstream.md, init_workspace.sh, why_pending.sh, fetch.sh, nchc.config, lab_singularity_library, docs/DOWNSTREAM.md, --max-mb
+
 ## Driving the IDE from a terminal
 
 **20. Positron's R kernel writes a registration stub, not a connection file,
@@ -1148,6 +1405,11 @@ The transferable part: **a file that lacks a field is evidence about the file,
 not about the system.** Ask what else publishes it before concluding it is
 unavailable.
 
+Symptom: "R cannot be driven the way Python can" was concluded because Positron's R kernel writes `registration_r-*.json` with no shell, iopub, stdin, control or hb port
+Root cause: positron-r writes only a registration stub; ark binds the ports and the supervisor hands them out through `connection_info`, so the file lacks a field while the system has it
+Check: `tests/positron_run_test.sh`
+Touches: scripts/positron_run.py, registration_r-*.json, connection_info, kcserver, ark, netstat, positron-r
+
 **20b. `sys.frame(1)$ofile` is not where `source()` keeps the path — it depends
 on who called `source()`, and Positron's console adds a frame.** Measured
 2026-09-09 with a probe run through both paths.
@@ -1172,6 +1434,11 @@ almost right. Scan the frames for `ofile` instead of betting on a depth.
 This is the same shape as 18b: evidence with an unchecked subject. `ofile`
 existed, the frame index was assumed.
 
+Symptom: a script that finds its own directory through `sys.frame(1)$ofile` gets NULL in Positron's console, falls through to `getwd()` and fails far away on a missing input file
+Root cause: `source()` keeps `ofile` on frame 2 there, not frame 1, because the console adds a frame
+Check: none automated: scan the frames for `ofile` instead of betting on a depth
+Touches: sys.frame(1)$ofile, source(), commandArgs(), getwd(), Rscript, Positron
+
 **20c. Two Windows-specific traps that both present as "the thing is not
 there" while it plainly is.** Measured 2026-09-09.
 
@@ -1191,6 +1458,11 @@ for candidate in python3 python py; do
 done
 ```
 
+Symptom: `open(r"\\.\pipe\kallichore-22256")` raises `FileNotFoundError` in Git Bash, and `python3` found by `command -v` exits 49 printing nothing
+Root cause: MSYS rewrites the path on the way to `open()`, and `python3` in Git Bash is an App Execution Alias pointing at a Microsoft Store stub
+Check: none automated: pick the interpreter by running it with `-c 'pass'`, not by `command -v`, and run supervisor code outside the MSYS shell
+Touches: Git Bash, MSYS, python3, named pipe, FileNotFoundError, command -v, Microsoft Store
+
 **20d. Do not drive the IDE with synthetic keystrokes.** Attempted 2026-09-09,
 twice, before the API above was found. Both times the keys landed in the wrong
 application — once navigating a chat client — because the desktop belongs to a
@@ -1200,6 +1472,11 @@ before *and* after sending, and still missed: verification and delivery cannot
 be made atomic, and the race is against a human being, not a scheduler. There
 is no hardening that fixes this class. Use the kernel protocol, which does not
 care what has focus.
+
+Symptom: synthetic keystrokes sent to drive the IDE landed in the wrong application, once navigating a chat client
+Root cause: verifying the foreground window and sending the keys cannot be made atomic, and the race is against a human who moves windows
+Check: none automated: use the kernel protocol, which does not care what has focus
+Touches: synthetic keystrokes, AttachThreadInput, SetForegroundWindow
 
 **20e. kcserver sends its HTTP headers lowercase, so matching the RFC's
 capitalisation silently disables a branch.** Found 2026-09-09 by an
@@ -1231,6 +1508,11 @@ and never runs the wire code at all. Parsing is now its own function
 (`_parse_response`) so a test can reach it without a socket, and that test also
 asserts a non-200 error message withholds the response body.
 
+Symptom: a chunked HTTP response from kcserver would reach `json.loads` with its chunk-size lines still in it, and the tool would say "no R console is open" about an open one
+Root cause: kcserver sends its headers lowercase and the reader tested `b"Transfer-Encoding: chunked"`; the 22 passing tests all entered through the fixture seam and never ran the wire code
+Check: `tests/positron_run_test.sh`
+Touches: kcserver, scripts/positron_run.py, _parse_response, find_sessions, content-length, Transfer-Encoding: chunked, json.loads
+
 **20f. `ark` sends an iopub error whose `traceback` is an empty list.**
 Measured 2026-09-09: `stop("deliberate failure")` in the live console produced
 an `error` message with nothing in `traceback`, so `"\n".join(traceback)`
@@ -1254,6 +1536,11 @@ branches. Only `named-pipe` has ever run for real. The specific risk worth
 knowing on macOS is `AF_UNIX`'s 104-byte `sun_path` limit against a
 `/var/folders/...` `$TMPDIR`; if it is hit, `POSITRON_SUPERVISOR_CONNECTION_FILE`
 does not help, because the length is in the socket path, not the config path.
+
+Symptom: `stop("deliberate failure")` in the live console printed one blank line, exit code correct and the terminal silent
+Root cause: ark sends an iopub `error` whose `traceback` is an empty list, and `"\n".join(traceback)` prints a blank line while `ename` and `evalue` carry the reason
+Check: `tests/positron_run_test.sh`
+Touches: ark, traceback, error_text(), execute_reply, ename, evalue, os.path.samefile, os.path.commonpath, AF_UNIX, POSITRON_SUPERVISOR_CONNECTION_FILE
 
 **20g. A live console's `commandArgs(trailingOnly = TRUE)` is empty, so a
 script's own flags are reachable from `Rscript` and not from the IDE.**
@@ -1279,6 +1566,11 @@ Argparse detail worth keeping: `--args` is `nargs=REMAINDER`, so it has to be
 last on the command line. Anything after it belongs to the script, including
 flags this tool has of its own.
 
+Symptom: a live console's `commandArgs(trailingOnly = TRUE)` is empty, so a script's own flags are unreachable and two scripts defaulting to `analysis/figures` overwrote each other's output
+Root cause: `source()` has no argument mechanism, and the batch path had `--outdir` while the live path had nothing
+Check: `tests/positron_run_test.sh`
+Touches: commandArgs(trailingOnly = TRUE), --args, --outdir, on.exit, nargs=REMAINDER, analysis/figures, source()
+
 **20h. The one manual step is a gate, and a refusal has to be instructions.**
 This tool will not open a console — starting a runtime unasked in someone's
 IDE, in a workspace they did not choose, is a worse surprise than being asked
@@ -1289,6 +1581,11 @@ is the alternative to sending someone away to start over: it holds, polls, and
 continues by itself when the console appears. It deliberately does not cover a
 console that exists but is busy — that is a different problem with a different
 answer, and exit 3 says so rather than waiting out someone else's long job.
+
+Symptom: a tool that will not open a console would leave the person with a bare refusal
+Root cause: opening a runtime unasked in someone's IDE is a worse surprise than being asked, so stopping is defensible only if the refusal is instructions
+Check: `tests/positron_run_test.sh`
+Touches: --check, --wait, --wait N, exit 3
 
 **20i. Every one of those transports is local-only, and "no console is open"
 was said about the wrong machine.** Measured 2026-09-10 on `lgn304`.
@@ -1322,6 +1619,11 @@ precondition — the agent and the IDE share a machine — was never written dow
 anywhere, in the script or in `commands/downstream.md`, and so was never
 checked. `docs/DOWNSTREAM.md` now names the two deployments it splits.
 
+Symptom: `--check` printed `no Positron sessions found` and a run printed the 20h refusal when the agent ran on `lgn304` and Positron on the person's desktop
+Root cause: every transport (named pipe, Unix socket, loopback port) is local-only, and "no session here" was reported as "no session", collapsing four states into one message
+Check: `tests/positron_run_test.sh`
+Touches: lgn304, Kallichore, survey(), --check, --wait 120, docs/DOWNSTREAM.md, commands/downstream.md, named pipe
+
 **20j. The library the whole protocol rides on was imported at the last
 possible moment, and `--check` passed without it.** Same review, same file.
 `jupyter_client` is imported inside `execute()` — after a session is found and
@@ -1344,6 +1646,11 @@ one and fail on the other for reasons unrelated to the code. The suite supplies
 both — a stub that imports and a stub that raises — and `$JC` picks. The present
 case is what keeps the absent one honest: it proves the check can also pass, by
 getting far enough to fail on the next thing instead.
+
+Symptom: `--check` says everything is fine with exit 0, then the run dies on a raw `ModuleNotFoundError` traceback
+Root cause: `jupyter_client` is imported inside `execute()`, after `connection_file()` has written the HMAC key, and is not installed on the cluster
+Check: `tests/positron_run_test.sh`
+Touches: jupyter_client, execute(), connection_file(), ModuleNotFoundError, --check, commands/downstream.md, $JC
 
 **21. A negative assertion can be true for a reason unrelated to what it
 guards.** `positron_run.py` narrows every `/sessions` record to a field
@@ -1384,6 +1691,11 @@ true for it to fail, and check that thing is reachable.** A mutation is the
 cheapest way to ask — break the property on purpose and see whether anything
 notices. All three of these took one edit each to expose, and all three had
 been green from the day they were written.
+
+Symptom: all 35 cases stayed green after the field whitelist in `positron_run.py` was deleted outright
+Root cause: the assertions grepped the rendered output, which prints six named fields, so they measured the print sites and not the parsed object that carries `initial_env`
+Check: `tests/positron_run_test.sh`
+Touches: positron_run.py, initial_env, report(), git ls-files -s, GitHub PAT, #!/usr/bin/env python3
 
 **22. A subagent's transcript is a separate file, every record marked — so the
 gate's dangerous branch does not exist.** Measured 2026-09-10 against this
@@ -1426,6 +1738,11 @@ are safe, so the probe closed the question rather than answering it. **That is
 the cheaper shape of answer, and it is worth looking for before building the
 apparatus to decide.**
 
+Symptom: it was unclear which conversation the walkthrough gate reads when a subagent writes; blind-adding an `isSidechain` filter would match nothing and deny every subagent write
+Root cause: subagent transcripts live in their own files beside the session file with every record `isSidechain: true`, so records are not interleaved with the parent's
+Check: `tests/confirm_walkthrough_test.sh`
+Touches: isSidechain, subagents/, /downstream, .isSidechain // false, select(.isSidechain | not), walkthrough gate
+
 **23. The escape phrase stood down every gate, including one written months
 later.** Found while adding G4, 2026-09-10, by a test that expected a denial.
 
@@ -1449,6 +1766,11 @@ second back to the old blanket `allow` fails exactly that one case.
 The same shape is worth watching for wherever a session-wide "yes" is read
 fresh on every call: the question it answered was asked once, and the answer
 does not know what it is being applied to.
+
+Symptom: saying the escape phrase once stood down every gate for the rest of the session, including G4 written months later
+Root cause: `hooks/confirm_walkthrough.sh` re-reads the whole conversation on every call and `[ "$ESC" = 1 ] && allow` applied a blanket permission to steps the person was never asked about
+Check: `tests/confirm_walkthrough_test.sh`
+Touches: hooks/confirm_walkthrough.sh, G4, 略過計畫, 略過導覽, allow
 
 **24. The guard against citing an error page rejected every real answer
 instead.** Found 2026-09-10 by running `scripts/cite.sh` against the live
@@ -1477,6 +1799,11 @@ input* has to come from the real source at least once.
 The test now carries both — a stub that answers with prose (must not be
 cached) and a stub that answers with a leading space (must be). Removing the
 trim fails only the second.
+
+Symptom: `scripts/cite.sh` answered `CITATION NEEDED` for every DOI, including two that resolve by hand
+Root cause: the DOI service answers BibTeX with a leading space before the `@`, so the anchored `case "$body" in @*)` matched nothing real
+Check: `tests/cite_test.sh`
+Touches: scripts/cite.sh, CITATION NEEDED, BibTeX, DOI
 
 **25. Setup ran in one shell and Claude runs in another, on the same machine.**
 Measured 2026-09-10, on the Windows laptop.
@@ -1535,6 +1862,11 @@ cannot be substituted from the environment and the branch would have no test.
 Three assertions in `tests/settings_test.sh`, one negative — a hint that fires
 on Linux too teaches the reader to skip the block it is printed in.
 
+Symptom: every candidate path `settings.sh` reports is absent while the settings file is present, when setup ran in WSL and Claude runs in Git Bash
+Root cause: WSL and Git Bash on one machine have separate homes and startup files, so `LAB_SETTINGS_FILE` exported from `~/.bashrc` is never read by Git Bash
+Check: `tests/settings_test.sh`
+Touches: commands/setup.md, settings.sh, LAB_SETTINGS_FILE, Git Bash, WSL, MSYS, shell_blind_spot(), scripts/on_site.sh, scripts/utils/wsl_ssh.sh, site_bridge: wsl, uname -s, $OSTYPE, env.yaml
+
 **26. Nine GNU-only spellings, four of them silent, and the fix that mattered
 was the check rather than the nine edits.** Measured 2026-09-11, prompted by
 "this has to work on Mac and Windows too".
@@ -1582,6 +1914,11 @@ refuses `-c` and a stub `readlink` that refuses `-f`, which catches a wrong
 flag and cannot catch a difference nobody thought to stub. **It has never run
 on a real Mac, and the release note says so.**
 
+Symptom: nine GNU-only spellings (`stat -c %a`, `timeout`, `readlink -f`, `du -sb` among them) behave differently or not at all on a Mac, four of them silently
+Root cause: macOS ships a BSD userland and bash 3.2, and a fallback chain such as `stat -c %a "$f" || stat -f %Lp "$f"` hands a block-count report to the caller under GNU coreutils
+Check: `tests/portable_userland.sh`, `tests/bsd_userland_test.sh`
+Touches: stat -c %a, timeout, readlink -f, du -sb, local -A, GNU-ok:, tests/portable_userland.sh, tests/bsd_userland_test.sh, clocked()
+
 **27. The reason was true, and it was true about something else.** Measured
 2026-09-11.
 
@@ -1623,6 +1960,11 @@ shells to disagree.
 
 ---
 
+Symptom: the settings file could only be found through a shell variable, which Git Bash, WSL and zsh do not share
+Root cause: the reason for writing `LAB_RUNS_DIR` to `~/.bashrc` (site account shells need it) was applied one value over to the settings file, which only this plugin's scripts read
+Check: none automated: with no variable set run `settings.sh --set`, then read it back in a fresh shell with an empty environment
+Touches: commands/setup.md, ~/.bashrc, LAB_RUNS_DIR, settings.sh, XDG_CONFIG_HOME, env.yaml, zsh, reach: ssh
+
 **28. Three gates could vanish silently, and none of the three ways was a bug
 in the gate's own logic.** Found by reading the hooks while planning 2.7, then
 measured one by one.
@@ -1659,6 +2001,11 @@ And one that would have bitten the next author: **exit code 1 is a
 non-blocking error** — the action proceeds. Only `exit 2` blocks. A gate
 written with `exit 1` looks correct in review and enforces nothing.
 
+Symptom: the deletion guard, the launch confirmation and the walkthrough gates all vanish with nothing printed when `jq` is absent or broken
+Root cause: every safety-net hook reads its input with `jq`, so an empty parse takes each hook's "nothing to judge here" path and exits 0; `command -v jq` proves a file exists, not that it runs
+Check: `tests/gates_without_jq_test.sh`
+Touches: jq, command -v jq, exit 2, exit 1, PreToolUse, reach: ssh
+
 **34. kallichore stopped writing connection files, and everything item 20
 above measured about them stopped applying at once.** Reported against
 kallichore 0.1.68, the version bundled with current Positron on Windows
@@ -1689,6 +2036,11 @@ rather than one that chases whatever kallichore writes next. `positron_run.py`
 tries this route first (ladder rung 1) and only falls back to the file-based
 contract - now understood as "the *old* Positron contract", not "*the*
 Positron contract" - when no bridge answers.
+
+Symptom: `supervisor_files()` always returns empty against kallichore 0.1.68, indistinguishable from Positron not running here
+Root cause: kallichore 0.1.68 no longer writes `kallichore-<id>.json` and reports connection details over a one-shot handshake pipe to Positron's main process
+Check: `tests/positron_bridge_test.sh`
+Touches: kallichore, kallichore-<id>.json, supervisor_files(), positron_presence(), tier3_message(), positron.runtime.executeCode, extensions/positron-bridge, positron_run.py
 
 **35. `systemMessage` is one prompt-prefixed row per line on a GUI surface,
 and Markdown there collapses the spaces a terminal card aligns with.**
@@ -1730,6 +2082,11 @@ and `claude-web` are naming conventions this repo has never observed, so an
 app session is the place to measure `CLAUDE_CODE_ENTRYPOINT` and settle
 `interface=` for that surface.
 
+Symptom: in the Claude app `systemMessage` showed 26 separate rows each prefixed `PostToolUse:Skill says: ` and the space-aligned columns collapsed
+Root cause: a GUI surface prints `systemMessage` one prefixed row per line and renders Markdown in a proportional font that collapses runs of spaces
+Check: `tests/plugin_intro_test.sh`, `tests/intro_test.sh`, `tests/column_output_relay_rule.sh`
+Touches: systemMessage, hooks/plugin_intro.sh, scripts/intro.sh, additionalContext, tests/column_output_relay_rule.sh, CLAUDE_CODE_ENTRYPOINT, permissionDecision, docs/TESTING.md
+
 ## Lab agents
 
 **30. A run label is a workspace object, so "one label per record" piles up.**
@@ -1749,6 +2106,11 @@ So a record link is not yet a label. `docs/LAB_AGENTS.md` keeps the proposal
 (R2) open until someone decides whether a growing label list is acceptable or
 the link belongs on the record system's side.
 
+Symptom: encoding an ELN record id as a run label name adds one workspace object per record for good, and a 45-character name given to `tw labels add` printed nothing and created nothing
+Root cause: a run label is a workspace object: `tw runs labels -o append` creates it, and every distinct name is a separate entry in `tw labels list`
+Check: `tw labels list`
+Touches: tw runs labels, tw labels list, tw labels add, docs/LAB_AGENTS.md, label:<name>
+
 **31. Plugin hooks load under `claude -p` - measured without a model call.**
 Measured 2026-09-14 on the login node, plugin 2.8.0.
 
@@ -1763,6 +2125,11 @@ is built to stop before one.
 What this does not show: whether a PreToolUse `deny` or `ask` actually refuses
 under `-p` (that needs a real tool call), or anything about the Agent SDK. An
 unattended host is therefore not yet claimed to be stopped by `ask`.
+
+Symptom: whether plugin hooks load under `claude -p`, and whether a PreToolUse `deny` or `ask` refuses there, was unmeasured; an unattended host is not yet claimed to be stopped by `ask`
+Root cause: the probe was built to stop before a model call (a UserPromptSubmit hook that exits 2), so it shows hook loading and nothing about a real tool call or the Agent SDK
+Check: `claude -p "/agentic-bioflow:runs probe" --settings <file>`
+Touches: claude -p, UserPromptSubmit, plugin_intro.sh, AGENTIC_BIOFLOW_STATE_DIR, --settings, PreToolUse, Agent SDK
 
 **32. nf-prov's Workflow Run RO-Crate works here, and records no checksums.**
 Measured 2026-09-14: nf-core/demo 1.2.0 `-profile test`, run `2uk3A2Ic7wwf8q`,
@@ -1794,6 +2161,11 @@ What came out, read from the file rather than the README:
 - `license` and every `agent` are null. They cannot be inferred and have to
   come from `prov.formats.wrroc.agent` / `organization` / `license` in config.
 
+Symptom: nf-prov's Workflow Run RO-Crate has no checksum and no size on any file, and `license` and every `agent` are null
+Root cause: nf-prov 1.7.0 `WrrocRenderer.groovy` has no digest code, and license and agent cannot be inferred so they have to come from config
+Check: none automated: grep the crate for `sha256`, `sha1`, `md5` and `contentSize`; set `prov.formats.wrroc.agent` / `organization` / `license` in config
+Touches: nf-prov, nf-prov@1.7.0, ro-crate-metadata.json, WrrocRenderer.groovy, scripts/input_checksums.sh, prov.formats.wrroc, tw launch --config
+
 **33. A diagram shown mid-turn never reached the transcript, so the walkthrough
 gate refused a run the user had already seen.** Measured 2026-09-14 in a
 background Claude Code session.
@@ -1811,6 +2183,11 @@ the turn with the diagram as its last text, let the user answer, launch in
 the next turn. Whether ordinary interactive sessions persist mid-turn text
 is not established; until it is, show evidence the gates read as the final
 text of a turn.
+
+Symptom: the walkthrough gate denied `tw launch` twice, even after the user replied that they had seen the diagram
+Root cause: text blocks that precede a tool call in the same turn were not in the `.jsonl` transcript at all; only each turn's final text was, and G1 reads text blocks from the transcript
+Check: none automated: end the turn with the diagram as its last text, let the user answer, and launch in the next turn
+Touches: hooks/confirm_walkthrough.sh, commands/launch.md, tw launch, G1, .jsonl
 
 
 **36. The outputs reader inherited a temp directory that was then deleted, and
@@ -1885,6 +2262,11 @@ it was found, and both would have turned a restart into a worse outage:
   `commands/setup.md` step 6 warns about. Check both before restarting an
   agent that is already registered.
 
+Symptom: every run's outputs were invisible on Platform with `File cannot be streamed - file empty` while `tw credentials list` said `AVAILABLE` and the agent heartbeated
+Root cause: the agent runs commands with no working directory set, so the child inherits the cwd of what started it, a `mktemp -d` from `on_site.sh --script` that was deleted, and the shell's `getcwd` error is folded into stdout
+Check: `tests/daemon_cwd_test.sh`
+Touches: tw-agent, redirectErrorStream, mktemp -d, scripts/on_site.sh, scripts/agent_ctl.sh, scripts/egress_ctl.sh, getcwd, agent_java, agent_connection, UnsupportedClassVersionError, rand_tag, commands/setup.md
+
 **37. The two gates threw text away to stop false alarms, and a real command
 could sit in what was thrown away.** (#29, found by the 2026-09-29 constitution
 audit, every shape reproduced before the fix.)
@@ -1924,6 +2306,11 @@ test holds it there. Splitting a command line is now one shared file,
 `hooks/split_segments.awk`, so the two gates cannot disagree about what a line
 runs.
 
+Symptom: the delete guard and the launch gate passed `rm -rf "…/results"`, `ssh host bash -s <<EOF` and `echo '…' | bash` with no output at all
+Root cause: `hooks/confirm_cleanup.sh` deleted every quoted string and `hooks/strip_heredocs.awk` dropped every here-doc body, which are exactly the places a command can live; a hook that runs past its `timeout` is cancelled and the call proceeds
+Check: `tests/confirm_cleanup_test.sh`
+Touches: hooks/confirm_cleanup.sh, hooks/strip_heredocs.awk, hooks/split_segments.awk, tw launch, xargs, Remove-Item, rd /s, relaunch_with_override.sh, hooks.json, timeout
+
 **38. 22 red files without jq were the tests, not the gates.** Issue #70,
 measured 2026-10-10 on WSL Ubuntu without `jq` (main 7a64a31, 72/94).
 
@@ -1946,16 +2333,31 @@ It fails, rather than skips, if jq cannot be hidden. Scope: one machine without
 jq, one run; it shows the tests were the cause, not that no future hook change
 can fail open - that is what the new file is for.
 
+Symptom: 22 test files were red on a machine without `jq`, with gate cases reading "expected ask/deny, got pass/allow"
+Root cause: the tests build their inputs and read the hook's JSON answer with jq, so without it the hook takes its no-jq path (exit 2, no JSON); the gates themselves refuse correctly
+Check: `tests/gates_without_jq_test.sh`
+Touches: jq, python3, tests/run_all.sh, tests/gates_without_jq_test.sh, --allow-missing-tools, confirm_cleanup, confirm_launch, confirm_walkthrough, guard_plugin_files
+
 **39. GatewayPorts off on NCHC: reverse forward is loopback-only (measured 2026-10-11).**
 `ssh -O forward -R 0.0.0.0:28933:127.0.0.1:18787` on the shared connection was accepted, and sshd bound it to `127.0.0.1:28933` anyway
 (`ss -ltn`). A `curl` to `127.0.0.1:28933` on the login node reached the laptop; to `<login node>:28933` it did not. So a compute node can
 never use the forward directly, and "forward on 0.0.0.0" is not an option on this site. The way back goes through the relay, which runs on
 the login node and so can reach its loopback (specs/007b-launch/research.md); the relay got one narrow rule for that and nothing else.
 
+Symptom: `ssh -O forward -R 0.0.0.0:28933:127.0.0.1:18787` was accepted but sshd bound it to `127.0.0.1:28933`, so a compute node could not use the forward
+Root cause: GatewayPorts is off on NCHC, so a reverse forward is loopback-only
+Check: `ss -ltn`
+Touches: GatewayPorts, ssh -O forward, ss -ltn, specs/007b-launch/research.md, curl
+
 **40. Seqera launcher scripts hold the token in a 755 file.**
 Measured 2026-10-11 on a run Seqera had launched: `_work/nf-<id>.launcher.sh` is mode 755 and carries the Tower access token as base64 in
 `NXF_PRERUN_BASE64`. Only the mode 700 of the folder around it protects it. The 007b launch does not copy this: the token is in a mode 600
 file, `<run folder>/tower.token`, read into the head job's environment, and never in the script text.
+
+Symptom: the Seqera launcher script `_work/nf-<id>.launcher.sh` is mode 755 and carries the Tower access token as base64
+Root cause: Seqera writes the token into `NXF_PRERUN_BASE64` in a 755 file, and only the mode 700 of the folder around it protects it
+Check: none automated: check the mode of the launcher script, and that the 007b launch keeps the token in the mode 600 `tower.token` and never in the script text
+Touches: NXF_PRERUN_BASE64, tower.token, nf-<id>.launcher.sh, Tower access token
 
 **41. `ssh -O cancel` matches the spec the forward was opened with, and says no with exit code 0 (measured 2026-10-13, OpenSSH 8.9p1).**
 The forward was opened as `-R 127.0.0.1:0:127.0.0.1:8787`; sshd chose 41179. `ssh -O cancel -R 127.0.0.1:41179:127.0.0.1:8787` was
@@ -1965,6 +2367,11 @@ cancel that worked from one that did not; `on_site.sh --unforward` repeats the r
 and reads the master's stderr, and a refusal keeps the records and exits non-zero. Before this, `abf-station unforward` printed
 "cancelled" while the port stayed open on the login node with no record anywhere.
 
+Symptom: `abf-station unforward` printed "cancelled" while the port stayed open on the login node with no record anywhere
+Root cause: `ssh -O cancel` matches the spec the forward was opened with and answers a refusal with exit code 0
+Check: none automated: after a cancel confirm the port left `ss -ltn`, and read the master's stderr for `port not forwarded`
+Touches: ssh -O cancel, on_site.sh --unforward, cancel_spec, forward_state, abf-station unforward, mux_client_forward
+
 **42. Slurm opens the job's output file with the submitter's umask, so `sbatch` is called under `umask 077` (007b follow-up 3, 2026-10-14).**
 Seen: the first acceptance on NCHC (specs/007b-launch/acceptance-nchc.md, TC-047, 2026-10-13) found `slurm-*.out` 644 inside the 700 run
 folder. The launch writes its own files under `umask 077`, but `sbatch` ran under the agent's umask (022). The fix puts `umask 077;` in
@@ -1973,6 +2380,11 @@ front of the one `sbatch` call in `platform/abf_station/launch.py`. What is prov
 **not** proven: that the real Slurm 23.02 on Taiwania 3 behaves like the fake (that is the assumption of the fix), and why `head.sh` was
 711 there. The launch writes `head.sh` through a tar entry of mode 0600 under `umask 077` and the offline test finds it 0600 before and
 after this change, so `head.sh` was **not** changed by this fix and its 711 is unexplained. Both wait for TC-F3-13 on the site.
+
+Symptom: `slurm-*.out` was 644 inside the 700 run folder on the first NCHC acceptance
+Root cause: Slurm opens the job's output file with the submitter's umask, and `sbatch` ran under the agent's umask 022; whether real Slurm 23.02 behaves like the fake is not proven, and why `head.sh` was 711 is unexplained
+Check: none automated: TC-F3-13 on the site (the offline test uses a fake sbatch)
+Touches: platform/abf_station/launch.py, umask 077, sbatch, slurm-*.out, head.sh, TC-F3-13, specs/007b-launch/acceptance-nchc.md
 
 **43. The message after `complete` is a second `complete`, from an aborted run (nf-tower 1.28.3 / Nextflow 26.04.7, read 2026-10-14).**
 Source read at tag v26.04.7 of nextflow-io/nextflow: `plugins/nf-tower/src/main/io/seqera/tower/plugin/TowerObserver.groovy:257-272`
@@ -1990,12 +2402,22 @@ The receiver therefore keeps the token revoked at `complete` (`revoked_at`), and
 (`store.ENDED_GRACE_SECONDS`) a message for the same run, which already has a `complete` on record, from that token gets `{"status":"OK"}`
 and writes nothing. Everything else (another run, `create`, `begin`, `/user-info`, any other revoke) stays 401.
 
+Symptom: a 401 followed a cancel, which fits a second `complete` message; the message itself has not been captured
+Root cause: an aborted run runs `onFlowComplete` twice because `abort()` and then `destroy()` both call `shutdown0()` and nothing guards the second call; this is read from source, not seen in a log
+Check: none automated: capture the second `complete` on a cancelled run (TC-F3-13)
+Touches: TowerObserver.groovy, Session.groovy, onFlowComplete, shutdown0(), abort(), notifyFlowComplete(), nf-tower, revoked_at, ended_at, store.ENDED_GRACE_SECONDS
+
 **44. What Nextflow says when a run is cancelled has not been measured.**
 `workflow.errorMessage` (the field `get_run` now shows as `failure_reason` for a failed run) is cut at 255 characters by Nextflow. For a
 failing task it was `FIXTURE_BOOM_7` with Nextflow 26.04.7 (recorded 2026-10-11, `platform/tests/fixtures/payloads/fail_run.json`, and
 confirmed live by `test_tcf3_11...` against the pinned launcher). For a cancel on the cluster (25.10.4) the text has not been captured:
 the acceptance run of TC-048 predates the field. The platform writes only what Nextflow sends and invents nothing; a rebuilt run has no
 reason because `.nextflow.log` does not hold `errorMessage`.
+
+Symptom: what Nextflow says in `workflow.errorMessage` when a run is cancelled on the cluster (25.10.4) has not been captured
+Root cause: the acceptance run of TC-048 predates the field, and a rebuilt run has no reason because `.nextflow.log` does not hold `errorMessage`
+Check: none automated: capture `workflow.errorMessage` from a cancelled run on the cluster
+Touches: workflow.errorMessage, failure_reason, fail_run.json, FIXTURE_BOOM_7, .nextflow.log, get_run
 
 **45. The rebuild time check flaked on CI with a 2-second gap (2026-10-15).**
 `_same_runs` in `platform/tests/test_nextflow_e2e.py` allowed 1 second between live and rebuilt `started_at`/`ended_at`. CI run 38598019862
@@ -2004,50 +2426,131 @@ passed. The cause is not proven (research.md "Time resolution" explains 1 second
 again without a new CI instance, and do not replace it with a retry or `xfail`: `test_ft04_same_runs_still_fails_on_a_large_gap` fails if a gap of
 60 seconds, or of one second more than the constant, is accepted. The `last_message_at` check (`<= 1`) was left alone on purpose (out of scope of this fix); it was not re-examined.
 
+Symptom: the rebuild time check flaked on CI with `started_at` 2 seconds apart, and `tc030`, `tcf3_11` and `tc031` failed together
+Root cause: `_same_runs` allowed only 1 second between live and rebuilt `started_at`/`ended_at`; the cause of the 2-second gap is not proven
+Check: `platform/tests/test_nextflow_e2e.py`
+Touches: _same_runs, platform/tests/test_nextflow_e2e.py, _CLOCK_SLACK_SECONDS, test_ft04_same_runs_still_fails_on_a_large_gap, last_message_at, xfail, started_at
+
 **46. Tests that make a temporary clone go all red when run in WSL from a Windows-made worktree (2026-10-14).**
 Windows git writes an absolute path into the worktree's `.git` file (`gitdir: C:/Users/...`). Git inside WSL cannot read it and answers
 `fatal: not a git repository`, so every test that clones the repo into a temporary directory fails in the WSL full suite. The cause is the absolute
 path, not the tests. Create the worktree with `git worktree add --relative-paths`, or fix an existing one with `git worktree repair --relative-paths`;
 git must be 2.48 or newer on both sides (Windows and WSL).
 
+Symptom: every test that clones the repo into a temporary directory fails with `fatal: not a git repository` in the WSL full suite from a Windows-made worktree
+Root cause: Windows git writes an absolute path into the worktree's `.git` file that Git inside WSL cannot read
+Check: `git worktree repair --relative-paths`
+Touches: .git, --relative-paths, git worktree repair --relative-paths, WSL
+
 **47. A subagent's `gh pr create` and `gh pr merge` are refused by the auto mode classifier (2026-10-14).**
 What a subagent is told is not counted as the user's request, so Claude Code's auto mode classifier judged `gh pr create` as "Unrequested Commit in a
 Connected App" and `gh pr merge` as "Merge Without Review" (PRs #88, #89). Let the subagent push; the main session (developer-agent) opens the PR and
 merges, and the workspace permission rules allow those commands explicitly.
 
+Symptom: a subagent's `gh pr create` and `gh pr merge` were refused by the auto mode classifier (PRs #88 and #89)
+Root cause: what a subagent is told is not counted as the user's request, so the classifier judged them "Unrequested Commit in a Connected App" and "Merge Without Review"
+Check: none automated: let the subagent push; the main session (developer-agent) opens the PR and merges
+Touches: gh pr create, gh pr merge, auto mode classifier, Merge Without Review, developer-agent
+
 **48. A fix loop spins when the verifier says UNVERIFIED and nothing else (2026-10-14).**
 When every test case is manual, the verifier returns UNVERIFIED while reporting no FAIL, no weakened test and no empty shell. Sending an executor again
 changes nothing; it only reruns the full suite. Hand such a result back to a person to judge instead of starting a fix round.
 
+Symptom: a fix loop spins when the verifier says UNVERIFIED and nothing else
+Root cause: when every test case is manual the verifier returns UNVERIFIED with no FAIL, no weakened test and no empty shell, so a new executor only reruns the full suite
+Check: none automated: hand an UNVERIFIED-only result to a person to judge instead of starting a fix round
+Touches: UNVERIFIED, verifier, executor
+
 **49. Two WSL full suites plus several agents at once run a laptop out of memory (2026-10-14).**
 A background command was killed by the system for low memory. Keep `maxParallel` at 2 on the laptop; raise it only on the always-on desktop.
+
+Symptom: a background command was killed by the system for low memory
+Root cause: two WSL full suites plus several agents at once run a laptop out of memory
+Check: none automated: keep `maxParallel` at 2 on the laptop and raise it only on the always-on desktop
+Touches: maxParallel, WSL
 
 **50. A cancelled run logged "Report file already exists" (2026-10-15).**
 What was seen: the NCHC recheck run `fu3-cancel` (Nextflow 25.10.4 on the cluster) had, in `.nextflow.log`, `AbortOperationException: Report file already exists: .../results/pipeline_info/execution_report_<stamp>.html -- enable the 'report.overwrite' option` and the same for the timeline (recorded in `specs/007b-launch/acceptance-nchc.md`). Results were not affected. Cause, read from the source quoted in 43: after an abort `onFlowComplete` runs twice (`Session.destroy()` calls `shutdown0()` again), and `ReportObserver` / `TimelineObserver` refuse to overwrite a file unless `report.overwrite` / `timeline.overwrite` is true. Upstream: nextflow-io/nextflow issue 6692 (closed 2026-07-17) shows the same stack with `-with-report` (Session.shutdown0 from Session.destroy); PR 7349 is described in PR 7781 as making `shutdown0()` run once, but which release carries it was not looked up, so the pinned 26.04.7 is treated as affected.
 Fix: `platform/abf_station/launch.py` appends a commented block with exactly those two settings to every rendered `nextflow.config`, after the compute environment's text (`OVERWRITE_BLOCK`); it is shown, hashed and written like the rest. Trace and DAG are not touched.
 Proved offline with the pinned 26.04.7 (`test_nextflow_e2e.py`, `test_abort_tc010/011/013`): a SIGINT to a running `slow` pipeline with report and timeline enabled logs "already exists" without the block (TC-011) and does not with it (TC-010), and a normal run writes both files (TC-013). Not proved: the cluster's 25.10.4 and a real `scancel`; that is TC-012 / TC-014 in the maintainer's NCHC recheck.
 
+Symptom: a cancelled run logged `AbortOperationException: Report file already exists` for the report and the timeline, with results unaffected
+Root cause: after an abort `onFlowComplete` runs twice (`Session.destroy()` calls `shutdown0()` again) and `ReportObserver` / `TimelineObserver` refuse to overwrite unless `report.overwrite` / `timeline.overwrite` is true
+Check: `platform/tests/test_nextflow_e2e.py`
+Touches: AbortOperationException, report.overwrite, timeline.overwrite, platform/abf_station/launch.py, OVERWRITE_BLOCK, ReportObserver, TimelineObserver, Session.destroy(), shutdown0(), fu3-cancel, nextflow.config
+
 **51. The 011a web layout was rejected because the plan had no design spec (2026-10-18).**
 The maintainer rejected the whole 011a layout: 「版面我完全不滿意，請你直接參考 Seqera 以及 Galaxy 的網頁」. The plan described function only and the verifier only graded function, so nothing said what the screens should look like. Fix: a design gate in the developer-agent (PRODUCT.md / DESIGN.md) plus a `## 專長守則` section copied into the plan, which the executor and the verifier treat as binding (this PR).
+
+Symptom: the maintainer rejected the whole 011a web layout
+Root cause: the plan described function only and the verifier graded function only, so nothing said what the screens should look like
+Check: none automated: a design task's plan must carry a `## 專長守則` section copied from PRODUCT.md / DESIGN.md
+Touches: PRODUCT.md, DESIGN.md, 專長守則, developer-agent, 011a
 
 
 **52. nano4's shared image cache is read-only, so pulls into it fail (2026-10-22).**
 What was seen: the nano4 probe summarised in the `ce-nano4-keys` plan found that the site's Singularity image cache cannot be written to by a user. Fix: use `NXF_SINGULARITY_LIBRARYDIR` to point at the read-only cache, where Nextflow looks images up first, and set `NXF_SINGULARITY_CACHEDIR` to a directory you own, where it stores what it pulls. The two variables do different jobs; setting only the cache variable to the shared path is what fails. Not re-measured by this documentation task.
 
+Symptom: pulls into nano4's shared Singularity image cache fail
+Root cause: the site's image cache cannot be written to by a user; Nextflow looks images up first in `NXF_SINGULARITY_LIBRARYDIR` and stores what it pulls in `NXF_SINGULARITY_CACHEDIR`, so pointing only the cache variable at the shared path fails
+Check: none automated: set `NXF_SINGULARITY_LIBRARYDIR` to the read-only cache and `NXF_SINGULARITY_CACHEDIR` to a directory you own (not re-measured)
+Touches: NXF_SINGULARITY_LIBRARYDIR, NXF_SINGULARITY_CACHEDIR, ce-nano4-keys, nano4
+
 **53. A local pipeline path must not be given `-r` (2026-10-22).**
 What was seen: the same nano4 probe: `nextflow run <local path> -r <revision>` is refused, because `-r` selects a revision of a pipeline fetched from a remote repository and a local directory has none. Fix: when the pipeline argument is a local path, leave `-r` out and pin the version by checking out the directory itself. Source: the nano4 probe in the `ce-nano4-keys` plan; not re-run here.
+
+Symptom: `nextflow run <local path> -r <revision>` is refused
+Root cause: `-r` selects a revision of a pipeline fetched from a remote repository and a local directory has none
+Check: none automated: for a local path leave `-r` out and pin the version by checking out the directory itself (not re-run)
+Touches: nextflow run, ce-nano4-keys, nano4
 
 **54. On nano4 an offline site, broken site images and the iGenomes config each break a run (2026-10-24).**
 What was seen (nf-core/ampliseq 2.18.0, three attempts): (a) the site module sets `NXF_OFFLINE=true` and its `NXF_PLUGINS_DIR` has no `nf-tower`, so Nextflow cannot load the plugin and cannot report to Platform; (b) some files in the site's Singularity library are saved 404 HTML pages instead of images (`bioconductor-biostrings-2.58.0`, `bambu`), so tasks using them fail at start; `file <img>` says `HTML document`; (c) `NFCORE_SITE_REFERENCES` (the human iGenomes config) loaded together with the site config makes ampliseq fail; and the read-only `ref_taxonomy_storage` has no DADA2 silva 138.2.
 Fix: the template `configs/sites/nchc-nano4-ce.json` sets `NXF_PLUGINS_DIR` to your own `/work/<site_user>/abf/nxf-plugins` and `NXF_SINGULARITY_LIBRARYDIR` to `/work/<site_user>/abf/singularity-lib`, and keeps only `NFCORE_SITE_CONFIG` in `siteConfigVars`; the build commands and the `ref_taxonomy_storage` run parameter are in `docs/SETTINGS.md`. Found in the 10-24 run; not re-run by this documentation task.
 
+Symptom: a run on nano4 breaks three ways: Nextflow cannot load `nf-tower`, tasks fail at start on saved 404 HTML pages instead of images, and ampliseq fails with the iGenomes config
+Root cause: the site module sets `NXF_OFFLINE=true` with an `NXF_PLUGINS_DIR` lacking `nf-tower`, some library files are not images, and `NFCORE_SITE_REFERENCES` loaded with the site config breaks ampliseq
+Check: `file <img>`
+Touches: NXF_OFFLINE, NXF_PLUGINS_DIR, nf-tower, NXF_SINGULARITY_LIBRARYDIR, NFCORE_SITE_REFERENCES, NFCORE_SITE_CONFIG, siteConfigVars, configs/sites/nchc-nano4-ce.json, ref_taxonomy_storage, docs/SETTINGS.md, nf-core/ampliseq
+
 **55. A registered launchpad entry is bound to a compute environment, and reusing it by short name silently runs there (2026-10-24, issue #8).**
 What was seen: with a production CE and a new isolated CE on one Seqera workspace, `tw pipelines list` showed the wanted pipeline already registered at the wanted revision, but bound to the production CE; step 3 said "same revision, skip the step", so a `tw launch <short-name>` would have gone to the wrong environment. `prepare_launch.sh` only checked repo and revision. Why: a registration pins a CE as well as a revision, and nothing read the CE. Fix: `prepare_launch.sh` now prints `bound to:` under `registered:` (read from `tw -o json pipelines list`, falling back to `pipelines view`), raises a `DECIDE:` when it is not the deployment's `compute_env` and a `WARNING:` when it cannot tell; the launch skill skips registration only when the binding matches and always passes `--compute-env`. The JSON field positions are tried in two places and still need a check against real tw 0.40 output (`specs/launchpad-ce-routing/ledger.md`).
 
+Symptom: a registered launchpad entry was already at the wanted revision but bound to the production compute environment, so `tw launch <short-name>` would have run in the wrong environment
+Root cause: a registration pins a compute environment as well as a revision and `prepare_launch.sh` only checked repo and revision
+Check: `tests/prepare_launch_ce_test.sh`
+Touches: prepare_launch.sh, tw pipelines list, bound to:, DECIDE:, WARNING:, --compute-env, compute_env, specs/launchpad-ce-routing/ledger.md
+
 **56. The outputs reader died between preflight and `tw launch`, and the launch only failed after submitting (2026-10-24, issue #7).**
 What was seen: preflight passed, then a long parameter walkthrough, then `tw launch` failed with `No Tower Agent is online for the selected compute environment`; `scripts/agent_ctl.sh status` said `not running`. Why: step 0 (`preflight.sh`) asks about the agent once, at the start, and nothing asked again. The launch gate does not cover it on an ssh deployment: `hooks/confirm_launch.sh` deliberately skips the check when `reach` is `ssh` or `none`, because asking over ssh takes about 31 seconds and a hook is cut off at 10 (a timed-out hook lets the command through silently). Fix: step 8 of the launch skill runs `scripts/launch_recheck.sh` (egress and agent `status` only, read-only, no cache) right before `tw launch` and stops on any `FAIL`. Not found out: why the agent dies; no watchdog or auto-restart was added.
+
+Symptom: `tw launch` failed with `No Tower Agent is online for the selected compute environment` after preflight had passed and `agent_ctl.sh status` said `not running`
+Root cause: preflight asked about the agent once at the start, and `hooks/confirm_launch.sh` skips the check when `reach` is `ssh` or `none` because asking takes about 31 seconds and a hook is cut off at 10; why the agent dies is not found out
+Check: `tests/launch_recheck_test.sh`
+Touches: scripts/launch_recheck.sh, preflight.sh, hooks/confirm_launch.sh, scripts/agent_ctl.sh, tw launch, reach
 
 **57. Under `reach: ssh`, preflight asked the site three questions in three ssh sessions (2026-10-28, issue #13 item 3).**
 What was seen: `scripts/preflight.sh` ran `egress_ctl.sh status`, `agent_ctl.sh status` and `check_resource_contract.sh` as three separate `on_site.sh --script` calls, so one preflight opened 4 ssh sessions with `--check-reach`. A site that has run out of sessions hangs instead of failing (16e), so every extra session is extra exposure. Fix: `scripts/preflight_site.sh` runs the three in order on the site, each one whatever happened to the one before, and frames each answer as `@@preflight-begin <name>`, the output as written, `@@preflight-end <name> rc=<code>`. `preflight.sh` ships it with one `--script` call and applies the same judgements it always did, so the lines and the exit code are the same. A content line that itself starts with `@@` is written with one more `@` and read back without it, so nothing a script prints can pass for a marker. `--check-reach` stays its own call, because it decides whether the site is asked at all. `reach: local` keeps its three direct calls.
 Measured by `tests/preflight_ssh_fold_test.sh` with a fake ssh (calls containing `-O check` are not counted, they open no session): 4 sessions before, 2 after; the output and exit code are identical to the previous `preflight.sh` in every case it tries (all green, each check failing alone, all failing, the `WARNING` line, a multi-line answer, master down, `reach: local`, `reach: none`); and `egress_ctl.sh status` prints the same text called through `on_site.sh --script` directly or from inside `preflight_site.sh`.
 One difference, on purpose: if the bundle does not come back whole (no end marker for some section: ssh timeout, exit 255), all three checks are reported as failed with their usual fixed text (`resources` shows the first line of what came back), and nothing is retried or asked again. Before, each check timed out on its own and printed its own message. `ON_SITE_TIMEOUT` is now one clock for all three together (default still 120 seconds), where each had its own before. Not measured: a run on a real ssh deployment (manual check in `specs/preflight-ssh-fold/ledger.md`).
+
+Symptom: one `scripts/preflight.sh` opened 4 ssh sessions under `reach: ssh`, and a site out of sessions hangs instead of failing
+Root cause: preflight ran `egress_ctl.sh status`, `agent_ctl.sh status` and `check_resource_contract.sh` as three separate `on_site.sh --script` calls
+Check: `tests/preflight_ssh_fold_test.sh`
+Touches: scripts/preflight.sh, scripts/preflight_site.sh, egress_ctl.sh status, agent_ctl.sh status, check_resource_contract.sh, @@preflight-begin, --check-reach, ON_SITE_TIMEOUT, reach: local
+
+**58. A failed first ssh step was read as bad input (2026-10-30, realpath-site-down).**
+What was seen: after the shared connection (ControlMaster) to nano4 expired, `read_run_file` and `list_site_files` answered "the site could not say where the path leads" (path refused), although nothing was wrong with the path: the first call, `realpath`, had failed with ssh exit 255 ("Permission denied (keyboard-interactive)"). Rule: the first ssh step failing is not an input error. A dead connection (timeout, `on_site: needs-human`, rc 124/255) is answered as `site_unreachable` with the log-in line from `connect_failure`, the same as every later step; only a site that answered and could not resolve the path is a refusal (fail closed, wording unchanged). Test: `platform/tests/test_station_realpath_down.py`.
+
+Symptom: `read_run_file` and `list_site_files` answered that the path was refused when the shared connection to nano4 had expired
+Root cause: the first ssh step, `realpath`, failed with exit 255 and was read as bad input rather than as an unreachable site
+Check: `platform/tests/test_station_realpath_down.py`
+Touches: read_run_file, list_site_files, realpath, site_unreachable, connect_failure, on_site: needs-human, ControlMaster
+
+**59. A head job killed by the scheduler left the run `lost` for good (2026-11-03, head-nodefail-detect).**
+What was seen: Slurm NODE_FAIL of the head job (t1: platform job 78, Slurm 654018) leaves no Nextflow completion record, so the run showed `lost` and could not be resumed. Rule: a lost run is looked at again through the scheduler (squeue, then sacct) and the answer is an overlay at query time, never written to the index. A fact that is not exactly the table's words for this launch's number is ignored. Note: a lost run with a live head still lists `relaunch` in `actions` (kept as in v3).
+
+Symptom: a run whose Slurm head job ended as NODE_FAIL showed `lost` with no reason and could not be resumed
+Root cause: the head job is killed before Nextflow writes a completion record, and the platform never asked the scheduler again
+Check: `platform/tests/test_head_nodefail.py`, `platform/tests/test_station_head_state.py`
+Touches: NODE_FAIL, lost, squeue, sacct, overlay

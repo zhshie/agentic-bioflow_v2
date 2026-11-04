@@ -290,10 +290,10 @@ def test_tc027_clean_work_takes_the_launch_keys():
 def test_tc028_the_other_six_kinds_are_as_they_were():
     from abf_station import fetch, readlog
     assert handlers.JOB_KINDS[:6] == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log")
-    assert handlers.JOB_KINDS[6:] == ("clean_work", "put_upload", "pipeline_files")      # release-lookup-job: pipeline_files last
+    assert handlers.JOB_KINDS[6:] == ("clean_work", "put_upload", "pipeline_files", "read_run_file")      # release-lookup-job: pipeline_files last
     old = {"preflight": {"ce"}, "list_site_files": {"ce", "path"}, "launch_nextflow": launch.LAUNCH_KEYS, "cancel_run": launch.LAUNCH_KEYS,
            "fetch_run_records": fetch.ARGS, "read_task_log": readlog.ARGS}
-    assert {k: v for k, v in handlers.ARG_KEYS.items() if k not in ("clean_work", "put_upload", "pipeline_files")} == old
+    assert {k: v for k, v in handlers.ARG_KEYS.items() if k not in ("clean_work", "put_upload", "pipeline_files", "read_run_file")} == old
 
 
 # ---- US3: the path is worked out again and compared character by character -------------------------------------------

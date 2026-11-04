@@ -1,8 +1,8 @@
-# Not Celery or RQ: they need a separate broker process; nine job kinds in one SQLite table are enough, and the table is not a run state machine.
+# Not Celery or RQ: they need a separate broker process; ten job kinds in one SQLite table are enough, and the table is not a run state machine.
 """The queue of jobs that agents poll for.
 
-Nine kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log` and `pipeline_files`
-only read; `put_upload` asks the agent to write one file the user put in the uploads folder into the user's own cloud prefix, and needs no
+Ten kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log`, `pipeline_files` and `read_run_file`
+only read (`read_run_file` asks the agent to read one result file of a run, at most 25 MB, for the web download); `put_upload` asks the agent to write one file the user put in the uploads folder into the user's own cloud prefix, and needs no
 confirmation (the person pressing Upload is the yes; it is queued only by enqueue_put_upload); `launch_nextflow`, `cancel_run` and `clean_work` write on the site, so a job of those three kinds can only be queued with
 a confirmation: a row that a person's yes made (state confirmed: y at the terminal, a form in the MCP client, or the
 confirmation page), bound to the hash of the content the user saw. Every job is a question or an order put to one agent, with a deadline. A job whose deadline passed is
@@ -14,6 +14,8 @@ Who writes: the command line (through confirm.py for the three that need a confi
 jobs; the receiver hands them out and takes the answers. Nobody else writes platform.db, and `rebuild` never opens it.
 """
 import asyncio
+import base64
+import binascii
 import json
 import os
 import re
@@ -22,12 +24,12 @@ import stat as stat_mod
 import time
 from pathlib import Path
 
-from . import cloud_store, common, compute_envs, records, releases, store
+from . import cloud_store, common, compute_envs, failures, records, releases, store
 
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
 DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60, "launch_nextflow": 300, "cancel_run": 90,
-                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600, "pipeline_files": 90}
+                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600, "pipeline_files": 90, "read_run_file": 60}
 _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES",
                  "launch_nextflow": "ABF_PLATFORM_DEADLINE_LAUNCH",
@@ -36,13 +38,22 @@ _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "read_task_log": "ABF_PLATFORM_DEADLINE_READ_TASK_LOG",
                  "clean_work": "ABF_PLATFORM_DEADLINE_CLEAN",
                  "put_upload": "ABF_PLATFORM_DEADLINE_PUT_UPLOAD",
-                 "pipeline_files": "ABF_PLATFORM_DEADLINE_PIPELINE_FILES"}
+                 "pipeline_files": "ABF_PLATFORM_DEADLINE_PIPELINE_FILES",
+                 "read_run_file": "ABF_PLATFORM_DEADLINE_READ_RUN_FILE"}
 LOG_FILES = {"err": ".command.err", "out": ".command.out", "log": ".command.log"}      # the only three files read_task_log can name
 # The words D5 of run-diag-tools fixes. The package-source scan of test_scope (TC-061) forbids that whole word in this package's lines, so it is joined here.
 NO_AGENT_KNOWN = "no " + "sta" "tion agent is known for this run (這個 run 不是從這個平台送出的，不知道是哪個代理)"
 LOG_MAX_LINES = 200
 LOG_MAX_BYTES = 64 * 1024
 KINDS = tuple(DEADLINE_SECONDS)
+# read_run_file (results-files): the agent reads ONE regular file of a run's results folder; the answer is kept in the job row for a few minutes
+RUN_FILE_MAX_BYTES = 26214400          # 25 MB, one number; the agent holds the same limit, written separately. Larger files are never sent
+RUN_FILE_PATH_MAX = 512
+RUN_FILE_CACHE_SECONDS = 600           # the same file asked again within this time is answered from the job row
+LISTING_ERROR_RETRY_SECONDS = 30         # run_outputs asks again for a listing that ended in an error after this long
+RUN_FILE_NOT_ON_SITE = "此環境的結果檔不在站台主機上 (the results of this environment are not on the site host)"
+RUN_FILE_NO_RECORD = "這個 run 沒有送出紀錄，無法取得檔案 (this run was not sent from the platform, so there is no folder on record)"
+_RUN_FILE_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 # pipeline_files (release-lookup-job): the agent reads public GitHub files for the platform; the platform only queues the job and keeps the text
 PF_PARTS = ("schema", "schema_input", "diagram", "image", "tags", "catalogue")      # the standard order of the parts of one job
 PF_STATUSES = ("ok", "not_found", "too_large", "bad_response", "rate_limited", "none")
@@ -92,6 +103,10 @@ def _not_found(ce_name):
     return JobRefused("compute environment %r not found (找不到)" % ce_name[:100])
 
 
+K8S_NOT_YET = {"clean_" "work": "清理", "put_upload": "上傳檔案", "list_site_files": "列出站台檔案", "fetch_run_records": "讀取 run 紀錄",
+               "read_task_log": "讀取 task 記錄"}      # what a Kubernetes environment does not do yet, in the words of the refusal
+
+
 def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
     """The compute environment row of a job's target, after every check that does not depend on the content.
 
@@ -112,10 +127,10 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
             raise JobRefused("%s is an AWS Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
         if row["platform"] == compute_envs.AZURE:
             raise JobRefused("%s is an Azure Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
+        if row["platform"] == compute_envs.K8S:
+            raise JobRefused("%s is a Kubernetes environment: Kubernetes 尚未支援%s (this job kind is not built for it yet)"
+                             % (ce_name, K8S_NOT_YET.get(kind, "這個動作")))
         raise JobRefused("%s is a Google Batch environment: this job kind is not built for it yet (尚未支援)" % ce_name)
-    if row["platform"] in compute_envs.CHECK_ONLY_TYPES and kind != "preflight":
-        raise JobRefused("%s is a Kubernetes environment: it is checked on the platform host, and launching on it is not built yet "
-                         "(尚未支援送出；下一步 k8s-launch)" % ce_name)
     if kind == "put_upload" and row["platform"] not in compute_envs.CLOUD_JOB_KINDS:
         raise JobRefused("%s cannot hold cloud data: only a Google Batch, AWS Batch or Azure Batch environment can (只有 Google Batch、AWS Batch 或 Azure Batch 環境能放雲端資料)" % ce_name)
     if status == compute_envs.UNSUPPORTED:
@@ -138,7 +153,9 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
 
 
 def _insert_job(con, row, kind, args, now, seconds, confirmation_id=None):
-    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ?", (now - PRUNE_AFTER_SECONDS,))
+    # a read-back that carries a bad end of the head job is kept: it is what keeps a Failed run Failed
+    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ? AND NOT (kind = 'fetch_run_records' AND %s)"
+                % failures.kept_fact_sql(), (now - PRUNE_AFTER_SECONDS,))
     cur = con.execute(
         "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) "
         "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)",
@@ -363,25 +380,142 @@ def enqueue_pipeline_files(state_path, repo, revision, parts, *, compute_env=Non
     return transaction(state_path, work)
 
 
-def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, offline_after=None):
+def _enqueue_fetch_in(con, run_name, now, seconds, offline_after, with_slurm):
+    launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
+    if launch is None:
+        raise JobRefused("%r was not launched from this platform (不是平台自己送出的), so there is no folder to read"
+                         % str(run_name)[:80])
+    row = _target(con, launch["ce"], "fetch_run_records", now, offline_after)
+    if row["agent"] != launch["agent"]:
+        raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
+            run_name, launch["agent"], launch["ce"], row["agent"]))
+    args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
+    if with_slurm and launch["slurm_job_id"] is not None:      # only the head-state question: an older agent refuses a key it does not know
+        args["slurm_job_id"] = str(launch["slurm_job_id"])
+    return _insert_job(con, row, "fetch_run_records", args, now, seconds)
+
+
+def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, offline_after=None, with_slurm=False):
     """Ask the agent to read Nextflow's own records of one launch back. It only reads, so it needs no confirmation. The
-    run must be in the hand-off record: the platform never asks for a folder it did not launch into."""
+    run must be in the hand-off record: the platform never asks for a folder it did not launch into. The args are the three
+    keys of old; `with_slurm` (used only by ask_head_state) adds the head job's number."""
     now = clock()
     seconds = _seconds("fetch_run_records", deadline_seconds)
+    return transaction(state_path, lambda con: _enqueue_fetch_in(con, run_name, now, seconds, offline_after, with_slurm))
+
+
+HEAD_STATE_FRESH_SECONDS = 60
+BAD_END_REASK_SECONDS = 600           # ruling Q1: a bad end is not for ever (Slurm may requeue the job); ask again at most this often ...
+BAD_END_GIVE_UP_SECONDS = 6 * 3600    # ... and not at all once the fact is older than this
+
+
+def _fetches_of(con, launch):
+    """All the read-backs of this run (not of its compute environment's other runs) still kept, newest first. Not cut at a number:
+    a cut that counts plain read-backs would push an earlier fact out."""
+    mark = json.dumps(launch["run_name"])
+    cur = con.execute("SELECT * FROM jobs WHERE kind = 'fetch_run_records' AND compute_env = ? AND instr(args_json, ?) > 0 ORDER BY id DESC",
+                      (launch["ce"], mark))
+    out = []
+    for row in cur:
+        try:
+            if json.loads(row["args_json"]).get("run_name") == launch["run_name"]:
+                out.append(row)
+        except (ValueError, AttributeError):
+            continue
+    return out
+
+
+def _newest_fact_row(rows, launch):
+    """(fact, row) of the newest checked fact among the finished read-backs that asked Slurm about this launch's own Slurm number. A read-back
+    that has no Slurm answer (a plain fetch, or a site that could not ask: answer None) or a fact that does not fit is no new
+    fact and never covers an earlier one."""
+    for row in rows:
+        if row["state"] != "done":
+            continue
+        try:
+            fact = failures.head_fact_of(json.loads(row["result_json"]))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        if fact is not None and fact["job_id"] == str(launch["slurm_job_id"]):
+            return fact, row
+    return None, None
+
+
+def _newest_fact(rows, launch):
+    return _newest_fact_row(rows, launch)[0]
+
+
+def _bad_end_began(rows, launch):
+    """When the head job was first said to have ended badly, in the unbroken line of bad answers that ends with the newest one. The
+    six hours of ruling Q1 count from there, not from the latest repeat of the same answer (which would never let them pass). An
+    answer that says the head is alive again, or ended well, breaks the line."""
+    began = 0
+    for row in rows:
+        if row["state"] != "done":
+            continue
+        try:
+            fact = failures.head_fact_of(json.loads(row["result_json"]))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        if fact is None or fact["job_id"] != str(launch["slurm_job_id"]):
+            continue
+        if fact["state"] not in failures.ENDED_BAD:
+            break
+        began = row["finished_at"] or row["created_at"] or 0
+    return began
+
+
+def head_state(state_path, run_name):
+    """What the newest read-back of this run that really asked Slurm said of its Slurm head job: {job_id, state, source}, or
+    None. Only reads. The fact counts only if it names this launch's own Slurm number and a word of the table; nothing else is believed."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        launch = latest_launch(con, run_name)
+        if launch is None or launch["slurm_job_id"] is None:
+            return None
+        return _newest_fact(_fetches_of(con, launch), launch)
+    except (sqlite3.Error, IndexError, KeyError):
+        return None
+    finally:
+        con.close()
+
+
+def ask_head_state(state_path, run_name, clock=time.time):
+    """Queue one read-back of a lost run so that the answer is there next time, unless one is already waiting or any one (finished,
+    refused, failed or expired) is less than a minute old. The check and the insert are one write. Never raises and never waits; it
+    adds no new kind of job."""
+    if not isinstance(run_name, str) or not os.path.exists(str(state_path)):      # reading never creates a database
+        return False
+    now = clock()
+    seconds = _seconds("fetch_run_records", None)
 
     def work(con):
-        launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
-        if launch is None:
-            raise JobRefused("%r was not launched from this platform (不是平台自己送出的), so there is no folder to read"
-                             % str(run_name)[:80])
-        row = _target(con, launch["ce"], "fetch_run_records", now, offline_after)
-        if row["agent"] != launch["agent"]:
-            raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
-                run_name, launch["agent"], launch["ce"], row["agent"]))
-        args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
-        return _insert_job(con, row, "fetch_run_records", args, now, seconds)
+        launch = latest_launch(con, run_name)
+        if launch is None or launch["slurm_job_id"] is None:
+            return False
+        rows = _fetches_of(con, launch)
+        known, known_row = _newest_fact_row(rows, launch)
+        wait = HEAD_STATE_FRESH_SECONDS
+        if known is not None and known["state"] == "COMPLETED":      # a head that ended well does not change
+            return False
+        if known is not None and known["state"] in failures.ENDED_BAD:      # ruling Q1: a bad end is asked again, slowly, and not for ever
+            if now - _bad_end_began(rows, launch) > BAD_END_GIVE_UP_SECONDS:
+                return False
+            wait = BAD_END_REASK_SECONDS
+        for row in rows:
+            if row["state"] in ("queued", "claimed") and row["deadline_at"] > now:
+                return False
+            if max(row["created_at"] or 0, row["finished_at"] or 0) > now - wait:
+                return False
+        _enqueue_fetch_in(con, run_name, now, seconds, None, True)
+        return True
 
-    return transaction(state_path, work)
+    try:
+        return transaction(state_path, work)
+    except (JobRefused, sqlite3.Error, IndexError, KeyError):
+        return False
 
 
 def enqueue_task_log(state_path, run_name, workdir, filename, clock=time.time, deadline_seconds=None, offline_after=None,
@@ -408,6 +542,60 @@ def enqueue_task_log(state_path, run_name, workdir, filename, clock=time.time, d
                 run_name, launch["agent"], launch["ce"], row["agent"]))
         args = {"ce": compute_envs.snapshot(row), "workdir": compute_envs.normalize_path(workdir), "file": filename}
         return _insert_job(con, row, "read_task_log", args, now, seconds)
+
+    return transaction(state_path, work)
+
+
+def run_file_path_problem(path):
+    """None for a path (relative to a run's `results/`) that may be asked for, else one plain reason. Text of 1 to 512 characters, relative, no
+    empty part, no part that starts with a dot (so no `..` and no hidden name), no control character. The agent judges the same again."""
+    if not isinstance(path, str) or not path:
+        return "the path is missing (路徑不正確)"
+    if len(path) > RUN_FILE_PATH_MAX:
+        return "the path is longer than %d characters (路徑不正確)" % RUN_FILE_PATH_MAX
+    if _RUN_FILE_CONTROL.search(path):
+        return "the path holds a control character (路徑不正確)"
+    if path.startswith("/"):
+        return "the path must be relative to the results folder (路徑不正確)"
+    for part in path.split("/"):
+        if not part or part.startswith("."):
+            return "the path has an empty part or a part that starts with a dot (路徑不正確)"
+    return None
+
+
+class RunFileRefused(JobRefused):
+    """A read_run_file the platform will not queue; `code` says which kind of reason: bad_path, no_launch, not_on_site, agent_offline, refused."""
+
+    def __init__(self, code, text):
+        super().__init__(text)
+        self.code = code
+
+
+def enqueue_read_run_file(state_path, run_name, path, clock=time.time, deadline_seconds=None, offline_after=None, caller_user_id=None):
+    """Ask the agent of a run to read one file of its results folder (the agent's readfile module). It only reads, so it needs no confirmation.
+    The run must be in the hand-off record with a folder, and with a caller it must be that user's own (anything else is refused in the words of a run that
+    is not there). The job holds the environment, the run name and the relative path, nothing else: the agent puts the folder together itself."""
+    problem = run_file_path_problem(path)
+    if problem:
+        raise RunFileRefused("bad_path", problem)
+    now = clock()
+    seconds = _seconds("read_run_file", deadline_seconds)
+
+    def work(con):
+        launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
+        if launch is None or (caller_user_id is not None and _col(launch, "user_id") != caller_user_id):
+            raise JobRefused(RUN_NOT_FOUND % str(run_name)[:80] if caller_user_id is not None else NO_AGENT_KNOWN)
+        if not launch["run_folder"]:
+            raise RunFileRefused("no_launch", RUN_FILE_NO_RECORD)
+        env = con.execute("SELECT platform FROM compute_envs WHERE name = ?", (launch["ce"],)).fetchone()
+        if env is not None and env["platform"] != compute_envs.SUPPORTED:      # a cloud or Kubernetes environment keeps its results elsewhere
+            raise RunFileRefused("not_on_site", RUN_FILE_NOT_ON_SITE)
+        try:
+            row = _target(con, launch["ce"], "read_run_file", now, offline_after, caller_user_id)
+        except JobRefused as e:
+            raise RunFileRefused("agent_offline" if "代理離線" in str(e) else "refused", str(e))
+        args = {"ce": compute_envs.snapshot(row), "run": launch["run_name"], "path": path}
+        return _insert_job(con, row, "read_run_file", args, now, seconds)
 
     return transaction(state_path, work)
 
@@ -479,6 +667,21 @@ def owned_run_names(state_path, user_id):
         con.close()
 
 
+def latest_launch_ce(state_path, run_name):
+    """The name of the compute environment the newest row of the hand-off record for this run name was sent to, or None (no row, no state
+    database yet, or a row without one). Only reads."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        row = latest_launch(con, run_name)
+        return row["ce"] if row is not None and row["ce"] else None
+    except (sqlite3.Error, IndexError):
+        return None
+    finally:
+        con.close()
+
+
 def latest_launch(con, run_name):
     """The newest row of the hand-off record for a run name, or None. A name may have several rows (a refused launch
     leaves its row and the name can be used again); the newest is the one a cancel, a read-back or a report is about."""
@@ -536,6 +739,31 @@ def latest_pipeline_files(state_path, repo, revision, parts, caller_user_id):
                         "result": result}
         except (ValueError, AttributeError):
             continue
+    return None
+
+
+def latest_run_file(state_path, ce_name, run_name, path):
+    """The newest read_run_file job of this environment for exactly this run and path, as a dict (id, state, deadline_at, finished_at, result), or
+    None. It only reads: a page uses it to see what the agent already answered, and never waits."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        rows = con.execute("SELECT id, args_json, state, deadline_at, finished_at FROM jobs WHERE kind = 'read_run_file' AND compute_env = ? "
+                           "ORDER BY id DESC LIMIT 200", (ce_name,)).fetchall()
+        for row in rows:
+            try:
+                args = json.loads(row["args_json"])
+            except ValueError:
+                continue
+            if isinstance(args, dict) and args.get("run") == run_name and args.get("path") == path:
+                result = con.execute("SELECT result_json FROM jobs WHERE id = ?", (row["id"],)).fetchone()[0]
+                return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
+                        "result": json.loads(result) if result else None}
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
     return None
 
 
@@ -1038,9 +1266,28 @@ def clean_result(kind, result, stored=None):
         for key in ("file",):
             if isinstance(result.get(key), str):
                 out[key] = _short(result[key], 40)
+    elif kind == "read_run_file":
+        size = _int(result.get("size"), 0, 2 ** 50)
+        if size is not None:
+            out["size"] = size
+        if out["ok"]:
+            name, b64 = result.get("name"), result.get("b64")
+            good = (isinstance(name, str) and 0 < len(name) <= 255 and "/" not in name and not _RUN_FILE_CONTROL.search(name)
+                    and size is not None and size <= RUN_FILE_MAX_BYTES and isinstance(b64, str) and len(b64) <= (RUN_FILE_MAX_BYTES // 3 + 1) * 4)
+            if good:
+                try:
+                    good = len(base64.b64decode(b64, validate=True)) == size      # the length the agent said is the length that arrived
+                except (binascii.Error, ValueError):
+                    good = False
+            if good:
+                out.update(status="ok", name=name, b64=b64)
+            else:
+                out.pop("size", None)
+                out.update(ok=False, error="bad_answer", message="the answer does not match the size it names, so it is not kept (答案長度不符，已拒收)")
     elif kind == "fetch_run_records":
         out["files"] = [{"name": f["name"], "size": f["size"], "truncated": f["truncated"]} for f in (stored or {}).get("files", [])]
         out["refused"] = [_short(x, 200) for x in (stored or {}).get("refused", [])][:50]
+        out.update(failures.head_fact_entry(result))
     else:
         for key in ("path",):
             if isinstance(result.get(key), str):

@@ -37,9 +37,9 @@ hasnt() { # hasnt <label> <file> <extended regex>
 }
 
 echo "== TC-021: the constitution =="
-has "version is 6.1.0 (2.0.0 made this change; 2.0.1, 2.1.0, 3.0.0, 4.0.0, 4.1.0, 5.0.0, 6.0.0, 6.0.1, 6.0.2 and 6.1.0 came after)" "$C" '**Version**: 6.1.0'
+has "version is 6.2.0 (2.0.0 made this change; 2.0.1, 2.1.0, 3.0.0, 4.0.0, 4.1.0, 5.0.0, 6.0.0, 6.0.1, 6.0.2, 6.1.0 and 6.2.0 came after)" "$C" '**Version**: 6.2.0'
 has "the 2.0.0 amendment entry is still there"        "$C" '### 2.0.0 (2026-10-02)'
-has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-10-25'
+has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-11-03'
 has "Ratified date is untouched"               "$C" '**Ratified**: 2026-09-28'
 # The Safety Net section opens with its scope. Read the section on its own so a
 # mention elsewhere in the file cannot satisfy these.
@@ -289,7 +289,7 @@ if [ -z "$E4" ]; then bad "TC-E4: 6.0.2 entry exists"; else
 fi
 # TC-E5
 LASTV=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LASTV" = '**Version**: 6.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-25' ]; then ok "TC-E5: version line is last and exact"; else bad "TC-E5: version line is last and exact" "got: $LASTV"; fi
+if [ "$LASTV" = '**Version**: 6.2.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-03' ]; then ok "TC-E5: version line is last and exact"; else bad "TC-E5: version line is last and exact" "got: $LASTV"; fi
 # TC-E6
 for t in constitution_6_test constitution_checks_exist_test; do
   E6OUT=$(bash "tests/$t.sh" 2>&1) && ok "TC-E6: $t.sh passes" || bad "TC-E6: $t.sh passes" "$(printf '%s\n' "$E6OUT" | grep -E 'FAIL|NO CHECK|DANGLING|SENTENCE' | head -3 | tr '\n' '|')"
@@ -301,6 +301,16 @@ if printf '%s' "$E4" | tr '\n' ' ' | tr -s ' ' | grep -F 'no rule changes meanin
 E8=$(awk '/^### 6\.1\.0 /{p=1} /^## Governance/{p=0} p' "$C")
 if [ -n "$E8" ] && printf '%s' "$E8" | tr '
 ' ' ' | tr -s ' ' | grep -F 'still never log into the web' >/dev/null; then ok "TC-E8: 6.1.0 entry exists and keeps tokens out of the web"; else bad "TC-E8: 6.1.0 entry exists and keeps tokens out of the web"; fi
+
+# TC-E9 (6.2.0)
+E9=$(awk '/^### 6\.2\.0 \(2026-11-03\)/{f=1} /^## Governance/{f=0} f' "$C")
+E9F=$(printf '%s' "$E9" | tr '\n' ' ' | tr -s ' ')
+E9ORD=$(printf '%s' "$E9F" | grep -o '\*\*\(Rationale\|What changes\|Sync Impact Report\|Impact on existing deployments\|Version\|Approval\)\.\*\*' | tr '\n' ' ')
+if [ -n "$E9" ] && [ "$E9ORD" = '**Rationale.** **What changes.** **Sync Impact Report.** **Impact on existing deployments.** **Version.** **Approval.** ' ] \
+   && printf '%s' "$E9F" | grep -F '**Version.** MINOR' >/dev/null \
+   && printf '%s' "$E9F" | grep -F '「以後你都自己合併」' >/dev/null && printf '%s' "$E9F" | grep -F '「合併規則同意」' >/dev/null; then
+  ok "TC-E9: 6.2.0 entry has its six sections in order, MINOR, and both quotes"
+else bad "TC-E9: 6.2.0 entry has its six sections in order, MINOR, and both quotes" "order: $E9ORD"; fi
 
 echo
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

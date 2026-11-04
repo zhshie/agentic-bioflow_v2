@@ -215,9 +215,9 @@ def test_r40_r44_title_and_cards(w):
     assert "<h1>f1</h1>" in mid and '<span class="sq"></span> 失敗</span>' in mid
     head = re.search(r'<details class="menu"><summary>更多</summary>(.*?)</details>', mid, re.S).group(1)
     assert "續跑" in head and "重跑" in head and "取消" in head and "之後開放" not in head and head.count("<form") == 3 and head.count("<button") == 3     # 012b: real buttons
-    assert cards(c.get("/?run=" + a).text) == (["停在", "耗時", "運算環境", "費用"], ["FASTQC (sample2)", "2 小時 5 分", "—", "SU —"])
+    assert cards(c.get("/?run=" + a).text) == (["停在", "耗時", "運算環境", "費用"], ["FASTQC (sample2)", "2 小時 5 分", "lab-a", "SU —"])
     en = c.get("/?run=%s&lang=en" % a).text
-    assert cards(en) == (["Stopped at", "Duration", "Compute", "Cost"], ["FASTQC (sample2)", "2h 5m", "—", "SU —"])
+    assert cards(en) == (["Stopped at", "Duration", "Compute", "Cost"], ["FASTQC (sample2)", "2h 5m", "lab-a", "SU —"])
     assert no_cjk(pane(en, "middle")) and ">Resume</button>" in pane(en, "middle")
 
 

@@ -305,13 +305,13 @@ def test_pipelines_columns_say_nothing_about_runs(d):
     assert cols("pipeline_versions") == ["created_at", "graph_json", "id", "pipeline_id", "version"]
 
 
-def test_only_seven_public_functions_and_none_in_the_actions_package():
+def test_only_eight_public_functions_and_none_in_the_actions_package():
     # TC-117, TC-121
     import abf_platform.actions as actions
     m = pl()
     names = sorted(n for n, f in vars(m).items() if callable(f) and not n.startswith("_") and getattr(f, "__module__", "") == m.__name__)
-    assert names == ["create_pipeline", "get_pipeline", "get_validation", "list_pipelines", "render_pipeline", "update_pipeline",
-                     "validate_pipeline"]
+    assert names == ["create_pipeline", "export_pipeline", "get_pipeline", "get_validation", "list_pipelines", "render_pipeline",
+                     "update_pipeline", "validate_pipeline"]
     for n in names:
         assert not hasattr(actions, n), n
 

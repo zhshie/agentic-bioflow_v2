@@ -20,7 +20,13 @@ STRINGS = {
         "h_sheet": "未選樣本表時，會依檔名把 R1／R2 配成對，自動產生。",
         "go": "上傳",
         "none": "尚無可用的雲端運算環境。", "none_next": "請先到設定頁，建立並檢查雲端運算環境。", "go_settings": "前往設定頁",
-        "slurm": "國網環境的資料目前請用指令上傳。",
+        "sh_title": "樣本表", "sh_label": "上傳樣本表（CSV 或 TSV）",
+        "sh_hint": "每列一個樣本。檔案內的路徑寫站台上的位置，平台不會檢查。僅收 .csv 或 .tsv，一次一個檔，上限 1 MB。",
+        "sh_go": "上傳樣本表", "sh_saved": "✓ 已上傳樣本表 sheets/%s，可於「送出新分析」第 4 步選擇。", "sh_launch": "前往送出新分析",
+        "su_big": "樣本表大於 1 MB，未收下。", "su_ext": "樣本表只收 .csv 或 .tsv 檔，未收下。",
+        "su_utf8": "樣本表無法以 UTF-8 讀取，未收下。請存成 UTF-8 編碼後再上傳。",
+        "su_ragged": "樣本表每一列的欄數必須相同，未收下。", "su_header": "樣本表至少要有一列標題加一列資料列，未收下。",
+        "su_none": "請選擇一個樣本表檔。", "su_many": "一次只收一個樣本表檔，未收下任何檔案。",
         "cmds": "大檔指令", "cmds_note": "請在您的電腦上執行；每個環境一行。",
         "e_required": "此欄為必填。", "e_invalid": "只能用英數字與 . _ -，長度 1 到 64。",
         "e_no_files": "請選擇至少一個 FASTQ 檔。",
@@ -60,7 +66,15 @@ STRINGS = {
         "go": "Upload",
         "none": "There is no cloud compute environment you can use.", "none_next": "Set one up and check it on the settings page first.",
         "go_settings": "Go to the settings page",
-        "slurm": "For Slurm cluster environments, upload the data with the command line for now.",
+        "sh_title": "Samplesheet", "sh_label": "Upload a samplesheet (CSV or TSV)",
+        "sh_hint": "One row for each sample. The paths inside name files on the site, which the platform does not check. Only .csv or .tsv, one file at a time, up to 1 MB.",
+        "sh_go": "Upload samplesheet", "sh_saved": "✓ Samplesheet sheets/%s uploaded. Choose it at step 4 of the launch page.",
+        "sh_launch": "Go to the launch page",
+        "su_big": "The samplesheet is larger than 1 MB. It was not taken.", "su_ext": "Only .csv or .tsv samplesheets are taken. It was not taken.",
+        "su_utf8": "The samplesheet cannot be read as UTF-8. It was not taken. Save it as UTF-8 and upload it again.",
+        "su_ragged": "Every row of the samplesheet must have the same number of columns. It was not taken.",
+        "su_header": "The samplesheet needs a header row and at least one data row. It was not taken.",
+        "su_none": "Choose one samplesheet file.", "su_many": "Only one samplesheet file at a time. No file was taken.",
         "cmds": "Commands for large files", "cmds_note": "Run on your computer; one line for each environment.",
         "e_required": "This field is required.", "e_invalid": "Use letters, digits and . _ - only, 1 to 64 characters.",
         "e_no_files": "Choose at least one FASTQ file.",
@@ -113,8 +127,9 @@ def usable(envs):
     return [e for e in envs if e.get("status") == compute_envs.AVAILABLE and "put_upload" in compute_envs.CLOUD_JOB_KINDS.get(e.get("platform"), ())]
 
 
-def _has_slurm(envs):
-    return any(e.get("platform") == compute_envs.SUPPORTED for e in envs)
+def sheet_ready(envs):
+    """Whether the person has a national-HPC (Slurm) environment that is set up and checked: only then the samplesheet form is drawn and taken."""
+    return any(e.get("platform") == compute_envs.SUPPORTED and e.get("status") == compute_envs.AVAILABLE for e in envs)
 
 
 def big_commands(envs, user_name):
@@ -182,23 +197,49 @@ def problem_html(t, lang, problem):
     return _bad(t[key] if key else t["e_nothing"])
 
 
+def is_sheet_problem(problem):
+    return str((problem or {}).get("error") or "").startswith("sheetup_")
+
+
+def _sheet_section(t, lang, token, problem):
+    """The samplesheet form of a national-HPC environment: one file box, the refusal (if any) above the form."""
+    star = '<span class="req" title="%s">*</span>' % esc(t["g2_req"])
+    action = "/upload" + ("?lang=en" if lang == "en" else "")
+    why = str((problem or {}).get("error") or "")[len("sheetup_"):] if is_sheet_problem(problem) else ""
+    bad = _bad(t["su_" + why]) if ("su_" + why) in t else ""
+    return ('<section class="card sec"><h2>%s</h2><p class="muted">%s</p>%s<form class="lform" method="post" action="%s" enctype="multipart/form-data">'
+            '<input type="hidden" name="csrf" value="%s"><label><span class="lbl">%s %s</span><input type="file" name="sheet" accept=".csv,.tsv" required></label>'
+            '<button type="submit">%s</button></form></section>'
+            % (esc(t["sh_title"]), esc(t["sh_hint"]), bad, esc(action), esc(token), esc(t["sh_label"]), star, esc(t["sh_go"])))
+
+
+def _saved_notice(t, lang, saved):
+    if not saved:
+        return ""
+    return '<p class="ok">%s</p><p><a href="%s">%s</a></p>' % (esc(t["sh_saved"] % saved), web_board._url(lang, path="/launch"), esc(t["sh_launch"]))
+
+
 def _field_error(t, problem, key):
     why = ((problem or {}).get("fields") or {}).get(key)
     return ' <span class="bad">✕ %s</span>' % esc(t["e_required" if why == "required" else "e_invalid"]) if why else ""
 
 
-def render_form(name, csrf, runs, lang, envs, token, values=None, problem=None):
-    """GET /upload (and the answer to a POST that did not pass): the form, or one sentence and a link when no environment can take an upload."""
+def render_form(name, csrf, runs, lang, envs, token, values=None, problem=None, saved=None):
+    """GET /upload (and the answer to a POST that did not pass): the cloud form, the samplesheet form of a national-HPC environment, or one
+    sentence and a link when no environment can take an upload. `saved` is the name a samplesheet was just kept under."""
     lang, t = _words(lang)
     values = values or {}
     ours = usable(envs)
+    sheet = sheet_ready(envs)
+    in_sheet = is_sheet_problem(problem)
 
     def middle(t_, lang_):
-        head = '<main class="main" data-pane="middle"><h1>%s</h1>' % esc(t["title"])
+        head = '<main class="main" data-pane="middle"><h1>%s</h1>%s' % (esc(t["title"]), _saved_notice(t, lang, saved))
         if not ours:
-            return head + '<p>%s</p><p class="muted">%s</p><p><a href="%s">%s</a></p>%s</main>' % (
-                esc(t["none"]), esc(t["none_next"]), web_board._url(lang, path="/settings"), esc(t["go_settings"]),
-                ('<p class="muted">%s</p>' % esc(t["slurm"])) if _has_slurm(envs) else "")
+            if sheet:
+                return head + _sheet_section(t, lang, token, problem) + "</main>"
+            return head + '<p>%s</p><p class="muted">%s</p><p><a href="%s">%s</a></p></main>' % (
+                esc(t["none"]), esc(t["none_next"]), web_board._url(lang, path="/settings"), esc(t["go_settings"]))
         chosen = values.get("ce") if values.get("ce") in [e["name"] for e in ours] else ours[0]["name"]
         options = "".join('<option value="%s"%s>%s</option>' % (esc(e["name"]), " selected" if e["name"] == chosen else "", esc(e["name"])) for e in ours)
         star = '<span class="req" title="%s">*</span>' % esc(t["g2_req"])
@@ -216,8 +257,8 @@ def render_form(name, csrf, runs, lang, envs, token, values=None, problem=None):
                    esc(t["l_fastq"]), star, esc(t["limit"]),
                    esc(t["l_sheet"]), esc(t["h_sheet"]), esc(t["go"])))
         return (head + '<p class="muted">%s</p>%s<p class="muted">%s</p>%s%s%s%s</main>'
-                % (esc(t["intro"]), problem_html(t, lang, problem), esc(t["g_legend"]), form, _commands_block(t, envs, name),
-                   ('<p class="muted">%s</p>' % esc(t["slurm"])) if _has_slurm(envs) else "", ""))
+                % (esc(t["intro"]), "" if in_sheet else problem_html(t, lang, problem), esc(t["g_legend"]), form, _commands_block(t, envs, name),
+                   _sheet_section(t, lang, token, problem) if sheet else "", ""))
 
     return web_board._frame(name, csrf, runs, lang, "upload", middle, lambda t_, lang_: web_board._right(t_, None), path="/upload")
 

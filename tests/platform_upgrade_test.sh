@@ -221,12 +221,18 @@ if printf '%s\n' "$up_sec" | grep -qF 'cd ~/<clone> && git pull' && printf '%s\n
 else bad "TC-U24 OPERATIONS.md Upgrade section"; fi
 if bash tests/hosted_deploy_test.sh >"$TMP/hd.out" 2>&1; then ok "TC-U24/U25/U30 hosted_deploy_test.sh is green"; else bad "TC-U25 hosted_deploy_test.sh" "$(grep FAIL "$TMP/hd.out" | head -3)"; fi
 
+# TC-U26: look at the want_list as it is now (no git history): platform-upgrade.sh plus the six originals
+wl=$(grep -E '^want_list=' tests/hosted_deploy_test.sh)
+wl_missing=""
+for e in '$D/platform-upgrade.sh' '$D/Caddyfile.template' '$D/backup.sh' '$D/env.example' '$D/systemd/abf-mcp.service.in' '$D/systemd/abf-serve.service.in' '$D/systemd/abf-web.service.in'; do
+  printf '%s\n' "$wl" | grep -qF -- "$e" || wl_missing="$wl_missing $e"
+done
+if [ -n "$wl" ] && [ -z "$wl_missing" ]; then ok "TC-U26 hosted_deploy_test.sh want_list names platform-upgrade.sh and the six originals"; else bad "TC-U26" "want_list missing:${wl_missing:- (no want_list= line)}"; fi
+
 if mb=$(git merge-base origin/v3 HEAD 2>/dev/null) && git cat-file -e "$mb:tests/hosted_deploy_test.sh" 2>/dev/null; then
-  d=$(git diff -U0 "$mb" -- tests/hosted_deploy_test.sh | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)')
-  if [ "$(printf '%s\n' "$d" | grep -c '^-')" -eq 1 ] && [ "$(printf '%s\n' "$d" | grep -c '^+')" -eq 1 ] && printf '%s\n' "$d" | grep '^+' | grep -qF '$D/platform-upgrade.sh'; then ok "TC-U26 hosted_deploy_test.sh differs only by the want_list entry"; else bad "TC-U26" "$d"; fi
   ch=$(git diff --name-only "$mb" -- platform deploy/backup.sh deploy/systemd)
   if [ -z "$ch" ]; then ok "TC-U28 platform/, backup.sh and deploy/systemd untouched"; else bad "TC-U28" "$ch"; fi
-else skip "TC-U26 / TC-U28" "no origin/v3"; fi
+else skip "TC-U28" "no origin/v3"; fi
 
 echo
 [ "$fails" -eq 0 ] && echo "all platform_upgrade tests passed" || echo "$fails FAILED"

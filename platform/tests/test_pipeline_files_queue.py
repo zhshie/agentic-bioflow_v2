@@ -81,7 +81,7 @@ def test_tc049_the_check_list_ends_with_pipeline_files(tmp_path):
     # TC-049
     con = new_con(tmp_path)
     kinds = kinds_of(con)
-    assert kinds[-1] == "pipeline_files" and kinds.count("pipeline_files") == 1 and kinds[:len(EIGHT)] == EIGHT
+    assert kinds[-2:] == ["pipeline_files", "read_run_file"] and kinds.count("pipeline_files") == 1 and kinds[:len(EIGHT)] == EIGHT      # results-files: read_run_file is the tenth, last kind
     con.close()
 
 
@@ -153,7 +153,7 @@ def test_tc054_an_older_table_is_upgraded_with_its_rows_and_counter(tmp_path, mo
     before = rows(path)
     con = store.connect_state(path)
     assert rows(path) == before
-    assert kinds_of(con)[-1] == "pipeline_files"
+    assert kinds_of(con)[-2:] == ["pipeline_files", "read_run_file"]
     con.execute(JOB_SQL, ("pipeline_files", None))
     assert con.execute("SELECT MAX(id) FROM jobs").fetchone()[0] == 42
     con.close()
@@ -199,7 +199,7 @@ def test_tc057_tc058_a_failure_in_the_middle_changes_nothing_and_the_next_open_w
     assert rows(path) == before
     monkeypatch.undo()
     con = store.connect_state(path)
-    assert kinds_of(con)[-1] == "pipeline_files" and rows(path) == before
+    assert kinds_of(con)[-2:] == ["pipeline_files", "read_run_file"] and rows(path) == before
     con.close()
 
 
@@ -210,7 +210,7 @@ def test_tc059_a_table_without_clean_work_is_upgraded_in_one_go(tmp_path, monkey
     steps = count_copies(monkeypatch)
     con = store.connect_state(path)
     assert steps.count("copied") == 1
-    assert kinds_of(con)[-1] == "pipeline_files" and {"clean_work", "put_upload"} <= set(kinds_of(con))
+    assert kinds_of(con)[-2:] == ["pipeline_files", "read_run_file"] and {"clean_work", "put_upload"} <= set(kinds_of(con))
     con.execute(JOB_SQL, ("pipeline_files", None))
     con.close()
 
@@ -220,7 +220,7 @@ def test_tc059_a_table_without_clean_work_is_upgraded_in_one_go(tmp_path, monkey
 def test_tc060_the_kind_is_last_in_kinds():
     # TC-060
     from abf_platform import jobs
-    assert jobs.KINDS.count("pipeline_files") == 1 and jobs.KINDS[-1] == "pipeline_files"
+    assert jobs.KINDS.count("pipeline_files") == 1 and jobs.KINDS[-2:] == ("pipeline_files", "read_run_file")
     assert [k for k in jobs.KINDS if k != "pipeline_files"][:len(EIGHT)] == EIGHT
 
 

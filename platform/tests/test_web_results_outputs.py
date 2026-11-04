@@ -91,7 +91,9 @@ def test_ro01_results_stage_has_cards_and_tabs(w):
     assert got[0][1] == "4 / 4" and got[1][1] == "1 小時 0 分" and "lab-a" in got[2][1] and got[3][1] == "SU —"
     assert tabs(t) == [("outputs", "輸出", True), ("info", "執行資訊", False), ("tasks", "任務", False), ("logs", "日誌", False)]
     m = mid(t)
-    for word in ("報告", "MultiQC 報告", "指標", "全部下載"):
+    for word in ("報告", "MultiQC 報告"):      # the first load of the Outputs tab: the listing is being read
+        assert '<span class="off">%s <span class="ostat state-running">⟳ 讀取中</span></span>' % word in m, word
+    for word in ("指標", "全部下載"):
         assert re.search(r'<span class="off">%s <span class="later">之後開放</span></span>' % word, m), word
     assert "<progress" not in m and '<dl class="counts">' not in m
     assert 'class="sq"' in m and "完成" in plain(m)       # the state of the run is on the same screen (TC-015)
@@ -156,7 +158,7 @@ def test_ro03_finished_listing_is_shown(w):
     c.get(url(rid))
     finish(w, listings(w)[0]["id"], entries=ENTRIES)
     t = c.get(url(rid)).text
-    names = re.findall(r"<td><code>(.*?)</code></td>", mid(t))
+    names = re.findall(r"<td>(?:<a [^>]*>)?<code>(.*?)</code>(?:</a>)?</td>", mid(t))      # results-files: a folder name is a link now
     assert names == ["dada2", "multiqc", "alpha.tsv", "zeta.txt"]
     assert re.search(r"讀取於 \d\d:\d\d", plain(mid(t)))
     assert re.search(r'<a href="[^"]*tab=outputs&amp;relist=1[^"]*">重新讀取</a>', t)
@@ -164,7 +166,7 @@ def test_ro03_finished_listing_is_shown(w):
     c.get(url(rid))
     assert len(listings(w)) == 1
     assert "<form" not in mid(t) and "<button" not in mid(t)
-    assert not re.search(r"<a [^>]*>[^<]*(alpha|zeta|dada2)", mid(t))      # names are plain text, not links
+    assert not re.search(r"<a [^>]*>[^<]*(alpha|zeta)", mid(t))      # a file name is plain text, not a link (results-files: a folder name is a link, test_results_files)
     assert "全部下載" in mid(t) and 'href="/download' not in t
 
 
@@ -343,7 +345,9 @@ def test_ro10_english(w):
     ann, c, rid = world(w)
     t = c.get(url(rid) + "&lang=en").text
     assert [x[1] for x in tabs(t)] == ["Outputs", "Run info", "Tasks", "Logs"]
-    for word in ("Report", "MultiQC report", "Metrics", "Download all"):
+    for word in ("Report", "MultiQC report"):
+        assert '<span class="off">%s <span class="ostat state-running">⟳ Reading</span></span>' % word in t, word
+    for word in ("Metrics", "Download all"):
         assert re.search(r'<span class="off">%s <span class="later">Coming later</span></span>' % word, t), word
     assert no_cjk(mid(t)), cjk(mid(t))
     finish(w, listings(w)[0]["id"], entries=ENTRIES)

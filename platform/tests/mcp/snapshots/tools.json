@@ -1,0 +1,568 @@
+[
+  {
+    "inputSchema": {
+      "properties": {
+        "run_name": {
+          "title": "Run Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_name"
+      ],
+      "title": "cancel_toolArguments",
+      "type": "object"
+    },
+    "name": "cancel"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "describe_moduleArguments",
+      "type": "object"
+    },
+    "name": "describe_module"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "q": {
+          "title": "Q",
+          "type": "string"
+        }
+      },
+      "required": [
+        "q"
+      ],
+      "title": "find_moduleArguments",
+      "type": "object"
+    },
+    "name": "find_module"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "run_name": {
+          "title": "Run Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_name"
+      ],
+      "title": "forget_toolArguments",
+      "type": "object"
+    },
+    "name": "forget"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "get_compute_envArguments",
+      "type": "object"
+    },
+    "name": "get_compute_env"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "pipeline_id": {
+          "title": "Pipeline Id",
+          "type": "integer"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "pipeline_id"
+      ],
+      "title": "get_pipelineArguments",
+      "type": "object"
+    },
+    "name": "get_pipeline"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "title": "get_runArguments",
+      "type": "object"
+    },
+    "name": "get_run"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "pipeline_id": {
+          "title": "Pipeline Id",
+          "type": "integer"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "pipeline_id"
+      ],
+      "title": "get_validationArguments",
+      "type": "object"
+    },
+    "name": "get_validation"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "ce_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ce Name"
+        },
+        "dataset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset"
+        },
+        "dataset_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset Version"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Params"
+        },
+        "path_columns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path Columns"
+        },
+        "pipeline": {
+          "title": "Pipeline",
+          "type": "string"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "string"
+        },
+        "run_name": {
+          "title": "Run Name",
+          "type": "string"
+        },
+        "samplesheet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samplesheet"
+        },
+        "samplesheet_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samplesheet Text"
+        }
+      },
+      "required": [
+        "pipeline",
+        "revision",
+        "run_name"
+      ],
+      "title": "launch_toolArguments",
+      "type": "object"
+    },
+    "name": "launch"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "ce_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ce Name"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Params"
+        },
+        "pipeline_id": {
+          "title": "Pipeline Id",
+          "type": "integer"
+        },
+        "run_name": {
+          "title": "Run Name",
+          "type": "string"
+        },
+        "samplesheet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samplesheet"
+        },
+        "samplesheet_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samplesheet Text"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "pipeline_id",
+        "run_name"
+      ],
+      "title": "launch_pipeline_toolArguments",
+      "type": "object"
+    },
+    "name": "launch_pipeline"
+  },
+  {
+    "inputSchema": {
+      "properties": {},
+      "title": "list_agentsArguments",
+      "type": "object"
+    },
+    "name": "list_agents"
+  },
+  {
+    "inputSchema": {
+      "properties": {},
+      "title": "list_compute_envsArguments",
+      "type": "object"
+    },
+    "name": "list_compute_envs"
+  },
+  {
+    "inputSchema": {
+      "properties": {},
+      "title": "list_pipelinesArguments",
+      "type": "object"
+    },
+    "name": "list_pipelines"
+  },
+  {
+    "inputSchema": {
+      "properties": {},
+      "title": "list_runsArguments",
+      "type": "object"
+    },
+    "name": "list_runs"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "compute_env": {
+          "title": "Compute Env",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "compute_env",
+        "path"
+      ],
+      "title": "list_site_filesArguments",
+      "type": "object"
+    },
+    "name": "list_site_files"
+  },
+  {
+    "inputSchema": {
+      "properties": {},
+      "title": "list_used_pipelinesArguments",
+      "type": "object"
+    },
+    "name": "list_used_pipelines"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "month": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Month"
+        }
+      },
+      "title": "my_usageArguments",
+      "type": "object"
+    },
+    "name": "my_usage"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "offset": {
+          "default": 0,
+          "title": "Offset"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "path"
+      ],
+      "title": "read_run_fileArguments",
+      "type": "object"
+    },
+    "name": "read_run_file"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "run_name": {
+          "title": "Run Name",
+          "type": "string"
+        },
+        "task": {
+          "title": "Task",
+          "type": "string"
+        },
+        "which": {
+          "title": "Which",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_name",
+        "task",
+        "which"
+      ],
+      "title": "read_task_logArguments",
+      "type": "object"
+    },
+    "name": "read_task_log"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "run_name": {
+          "title": "Run Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_name"
+      ],
+      "title": "relaunch_toolArguments",
+      "type": "object"
+    },
+    "name": "relaunch"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "extra_config": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Extra Config"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Params"
+        },
+        "run_name": {
+          "title": "Run Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_name"
+      ],
+      "title": "resume_toolArguments",
+      "type": "object"
+    },
+    "name": "resume"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "title": "run_outputsArguments",
+      "type": "object"
+    },
+    "name": "run_outputs"
+  }
+]

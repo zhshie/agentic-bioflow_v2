@@ -72,7 +72,7 @@ usage() {
 }
 
 # --- GB, from whatever unit Platform or the trace happens to be using -------
-to_gb() {
+mem_to_gb() {
     local s="${1:-}" num unit
     s="${s//[[:space:]]/}"
     [ -n "$s" ] || { echo 0; return 0; }
@@ -151,10 +151,10 @@ trace_rows() {
     # The fold used to run in bash with `local -A`, which needs bash 4; macOS
     # ships bash 3.2, so the whole tool died there at parse time. awk has had
     # associative arrays forever, and this keeps the conversion in bash where
-    # to_gb lives.
+    # mem_to_gb lives.
     while IFS=$'\t' read -r proc vmem rss; do
         [ -n "$proc" ] || continue
-        printf '%s\t%s\t%s\n' "$proc" "$(to_gb "$rss")" "$(to_gb "$vmem")"
+        printf '%s\t%s\t%s\n' "$proc" "$(mem_to_gb "$rss")" "$(mem_to_gb "$vmem")"
     done < <(parse_trace_tasks "$file") \
     | awk -F'\t' '
         # Keep the string that was read, ordered by its numeric value: the
@@ -273,8 +273,8 @@ ROWS_TSV="$(mktemp)"; trap 'rm -f "$ROWS_TSV"' EXIT
 NEAR_CEILING_PCT=85
 while IFS=$'\t' read -r proc peak_raw alloc_raw pct_raw; do
     [ -n "$proc" ] || continue
-    peak_gb="$(to_gb "$peak_raw")"
-    alloc_gb="$(to_gb "$alloc_raw")"
+    peak_gb="$(mem_to_gb "$peak_raw")"
+    alloc_gb="$(mem_to_gb "$alloc_raw")"
     pct=""
     [ -n "$pct_raw" ] && [ "$pct_raw" != "-" ] && pct="${pct_raw%\%}"
 

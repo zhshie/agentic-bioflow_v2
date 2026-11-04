@@ -709,7 +709,7 @@ def test_tcs36_cards_are_read_only(w):
         assert part.count("<button") == len(forms)
         for h in hrefs(part):
             u = urlsplit(htmllib.unescape(h))
-            assert (u.path == "/" and "run" in parse_qs(u.query)) or (u.path == "/launch" and "from" in parse_qs(u.query)), h      # the run page's "launch again" link
+            assert (u.path == "/" and "run" in parse_qs(u.query)) or (u.path == "/launch" and "from" in parse_qs(u.query))                 or (u.path == "/act/resume/edit" and "run" in parse_qs(u.query)), h      # the run page's "launch again" link; resume-edit-web: "修改後續跑" beside Resume
         for word in ("上傳", "確認", "Resume", "Retry"):
             assert word not in re.sub(r"（確認頁）", "", part)
     assert len(re.findall(r"<form\b", pane(t, "right"))) == 1
@@ -817,12 +817,12 @@ def test_tch11_read_only(w):
     assert c.post("/").status_code == 405 and c.post("/settings").status_code == 405
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
     assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
-                      ("/act/{verb}", ("POST",)),
+                      ("/act/{verb}", ("POST",)), ("/act/{verb}/edit", ("GET", "HEAD")),      # resume-edit-web
                       ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),
                       ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
-                      ("/revoke", ("OPTIONS", "POST")), ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline; settings-pick-installed: the reload button
+                      ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")), ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline; settings-pick-installed: the reload button
                       ("/token", ("OPTIONS", "POST")),
                       ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),      # web-upload-page
                       ("/usage", ("GET", "HEAD")), ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: /welcome
@@ -1204,7 +1204,7 @@ def test_tn05_no_new_tool_or_action(w):
     from abf_platform import actions
     tools, _ = w.mcp([])
     assert sorted(t.name for t in tools) == sorted(["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
-                                                    "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"])
+                                                    "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"])
     assert not [n for n in dir(actions) if "board" in n]
 
 

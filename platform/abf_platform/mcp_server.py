@@ -1,15 +1,16 @@
-# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers fifteen read-only tools, and is built on the official Python mcp SDK.
-"""MCP server: fifteen read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
-list_site_files, list_used_pipelines, my_usage, run_outputs, read_task_log, and the five canvas reads find_module, describe_module,
+# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers sixteen read-only tools, and is built on the official Python mcp SDK.
+"""MCP server: sixteen read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
+list_site_files, list_used_pipelines, my_usage, run_outputs, read_run_file, read_task_log, and the five canvas reads find_module, describe_module,
 list_pipelines, get_pipeline, get_validation; and six tools that ask a person:
 launch, launch_pipeline, cancel, forget, resume, relaunch.
 
-The fifteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
+The sixteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
   - toward runs: this module never writes the run index (status.py opens it read-only);
   - toward the site: list_site_files may put one read-only question (list a folder) in the job queue of
     platform.db and wait for the agent's answer; read_task_log does the same to read the end of one of three log
-    files of a failed task. Neither can name a command or a job kind; the platform and the agent each check the path again.
+    files of a failed task; run_outputs(path) lists a folder below results and read_run_file reads one file of a run (text in pages, a binary
+    file only as a download address). None of them can name a command or a job kind; the platform and the agent each check the path again.
 
 launch and cancel (spec 009c) start nothing by themselves. Each builds what the terminal command builds, writes a pending request
 and asks the person (the client's form, else a page they open). They carry no argument that could say yes, and the answer to a call
@@ -100,11 +101,25 @@ def build_server(index_path, platform_path=None):
 
     @server.tool(name="run_outputs", annotations=_READ_ONLY,
                  description="What one run of yours produced: the files and folders in <run folder>/results on the site, by the run's id. "
+                             "Pass path (a folder below results, taken from the enter field of an earlier answer) to look inside it; a path "
+                             "that is not valid lists the first level and says bad_path. Each file row carries enter (the path of a folder you "
+                             "may open) and download (the path you may give read_run_file). "
                              "It never waits for the site: it answers state loading (a question was queued, ask again in a few seconds), "
                              "ready (files: name, type, size, modified, and listed_at), error (reason) or unavailable (the run was not "
                              "launched from the platform, so there is no output folder on record). Nothing is written or run.")
-    def run_outputs(ctx: Context, run_id: str) -> dict:
-        return actions.run_outputs(index_path, platform_path, run_id, caller=_caller(ctx))
+    def run_outputs(ctx: Context, run_id: str, path: str | None = None) -> dict:
+        return actions.run_outputs(index_path, platform_path, run_id, caller=_caller(ctx), subpath=path)
+
+    @server.tool(name="read_run_file", annotations=_READ_ONLY,
+                 description="Read-only: read one file of your own run, by run_id and path (below results/, from run_outputs' "
+                             "download). Never waits for the site: state is loading (ask again), ready, error (reason), "
+                             "unavailable (not launched here, or results not on the site host) or too_large (over 25 MB: "
+                             "size and full site path given, nothing read). Text comes back as at most 200,000 characters from "
+                             "offset with total_chars and next_offset; the text goes to the model you chose. A binary file "
+                             "is not sent: you get name, size and address /run/file?run=<id>&path=<p>. "
+                             "An HTML file (.html, .htm) is treated as a binary file.")
+    def read_run_file(ctx: Context, run_id: str, path: str, offset: Any = 0) -> dict:
+        return actions.read_run_file(index_path, platform_path, run_id, path, caller=_caller(ctx), offset=offset)
 
     @server.tool(name="read_task_log", annotations=_READ_ONLY,
                  description="Read the end of one log file of a failed task of a run you launched, through the run's agent: "
@@ -184,14 +199,12 @@ def _add_write_tools(server, platform_path, index_path):
                                             remote=_remote(ctx))
 
     @server.tool(name="launch_pipeline", annotations=_WRITES,
-                 description="Ask to launch one of the person's own saved canvas pipelines (name it by pipeline_id, and version; the "
-                             "newest when none is given). This does NOT start anything: it checks the pipeline again today, writes a "
-                             "request and shows the person a summary. The person says yes in their own client's form or on a page whose "
-                             "address this returns; you cannot say it for them. When the answer says sent is false, tell the person what "
-                             "to do and, after they have pressed send, call launch_pipeline again with the same arguments to get the job "
-                             "number. Give the samplesheet in exactly one of two ways: samplesheet is the path of a CSV file you uploaded "
-                             "to your own folder on this platform, or samplesheet_text is the CSV itself (at most 1 MiB). params is a "
-                             "flat mapping of pipeline parameters.")
+                 description="Ask to launch one of the person's own saved canvas pipelines: pipeline_id, version (newest when none), "
+                             "run_name, optional ce_name and params (flat mapping). Samplesheet in one way only: samplesheet (path of "
+                             "your uploaded CSV) or samplesheet_text (the CSV, at most 1 MiB). This does NOT start anything: it checks "
+                             "the pipeline again, writes a request and returns a summary; you cannot say yes for the person. When "
+                             "the answer says sent is false, tell them what to do, then call launch_pipeline again with the same "
+                             "arguments to get the job number.")
     async def launch_pipeline_tool(ctx: Context, pipeline_id: int, run_name: str, version: int | None = None,
                                    samplesheet: str | None = None, samplesheet_text: str | None = None, ce_name: str | None = None,
                                    params: dict[str, Any] | None = None) -> dict:
@@ -222,14 +235,13 @@ def _add_write_tools(server, platform_path, index_path):
 
 
     @server.tool(name="resume", annotations=_WRITES,
-                 description="Ask to resume one run of this platform that failed or was cancelled: the same folder, and Nextflow takes up where "
-                             "it stopped and reuses the tasks that finished. Optionally pass `params` (only the keys to change; they are laid over the "
-                             "parameters of the first launch) and `extra_config` (resource settings, for example `process.memory = '16 GB'`); "
-                             "the pipeline, version, samples and environment stay those of the first launch (to change them, make a new launch). "
-                             "This does NOT start anything: it writes a "
-                             "request and shows the person what would run. The person says yes in their own client's form or on a page whose "
-                             "address this returns; you cannot say it for them. It does not start anything until the person says yes. After "
-                             "they pressed send, call resume again with the same run_name to get the job number.")
+                 description="Ask to resume one failed or cancelled run: the same folder, Nextflow reuses the finished tasks. Optional params "
+                             "(only keys to change, laid over the first launch's) and extra_config (resource settings, e.g. "
+                             "`process.memory = '16 GB'`); pipeline, version, samples and environment stay as launched (to change them, "
+                             "make a new launch). This does NOT start anything: it only writes a request. The person "
+                             "says yes in their own form or on a page this returns; you cannot say it for them. It does not "
+                             "start anything until the person says yes. Then call resume again with the same "
+                             "run_name for the job number.")
     async def resume_tool(ctx: Context, run_name: str, params: dict | None = None, extra_config: str | None = None) -> dict:
         return await actions.request_resume(platform_path, run_name=run_name, params=params, extra_config=extra_config,
                                             caller=_caller(ctx), person=actions.person_at(ctx), remote=_remote(ctx), index_path=index_path)

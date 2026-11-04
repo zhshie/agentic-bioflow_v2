@@ -618,7 +618,7 @@ The automatic tests use a made-up price list and databases in a temporary folder
 1. **Set a small cap.** `abf-platform user add <name> --lab <lab> --cloud-cap-usd 5` (or `abf-platform user cloud-cap <name> 5` for an account that exists). Check: the command prints the cap; a wrong value (`-1`, `abc`, `nan`, `1e9`) is refused in words and leaves the cap as it was.
 2. **Run the smallest analysis on `gcb1`** the way the gcb-launch section says, then open `index.db` and look at `task_usage`. Check: `machine_type`, `price_model` and `cloud_zone` are filled. If they are NULL, Nextflow's `google-batch` executor did not send them: stop and tell the developer-agent; do not change the code to guess.
 3. **Compare with the bill (postponed to `cloud-rates-fill`).** The shipped price list is empty on purpose, so every estimate is unknown now; write "not done: no prices yet" in the ledger, do not pretend. Once prices exist:  Work out the run with `cloud_cost.run_tasks_cost` (it gives the US dollars, or `None` with the reasons) and compare it with the Compute Engine cost of the same hours in the Google Cloud Console. Check: write the difference in `specs/cloud-cost/ledger.md`. It should be a little under the bill (start-up time and disks are not counted); if it is far off, tell the developer-agent; do not change a price by hand.
-4. **Make the cap bite.** Set the cap below "used + estimate" (for example 0; with the empty price list only 0 or "already used up" can bite) and call `cloud_cost.cap_problem` for the same environment and pipeline. Check: the answer is a plain refusal with the cap, the used amount, what is left and the estimate in `US$` with two decimals. (Launching from the web or the AI now makes the same call before it creates anything; see "Cloud cost wiring" below and `docs/CLOUD.md`.)
+4. **Make the cap bite.** Set the cap below "used + estimate" (for example 0; with the empty price list only 0 can bite; "already used up" only takes effect once the price list is filled in) and call `cloud_cost.cap_problem` for the same environment and pipeline. Check: the answer is a plain refusal with the cap, the used amount, what is left and the estimate in `US$` with two decimals. (Launching from the web or the AI now makes the same call before it creates anything; see "Cloud cost wiring" below and `docs/CLOUD.md`.)
 
 **The reviewer.** Run `git diff --name-only origin/v3...HEAD`: only the files under "Scope: files" in `specs/cloud-cost/plan.md`; none of `abf_launch/build.py`, `abf_station/launch.py`, `actions/__init__.py`, `pipeline_launch.py`, `pyproject.toml`, `setup.py`, `su.py`, `records.py`, `jobs.py`, `compute_envs.py`. In `test_gcb_ce.py` one assertion changed (`cloud_cost.py` may exist now) and in `test_web_actions.py` one line (the new table `tokens.cloud_caps`) plus its comment; nothing else was loosened, deleted or skipped. If `platform/abf_platform/data/cloud_rates.json` has entries, open up to three `source` addresses at random and compare the number on the page with the file; mark an address that does not open as unverified.
 
@@ -836,6 +836,19 @@ The automatic tests use a fake `kubectl` runner and a fake `which`; they call no
 7. **TC-143: the reviewer, scope.** Run `git diff --name-only <base>...HEAD` and compare with the plan's file list: no web file, nothing in `abf_launch/`, no `gcb_preflight.py`, `aws_preflight.py`, `azure_preflight.py`, `launch.py`, `cloud_store.py` or `clean.py`; no migration.
 8. **TC-156: the reviewer, existing assertions.** Run `git diff` on each existing test file: the only changes are Kubernetes added to `CHECK_ONLY_TYPES` and `CHECKABLE`, Kubernetes moved out of the unsupported list (ten turned nine), and the document sentence. No assertion is deleted or loosened.
 
+
+## 結果頁下載 (results-files): the maintainer and the reviewer check
+
+The automatic tests use a fake agent and fake answers. These steps need a platform that colleagues reach, one colleague account and a run that finished on a real site (for example `web-test-1` on `nano4-test`, whose agent is online).
+
+1. **The real file, once.** Log in as the colleague, open the run, results stage, tab "輸出". Click the folder `multiqc`, then press "下載" on `multiqc_report.html`. Expected: a page that says "◌ 正在向站台取得檔案" and refreshes itself; within a minute the browser downloads `multiqc_report.html`. Open the downloaded file in the browser: it is the MultiQC report of that run. Nobody opened a terminal.
+2. **The two cards.** On the same run press the cards "MultiQC 報告" and "報告": each downloads its file (`multiqc/multiqc_report.html`, `summary_report/summary_report.html`).
+3. **Folders and the path.** Open `multiqc/multiqc_data`: the path above the table reads "results / multiqc / multiqc_data" and every part is a link back.
+4. **390 px wide.** Open the Outputs tab inside a folder that has a very long file name, and the waiting page, with the browser's developer tools at 390 px: neither page scrolls sideways, the long name wraps, and the links are easy to hit.
+5. **Both languages.** Look at the Outputs tab of a folder, the waiting page and the "too large" page once in Chinese and once with `&lang=en`.
+6. **A file over 25 MB.** Choose a file over 25 MB: the list shows "大於 25 MB" and no link; typing the address by hand gives the page with the size and the path on the site.
+7. **The reviewer.** Against the base: `web_board.STYLE` is unchanged, the content security policy of every page is unchanged, `platform/pyproject.toml` is unchanged, `web.py` gained only the route `/run/file`, `abf_station/handlers.py` gained only the new kind and the line that calls it, and the existing tests changed only where `specs/results-files/ledger.md` lists them.
+
 ## When something is red
 
 Fix the code, not the test — unless the test encodes a rule that changed, in
@@ -910,3 +923,70 @@ The automatic tests use fakes for the `az` program and never touch the network. 
 5. **Soft delete and versions.** If the storage account has blob soft delete or versioning on, check in the portal that deleted blobs and old versions are still there after the clean (the documents say they are).
 6. **Wildcard.** Check that `delete-batch --pattern "<prefix>*"` really matches across `/` on your account (blobs two folders deep must go), and that it did not touch `work2/`.
 
+
+## Changing the parameters of a resume on the web (resume-edit-web): the maintainer and the reviewer check
+
+The automatic tests use a fake read of the pipeline's files and a fake site. These steps need the real site, one colleague account (not the maintainer) and one run that failed because a process ran out of memory.
+
+1. **The whole way, on the real site.** Log in as the colleague, open the failed run, open the menu 更多 and press 修改後續跑 (or the same link in the red notice). Check: the page lists the run, the pipeline and version, and the environment; the parameters of the first submission are in the boxes. In the box for extra settings write `process.memory = '16 GB'` and press 送出（前往確認頁）. Check: the confirmation page lists the change in the 改動 section above the folded full content; press 送出. Check: after the run finishes, `.nextflow.log` in the same folder shows `-resume` and the tasks that had already finished are cached (this is what a fake site cannot say). The colleague asked nobody.
+2. **A parameter.** Do the same, changing one parameter instead (for example `trunclenf` from 120 to 200). Check: the confirmation page shows `trunclenf：120 → 200`, nothing else.
+3. **A narrow screen (390 px).** Open the page in the normal state, in the error state (a number box holding `abc`, then 送出) and with the pipeline's table not readable: nothing scrolls sideways, the table is the same as step 5 of the launch page, the buttons are easy to hit. Attach the screenshots to the PR.
+4. **The keyboard.** Press Tab through the page: the focus outline is visible on every box, the extra-settings box, the submit button and 返回, in that order; Enter in a box submits.
+5. **Both languages.** Look at the page and the error line once with `?lang=en`: no Chinese in the page's own words.
+6. **The reviewer.** Against the base: `git diff <base>...HEAD --stat` shows nothing under `platform/abf_platform/actions/`, `platform/abf_launch/`, `platform/abf_station/`, `confirm.py`, `jobs.py` or `mcp_server.py`; `web_board.STYLE` is unchanged; `web_board.py` gained only the new strings (`RESUME_EDIT`), `Acts.edit_link` and its two call sites; `web_launch.py` gained only new functions; the existing tests changed only where `specs/resume-edit-web/ledger.md` lists them, and every change only adds.
+
+## 國網，網頁從頭到完成 (web-nano4-path): the maintainer checks by hand
+
+The automatic tests use fake environments and fake jobs: nothing reaches the site. These steps need a real platform that people reach through Tailscale (Funnel), the test account `abf-test`, and an `available` national-HPC environment (nano4). A real run uses real SU.
+
+1. **Upload the samplesheet.** Log in as `abf-test` and open 上傳資料. The page shows 上傳樣本表（CSV 或 TSV）; there is no sentence about uploading with a command. Choose the samplesheet of the r5 run (a header row and 10 rows whose paths point to files on the site) and press 上傳樣本表. Check: the page says "✓ 已上傳樣本表 sheets/<name>，可於「送出新分析」第 4 步選擇。" with a link 前往送出新分析.
+2. **Six steps.** Press 前往送出新分析 (or ＋新分析) and go through the six steps. At step 4 choose `sheets/<name>`; at step 2 choose nano4. Nobody types a command or asks the AI.
+3. **Confirm and send.** Read the confirmation page and press 送出. Check: the page says 已送出。工作編號 N。, then 站台開始執行後，進度會顯示在分析清單。, and has a 查看進度 button. It does not say anything about going back to the AI.
+4. **Follow the progress.** Press 查看進度. At first the page may say "◌ 已送出，等待站台回報執行狀態。頁面每 15 秒自動更新。"; it turns into the run's progress page by itself. Check that the 運算環境 card reads `nano4` (not a dash) and that the step count moves.
+5. **Wait until it finishes.** The run ends 完成 on the same pages; the results stage opens from the left column. The whole path used the web page only.
+6. **A wrong file.** Upload a `.txt` file, a file with a header row only, and a file whose rows have different numbers of columns: each is refused with its own sentence above the form, and nothing appears at step 4.
+7. **A narrow screen and the keyboard.** At 390 px wide open the upload page (with the success sentence and with one refusal) and the page after Send: nothing scrolls sideways and the buttons are easy to hit. Press Tab through the samplesheet form and the 查看進度 button: the focus outline is visible. Look at the upload page once with `?lang=en`: the samplesheet section is English.
+8. **The reviewer.** Against the base: `web_board.STYLE` is unchanged (`66b9a8e1a9c6f7d2`); the database schema is unchanged; the actions that exist keep their answers (`get_run`, `list_runs`, `launch_prefill` unchanged); the board adds the Compute card value through the new read-only action `run_environment`; the existing tests changed only where `specs/web-nano4-path/ledger.md` lists them.
+
+## Launching on Kubernetes (k8s-launch): the maintainer checks by hand
+
+The automatic tests use a fake `kubectl` runner and touch no cluster. A real cluster is needed once, and it costs money (the cluster's own cloud or data centre bills). These steps are **class C**: they need a real cluster and **the maintainer's agreement**, and they are **not part of the executor's or the verifier's definition of done**; the automatic tests are. Needs human:
+
+1. Set the station setting `k8s_head_image` to an image that has Nextflow, and `platform_public_url` to an `https://` address the cluster can reach. Put the kubeconfig (mode 600) at `ABF_STATION_KUBECONFIG` on the platform host, then run the k8s-ce preflight of the environment: it must be `available`.
+2. Before launching, check the cluster by hand: the claim (PVC) is **`ReadWriteMany`**; the service account has the Role that allows create and delete on pods (the rules are in `docs/OPERATIONS.md` and `docs/PLATFORM.md`, "Launching on Kubernetes"); and the head image can be pulled by the cluster.
+3. Use a small public pipeline and a samplesheet whose paths are inside the claim. Run `prepare_launch` and read the screen: its first paragraph must say who bills, then the Pod name, the namespace, the claim and the files, and show no token and no image. **Answer n first**, and check with `kubectl get secret,pod -n <namespace>` that there is **no Secret and no Pod** in the cluster. Then ask again and answer **y**: only after the y may the Secret and the head Pod appear, and the platform shows the run as started.
+4. Watch the head Pod reach `Running` and the task pods appear; check that the run page on the platform shows progress (`-with-tower` works) and that the results land on the claim.
+5. Cancel another run and answer y: only its head Pod is deleted. Then look at the cluster and **decide whether the task pods went away with it**. Write that conclusion into `specs/k8s-launch/ledger.md`. If they did not all go away, **report it; do not add a delete path of your own**.
+6. Confirm that nothing in the database, `ce show`, the screens, the logs or the manifests contains a piece of the kubeconfig or the Seqera token.
+
+## The compute-environment table on a phone (settings-ce-table-mobile): the reviewer checks
+
+The automatic tests read the HTML and the stylesheet only; this step looks at the real page in Chrome. Needs Playwright and Chrome in a Python (the platform side runs in WSL or Linux).
+
+1. From the repo root, in WSL: `cd platform && ABF_PLAYWRIGHT_PYTHON=/mnt/c/.../python.exe python ../scripts/dev/check_settings_mobile.py` (leave the variable out if the same Python has playwright). It starts a throwaway platform with two compute environments and writes four screenshots to `specs/settings-ce-table-mobile/screenshots/`: `settings-ce-1440-zh.png`, `settings-ce-1440-en.png`, `settings-ce-390-zh.png`, `settings-ce-390-en.png` (390 px uses device emulation, `is_mobile=True`).
+2. The script prints `document.documentElement.scrollWidth` and `clientWidth` for each of the four; exit 0 means they are equal everywhere (no sideways scroll). Exit 77 means no Playwright or Chrome.
+3. Look at the 390 px shots: each environment is its own card, six rows, each with its label (名稱 ... / Name ...), no word cut in the middle ("Nam/e"). Look at the 1440 px shots against the base: the table looks the same as before.
+
+## MCP reads a result file (mcp-run-file): the reviewer checks
+
+The automatic tests use the fake site; these steps use a real agent and a real MCP client.
+
+1. Take a SUCCEEDED run with a `results` folder. In an MCP client call `run_outputs(run_id)` and then `run_outputs(run_id, path=<enter of a folder>)`: you see the inside of that folder. Call again with `path="../x"`: it answers `bad_path` and lists the first level.
+2. Call `read_run_file(run_id, path=<download of a small .tsv>)`. The first answer may be `loading`; ask again after a few seconds: the text comes back with `total_chars` and no `next_offset`.
+3. Do the same with a text file over 200,000 characters: the answer carries `next_offset`; call again with `offset=<next_offset>` until it is gone, and join the pages: they equal the file.
+4. Call it with a PNG or other binary file, or with an `.html` file such as a MultiQC report: no bytes and no HTML text, a `download_url`; open it in the browser while signed in and the file downloads.
+5. Sign in as another user and call both tools on that run: the answer is the same as for a run that does not exist.
+
+## run_outputs asks again after a login error (mcp-run-file-live-fixes): the maintainer checks
+
+Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an MCP client.
+
+1. Let the ControlMaster connection expire. Call `run_outputs(run_id)`: the answer is an `error` that tells you to log in again.
+2. Log in again, wait 30 seconds, call `run_outputs(run_id)`: it says `loading`; ask again after a few seconds: it is `ready` with the list (the web Outputs tab does the same when opened again).
+3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
+4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
+
+### Head job ended by the scheduler (manual, on nano4)
+
+1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
+2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.

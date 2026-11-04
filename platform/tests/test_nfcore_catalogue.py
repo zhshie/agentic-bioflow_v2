@@ -78,7 +78,7 @@ def part_of(ctx, net, body, **kw):
 
 def test_tc001_the_kinds_and_arguments_do_not_change():
     # TC-001
-    assert list(handlers.JOB_KINDS) == NINE
+    assert list(handlers.JOB_KINDS) == NINE + ["read_run_file"]      # results-files: read_run_file is the tenth, last kind
     assert handlers.ARG_KEYS["pipeline_files"] == {"repo", "revision", "parts"}
 
 
@@ -318,8 +318,8 @@ def test_tc026_tc027_no_new_kind_and_no_migration(tmp_path, monkeypatch):
     text = con.execute("SELECT sql FROM sqlite_master WHERE name = 'jobs'").fetchone()[0]
     con.close()
     m = re.search(r"kind TEXT NOT NULL CHECK \(kind IN \(([^)]*)\)\)", text)
-    assert re.findall(r"'([a-z_]+)'", m.group(1)) == NINE
-    assert list(jobs.KINDS) == NINE
+    assert re.findall(r"'([a-z_]+)'", m.group(1)) == NINE + ["read_run_file"]      # results-files: read_run_file is the tenth, last kind
+    assert list(jobs.KINDS) == NINE + ["read_run_file"]
     assert store._jobs_kinds_current(text)
     seen = []
     monkeypatch.setattr(store, "_migration_step", lambda step: seen.append(step))

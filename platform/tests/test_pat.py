@@ -749,7 +749,7 @@ def test_tcd14_tool_bodies_stay_one_call_with_caller_and_read_the_http_auth_cont
     tree = ast.parse((PKG / "mcp_server.py").read_text(encoding="utf-8"))
     build = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "build_server"][0]
     tools = [n for n in ast.walk(build) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not build]
-    assert len(tools) == 10      # run-diag-tools: read_task_log is the seventh read tool; results-outputs: run_outputs the eighth; guided-launch-1: list_used_pipelines the ninth; cost-page: my_usage the tenth
+    assert len(tools) == 11      # mcp-run-file: read_run_file the eleventh; run-diag-tools: read_task_log is the seventh read tool; results-outputs: run_outputs the eighth; guided-launch-1: list_used_pipelines the ninth; cost-page: my_usage the tenth
     for fn in tools:
         assert len(fn.body) == 1 and isinstance(fn.body[0], ast.Return), fn.name
         call = fn.body[0].value
@@ -757,7 +757,7 @@ def test_tcd14_tool_bodies_stay_one_call_with_caller_and_read_the_http_auth_cont
         assert isinstance(call.func, ast.Attribute) and call.func.value.id == "actions" and call.func.attr == fn.name
         kw = {k.arg: k.value for k in call.keywords}
         # 116: the two run tools also say where the hand-off record is (a run is its launcher's), by the one name the server was built with
-        assert list(kw) == (["caller", "platform_path"] if fn.name in ("list_runs", "get_run") else ["caller", "month"] if fn.name == "my_usage" else ["caller"])      # cost-page: my_usage also passes the month it was asked for
+        assert list(kw) == (["caller", "platform_path"] if fn.name in ("list_runs", "get_run") else ["caller", "month"] if fn.name == "my_usage" else ["caller", "subpath"] if fn.name == "run_outputs" else ["caller", "offset"] if fn.name == "read_run_file" else ["caller"])      # cost-page: my_usage also passes the month it was asked for
         assert isinstance(kw["caller"], ast.Call) and kw["caller"].func.id == "_caller"
         assert "platform_path" not in kw or (isinstance(kw["platform_path"], ast.Name) and kw["platform_path"].id == "platform_path")
         assert not [n for n in ast.walk(fn) if isinstance(n, (ast.If, ast.Try, ast.For, ast.While))]
