@@ -128,6 +128,8 @@ TOOL_ACTION = {"launch": "request_launch", "cancel": "request_cancel", "forget":
 
 # actions with a `caller` that no tool is named after, each with the reason
 NO_TOOL = {
+    "get_my_settings": "web settings page (012a): the person's own two switches, read only",
+    "set_my_setting": "web settings page (012a): the person's own two switches",
     "approve": "the person's yes on the web confirmation page",
     "caller_area": "helper: the caller's upload folder",
     "clean_requests": "web page: clean-work requests",

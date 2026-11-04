@@ -9,7 +9,7 @@ yet stays greyed "coming later".
 import hashlib
 import re
 
-from . import web_board, web_launch
+from . import web_board, web_devmode, web_launch
 from .web_board import esc
 
 DONE, MISSING, LATER, GONE, FAIL = "done", "missing", "later", "gone", "fail"
@@ -55,12 +55,6 @@ STRINGS = {
         "pf_c_action": "動作", "pf_c_env": "運算環境", "pf_op_add": "新增", "pf_op_remove": "移除",
         "pf_expired_title": "表單已失效", "pf_expired": "表單驗證碼不符或已失效，未變更任何內容。請重新整理頁面後再試。",
         "pf_foreign_title": "來源不符", "pf_foreign": "此表單並非由本頁送出，未變更任何內容。請重新整理頁面後再試。",
-        # 012a-settings-page: the personal section, the credentials line and the sentences of the personal form
-        "pref_on": "開", "pref_off": "關", "pref_turn_on": "開啟", "pref_turn_off": "關閉",
-        "cred_set": "已設定", "cred_not": "未設定", "cred_line": "%s：%s",
-        "pf_n_personal-saved": "已儲存。",
-        "pref_bad": "送出的內容不正確，未變更任何內容。請重新整理頁面後再試。",
-        "pref_failed": "未能儲存，未變更任何內容。請稍後再試。",
     },
     "en": {
         "setup": "Before you start", "s_done": "Done", "s_missing": "Missing", "s_later": "Coming later",
@@ -105,11 +99,6 @@ STRINGS = {
         "pf_c_action": "Action", "pf_c_env": "Compute environment", "pf_op_add": "Add", "pf_op_remove": "Remove",
         "pf_expired_title": "Form expired", "pf_expired": "The form token is wrong or has expired; nothing was changed. Reload the page and try again.",
         "pf_foreign_title": "Wrong origin", "pf_foreign": "The form was not sent from this page; nothing was changed. Reload the page and try again.",
-        "pref_on": "On", "pref_off": "Off", "pref_turn_on": "Turn on", "pref_turn_off": "Turn off",
-        "cred_set": "Set", "cred_not": "Not set", "cred_line": "%s: %s",
-        "pf_n_personal-saved": "Saved.",
-        "pref_bad": "What was sent is not valid; nothing was changed. Reload the page and try again.",
-        "pref_failed": "Could not save; nothing was changed. Try again later.",
     },
 }
 SYMBOL = {DONE: "✓", MISSING: "✗", LATER: "—", GONE: "○", FAIL: "✕"}
@@ -342,6 +331,7 @@ def _rest(t):
 def words(lang):
     t = dict(web_board.STRINGS[web_board.pick_lang(lang)])
     t.update(STRINGS[web_board.pick_lang(lang)])
+    t.update(web_devmode.personal_words(web_board.pick_lang(lang)))      # 012a: kept out of STRINGS (its hash is pinned by test_ce08)
     return t
 
 

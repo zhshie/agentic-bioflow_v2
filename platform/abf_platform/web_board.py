@@ -851,7 +851,7 @@ def _empty_page(t, lang):
 def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, path="/", refresh=False, tab=None, refresh_url=None):
     lang = pick_lang(lang)
     t = STRINGS[lang]
-    bar = ('<div class="devbar" role="status"><span aria-hidden="true">!</span><span>%s</span></div>' % esc(web_devmode.BANNER[lang])) if DEV_MODE.get() else ""
+    bar = ('<div class="devbar" role="status"><span aria-hidden="true">!</span><span>%s</span></div>' % esc(web_devmode.banner(lang))) if DEV_MODE.get() else ""
     body = '%s%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), bar, _left(t, runs, run, lang, csrf, here), middle(t, lang),
                                                   right(t, lang))
     return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)

@@ -6,3 +6,5 @@ ts	phase	decision	why	evidence	result
 2026-11-04T00:00	GREEN	橫幅字串移到新檔 web_devmode.py	test_tcs03_s04 禁止 web_board.py 含 NCHC	test_web_board.py::test_tcs03_s04_cost_readout	通過
 2026-11-04T00:00	GREEN	放寬既有測試的表單／路由集合，加 /settings/personal	新增的兩個開關表單屬於計畫範圍	test_web_settings.py:292,294; test_web_board.py:812,825,966,1240	通過
 2026-11-04T00:00	GREEN	自己的 test_english 先把逐步模式關掉，才同時看到「開啟」「關閉」按鈕	原寫法兩個開關都開，不會出現「Turn on」，是測試自身的錯	test_web_settings_personal.py::test_english	通過
+2026-11-04	green-fix	新字串改放 web_devmode 函式內表，不放 STRINGS／模組層 dict	test_ce08 釘 web_settings.STRINGS 雜湊且 wording_sweep 限 8 張表	platform/abf_platform/web_devmode.py	相關測試通過
+2026-11-04	green-fix	更新 6 個釘住測試的預期（欄位、路由、NO_TOOL、store 用法、CSS 雜湊）	新增功能本來就會改這些清單，TC-041 允許雜湊重算	platform/tests/test_web_actions.py	通過
