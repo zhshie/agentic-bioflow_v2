@@ -26,3 +26,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	fix	PLATFORM.md 第 6 行保留釘住的「nine read-only tools」字樣，改在句後註明 get_run 沒有 readOnlyHint	全套發現 platform_storage_doc_test 釘死該片語；不得改測試	docs/PLATFORM.md:6; tests/platform_storage_doc_test.sh:140	該檔過
 2026-11-04	fix	裁決 R4：6 小時放棄上限加上「已有至少一筆抓取列」，從未被問過的失聯 run 仍問一次	對抗審：隔夜才看的 NODE_FAIL 要能顯示原因	jobs.py:ask_head_state; test_head_nodefail.py TC-044 no_fetch	待跑
 2026-11-04	merge	合併 origin/v3；tc048 的 REQUEST_TOOLS 期望值加入 v3 新增的 launch_pipeline，其餘不變	v3 新增 launch_pipeline 為寫入工具，與 get_run 無關	tests/test_head_nodefail.py:805	待全套
+2026-11-05	merge	test_mcp_launch_pipeline 的唯讀數 16→15（get_run 非唯讀，裁決 R2）；test_no_schema_change 在 origin/v3 本身就紅（v3 動了 store.py），不碰	全套第一輪紅 2 支	platform/tests/test_mcp_launch_pipeline.py:269	待重跑
