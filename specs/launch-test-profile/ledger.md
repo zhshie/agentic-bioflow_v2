@@ -11,3 +11,4 @@
 - [x] 修正輪 3：補 TC-051 至 TC-054 經 MCP launch 的測試（test_non_site_module_and_other_platforms_refuse_profiles，四種雲端），檢查「未送出：」、profiles 不支援句、無寫入；拿掉拒絕程式碼時此測試變紅（98 通過）
 - [x] 修正輪 5（11-04 裁決）：合併 origin/v3（22 個工具）、jobs.py 保留最新 done 預檢、web.py 確認頁 2 行 Config profiles 標籤、test_tc059/tc070/tc024 更新。test_mcp_launch_pipeline.py::test_no_schema_change 對固定舊 commit e428661b 比 store.py，v3 本身已不同，環境既有紅
 - 全套 @HEAD：142/144；platform_shard_7 紅於 test_mcp_launch_pipeline.py::test_no_schema_change（對固定舊 commit e428661b 比 store.py，origin/v3 本身即不同，與本片無關）與一次性的 test_azure_ce（單跑 61 通過）；platform_shard_2 逾時未重試。需 developer-agent 裁示或修 v3 該測試。
+- 裁決 C 第 2 項：已合併 origin/v3 (94830d2b)，test_mcp_launch_pipeline.py::test_no_schema_change 仍紅。store.py 與 origin/v3 無差異；v3 自 e428661b 起把 job 種類加了 read_run_file（九種變十種，store.py 的 CHECK、_jobs_kinds_current 與註解），測試仍對舊 commit 比。依裁決寫 BLOCKED。其餘 test_launch_profiles.py 與 test_mcp_launch_pipeline.py 共 121 通過。

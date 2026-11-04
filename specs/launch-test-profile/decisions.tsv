@@ -14,3 +14,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	fix-round2	保留每個環境最新一筆 done 預檢（另加最新帶 site_profiles 的一筆）不被 7 天清理	裁決 A；最新一筆若是不帶 profiles 的閘門預檢，名單仍須留著	platform/abf_platform/jobs.py:_insert_job; test_ruling_a_*	RED 後綠
 2026-11-04	fix-round2	合併 origin/v3 後 tc059 工具名單加 launch_pipeline（22 個），新增 tc070 驗 launch_pipeline 無 profiles；web.py 確認頁加 2 行 Config profiles 標籤	裁決 B 與 TC-069 例外	test_launch_profiles.py test_tc059/test_tc070/test_tc024; web.py _PLAIN	135 passed
 2026-11-04	fix-round2	保留範圍縮為「每個環境最新一筆帶 site_profiles 的 done 預檢」，不是任何最新 done 預檢	既有測試 test_station_platform::test_job_results_older_than_seven_days_are_pruned 釘住單筆無名單的 done 預檢要被清掉；縮小後仍滿足裁決 A 的行為測試	platform/abf_platform/jobs.py:_insert_job	待全套
+2026-11-04	fix-round3	合併 origin/v3 後 test_no_schema_change 仍紅，依裁決 C.2 BLOCKED	store.py 與 v3 相同，差異來自 v3 加 read_run_file	git diff e428661b origin/v3 -- platform/abf_platform/store.py（38 行）；test_mcp_launch_pipeline.py::test_no_schema_change	121 passed 1 failed
