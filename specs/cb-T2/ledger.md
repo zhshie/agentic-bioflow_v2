@@ -123,3 +123,38 @@ Survivor: `_meta: keep non-string list items` (`[x for x in m if isinstance(x, s
 
 - P3 cleanup (unreachable code): `scripts/utils/schema_roles.py:156-157` (the final `return NeedsDecision("reads", fastq, f"{len(fastq)} requested columns accept FASTQ file names")` in `infer_roles`) cannot run: `fastq` is a subset of `all_fastq`, and `len(all_fastq) > 2` already returned at line 145. Left as is (production code is out of scope); no test can reach it.
 
+
+## 4. Full suite (RULES 5.6)
+
+Run at HEAD be82626a74f7cda389a99c9e1a85f6c02ccb983d (the commit before this ledger update; the ledger is the only later change) with `PATH=/tmp/cb/venv/bin:$PATH bash tests/run_all.sh`. **Not green locally: 134/142 passed, 8 failed.** `tests/schema_roles_unit_test.sh` itself is `ok` (2s). None of the 8 failures involves a file of this task (the diff is one new test file plus specs/cb-T2/); they are this VM's environment:
+
+- agent_ctl_connection_id_test.sh: `scripts/agent_ctl.sh: line 95: USER: unbound variable` (the cloud VM has no $USER).
+- why_pending_test.sh: `lacks 'layer=scheduler'` (whole-queue form; cause not diagnosed).
+- wsl_bridge_test.sh: its own output shows `tar: Child returned status 141`, and egress/agent/compute-env checks report unreachable (no site from this VM; rsync is not installed).
+- platform_shard_4_test.sh: one snapshot, `test_cli_snapshots.py::test_help_snapshots[cli_help_top]` (argparse usage line wrapped differently from the committed snapshot; likely terminal width, not checked); 844 passed. Also 'E2E SKIPPED: Java 17 or newer is required' (no java).
+- platform_clock_test.sh, platform_shard_5/6/7_test.sh: failed; not diagnosed one by one.
+- Environment fact: /tmp/cb/venv is shared by all cloud-burn executors and its editable install of `abf_platform` pointed at /tmp/cb/T4/platform (another task's worktree), not at /tmp/cb/T2/platform, when this run happened, so the platform shards exercised that checkout. T2 touches no platform code, so this does not change the verdict on this task.
+
+Last 20 lines of the run:
+
+```
+FAIL       resources      tar: Child returned status 141
+FAIL       compute-env    ce is 'unreachable'>>
+missing rsync on MSYS is FAILed by name                    ok
+and it says plainly that Git Bash ships none               ok
+and gives an install route rather than nothing             ok
+
+-- (i) install_deps.sh: tw on MSYS is named plainly, not folded into 'unknown platform' --
+install_deps.sh --cli-only fails cleanly, not silently     ok
+it names the gap as unmeasured (R4), a real answer         ok
+and gives the Windows asset to fetch by hand               ok
+it does not fall back to the generic unknown-platform text ok
+shim does not run wsl.exe from the caller's own cwd        ok
+and lands in a directory that exists                       ok
+only settings.sh decides whether the bridge is in play     ok
+and nothing hardcodes the control-path default beside it   ok
+
+3 failed
+
+134/142 passed, 8 failed
+```
