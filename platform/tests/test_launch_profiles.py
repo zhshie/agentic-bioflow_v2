@@ -441,7 +441,7 @@ def test_tc024_the_summary_names_the_profile_and_never_says_zero_samples(w):
     import re
     from abf_platform import actions
     out = ask(w, w.ann, ["test"])
-    facts = actions.request_facts(w.state_db, out["id"])
+    facts = actions.request_facts(w.ip.state_db, out["id"])
     assert "samples" not in facts and facts["profiles"] == "test", facts
     client = w.web()
     assert w.login(client, "ann").status_code in (200, 303)

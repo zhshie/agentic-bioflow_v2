@@ -332,7 +332,10 @@ def facts(state_path, rid):
         what = "resume" if "resume" in bundle else "relaunch" if "relaunch" in bundle else "launch"
         source = bundle["resume"]["origin"] if what == "resume" else bundle
         out = {"what": what, "run_name": bundle["run_name"], "pipeline": source["pipeline"], "revision": source["revision"],
-               "ce": row["ce_name"], "samples": len(source["samplesheet"]) - 1 if source["samplesheet"] is not None else 0}
+               "ce": row["ce_name"], "samples": len(source["samplesheet"]) - 1 if source["samplesheet"] is not None else None}
+        listed = source.get("profiles")       # a launch on the pipeline's own test data has no samples to count: say the profiles instead
+        if isinstance(listed, list) and listed and all(isinstance(p, str) for p in listed):
+            out["profiles"] = ", ".join(listed)
         if what == "relaunch":
             out["folder"] = bundle["run_folder"]
         return {k: v for k, v in out.items() if v not in (None, "")}
