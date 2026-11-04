@@ -1,0 +1,4 @@
+# Production defs that are AST-identical (docstrings stripped) and same-named in two or more files.
+# Format: <name> <file> <file> ...   (files sorted, repo-relative).
+# This list may only SHRINK: test_no_duplicate_defs.py fails on a group that is not covered here, and on a line
+# here that no longer matches a current group exactly (edit it down to the file set the test prints, or delete it).
