@@ -22,7 +22,7 @@ TOOLS = ["bash", "sh", "env", "find", "ls", "stat", "cat", "head", "tail", "tr",
          "mktemp", "rm", "mkdir", "cp", "mv", "tar", "date", "uname", "dirname", "basename", "readlink", "timeout",
          "wc", "sort", "cut", "id", "printf", "true", "false", "touch", "chmod", "python3", "kill", "sha256sum",
          "xargs", "tee", "expr", "realpath", "gzip", "jq", "hostname", "uniq", "tput", "ps", "ln", "cmp"]
-FAKE_TOOLS = ["sbatch", "squeue", "sinfo", "scancel", "srun", "qsub", "bsub", "java", "nextflow"]
+FAKE_TOOLS = ["sbatch", "squeue", "sacct", "sinfo", "scancel", "srun", "qsub", "bsub", "java", "nextflow"]
 CANARY_TOKEN = "CANARY_" "7d3f9a1c5b2e4f60"
 
 
@@ -145,6 +145,9 @@ class FakeSite:
         write_exec(self.bin / "sbatch", sbatch.replace("@ST@", st))
         squeue = head + (
             "[ -f '@ST@/squeue_fail' ] && exit 1\n"
+            # head-nodefail-detect: `-o %T` asks one job's state; state/squeue_state_<id> holds it, no file = no longer in the queue
+            "case \" $* \" in *' -o %T'*) j=''; while [ $# -gt 0 ]; do [ \"$1\" = -j ] && j=\"$2\"; shift; done; "
+            "[ -f \"@ST@/squeue_state_$j\" ] && cat \"@ST@/squeue_state_$j\"; exit 0 ;; esac\n"
             # -j <id>: that job. 009e: -n <name> (with no -j): the jobs of that name, which is how a resume asks "is the predecessor alive"
             "id=''; name=''; user=''; while [ $# -gt 0 ]; do case \"$1\" in -j) id=\"$2\"; shift ;; -n) name=\"$2\"; shift ;; -u) user=\"$2\"; shift ;; esac; shift; done\n"
             # cloud-cleanup-c: -u <user> (with -o %Z, and no -j or -n): the working folder of each job of that user, one per line
@@ -154,6 +157,13 @@ class FakeSite:
             "'(id != \"\" && $1 == id) || (id == \"\" && name != \"\" && $2 == name) {print $2 \"|\" $3 \"|\" $4}' '@ST@/jobs.tsv'\n"
             "exit 0\n")
         write_exec(self.bin / "squeue", squeue.replace("@ST@", st))
+        # sacct -j <id>: state/sacct_<id> holds the raw text it prints; state/sacct_fail makes it exit 1; no file = it knows no such job
+        sacct = head + (
+            "[ -f '@ST@/sacct_fail' ] && exit 1\n"
+            "j=''; while [ $# -gt 0 ]; do [ \"$1\" = -j ] && j=\"$2\"; shift; done\n"
+            "[ -f \"@ST@/sacct_$j\" ] && cat \"@ST@/sacct_$j\"\n"
+            "exit 0\n")
+        write_exec(self.bin / "sacct", sacct.replace("@ST@", st))
         curl = head + (
             "mode=direct; for a in \"$@\"; do [ \"$a\" = -x ] && mode=proxy; done\n"
             "how=$(cat \"@ST@/curl_$mode\" 2>/dev/null || echo ok)\n"
