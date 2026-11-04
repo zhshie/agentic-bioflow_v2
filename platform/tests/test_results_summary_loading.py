@@ -1,3 +1,4 @@
+# Nothing existing: tests of the results-page summary cards while the listing loads; the "Reading" cell text of web_board._report_cell is ours (specs/results-summary-loading/test-case.md).
 """results-summary-loading: the two report cells under the summary cards say `Reading` while the first-level listing is being read.
 Test cases are named in the comments (TC-001 ...)."""
 import re

@@ -159,7 +159,8 @@ BASE_CONFIRM = {'pending-launch-zh': (200, 'cbb48ae2d5e37305'), 'pending-cancel-
 BASE_EXPIRED = {'expired-launch-zh': (200, '523f87da28be07a7'), 'expired-cancel-zh': (200, '1b1c8e0631ccc7ff'), 'expired-launch-en': (200, '523f87da28be07a7'), 'expired-cancel-en': (200, '1b1c8e0631ccc7ff')}
 BASE_POST = {'pressed-launch': (200, 'a34f62e11916b3f4'), 'pressed-cancel': (200, '0cd42b3a6362279f'), 'late-launch': (410, '6e7214f55f0f7a1f'), 'late-cancel': (410, '6e7214f55f0f7a1f')}
 # web-upload-page ruling 25: the left column's upload item is a link now, so the six board digests are the new ones (only that item differs)
-BASE_BOARD = {'succeeded-zh': (200, 'a4af8bb5a5b19d46'), 'succeeded-en': (200, '72cbbda7e4510517'), 'failed-zh': (200, '6127e59f14087952'), 'failed-en': (200, '29d6915f4d99cf18'), 'running-zh': (200, '816b53a71229567f'), 'running-en': (200, '4372dc4d2c4050bf')}
+# results-summary-loading: the succeeded board opens on the Outputs tab while its listing loads, so its two report cells say Reading; only the succeeded digests changed
+BASE_BOARD = {'succeeded-zh': (200, 'a1dcec50d456b722'), 'succeeded-en': (200, 'ffc450af5d69794c'), 'failed-zh': (200, '6127e59f14087952'), 'failed-en': (200, '29d6915f4d99cf18'), 'running-zh': (200, '816b53a71229567f'), 'running-en': (200, '4372dc4d2c4050bf')}
 BASE_STYLE = '6b2683ae09caee2a'
 
 
