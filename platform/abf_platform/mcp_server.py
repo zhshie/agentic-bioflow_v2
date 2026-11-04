@@ -179,7 +179,7 @@ def _add_write_tools(server, platform_path, index_path):
     Nothing here says yes for anybody."""
 
     @server.tool(name="launch", annotations=_WRITES,
-                 description="Ask to launch a new Nextflow run on a compute environment (to continue a failed run use resume or "
+                 description="Ask to launch a Nextflow run on a compute environment (to continue a failed run use resume or "
                              "relaunch). This does NOT start anything: it writes a request and returns a summary with sent false and "
                              "a page address. The person answers in their own client's form or on that page; you cannot answer for "
                              "them. After that call launch again with the same arguments to get the job number. Samples: samplesheet "

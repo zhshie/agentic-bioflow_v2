@@ -281,16 +281,11 @@ def test_no_web_route_for_it(d, w):
 
 
 def test_no_schema_change():
-    # developer-agent 11-04: pin moved from the stale commit e428661b (v3 added a job kind since) to origin/v3, so it checks only what this branch changes
     # TC-032
-    # a mirror clone keeps a stale origin/v3 ref, so the v3 commit this branch was merged from is a second base; either base being clean proves this branch changed nothing
-    outs = []
-    for base in ("origin/v3", "780b70472882a0d97e99f5c7ad4aa9a454d32d58"):
-        r = subprocess.run(["git", "diff", "--stat", base, "--", "migrations", "abf_platform/store.py", "abf_platform/schema.sql"],
-                           cwd=str(HERE.parent), capture_output=True, text=True)
-        if r.returncode == 0:
-            outs.append(r.stdout.strip())
-    assert outs and "" in outs, outs
+    # pin moved from the stale commit e428661b (v3 changed store.py since) to origin/v3
+    out = subprocess.run(["git", "diff", "--stat", "origin/v3", "--", "migrations", "abf_platform/store.py", "abf_platform/schema.sql"],
+                         cwd=str(HERE.parent), capture_output=True, text=True).stdout
+    assert out.strip() == ""
 
 
 # ---- constitution ----

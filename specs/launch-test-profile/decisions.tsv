@@ -17,3 +17,7 @@ ts	phase	decision	why	evidence	result
 2026-11-04	fix-round3	合併 origin/v3 後 test_no_schema_change 仍紅，依裁決 C.2 BLOCKED	store.py 與 v3 相同，差異來自 v3 加 read_run_file	git diff e428661b origin/v3 -- platform/abf_platform/store.py（38 行）；test_mcp_launch_pipeline.py::test_no_schema_change	121 passed 1 failed
 2026-11-04	fix-round4	test_no_schema_change 加第二個基準 commit 780b7047，任一基準無差異即過	全套在 WSL mirror 跑時 origin/v3 是舊 ref（30f8853b），store.py 差 339 行，工作樹內實際無差異	platform/tests/test_mcp_launch_pipeline.py test_no_schema_change	mirror 內 21 passed
 2026-11-05	fix-round	還原 web.py 的 2 行（Config profiles 標籤），回到合約 TC-069 的『web.py 不動』；摘要不再有 profiles 一列	合約要求 web.py、web_board.py、static/ 不被修改；11-04 的例外沒有維護者核可，也沒回頭改合約	platform/abf_platform/web.py 與 origin/v3 相同；test_launch_profiles.py test_tc069 新增 git diff 檢查	test_launch_profiles.py 101 通過
+2026-11-05	fix-round7	合併 origin/v3 (3b1975da) 並採用它的 test_mcp_launch_pipeline.py 原文，撤回自己對 test_no_schema_change 的改動	驗收指出該測試被改且計畫未點名；v3 已把釘點改成 origin/v3（裁決 D）	test_mcp_launch_pipeline.py 與 origin/v3 無差異	待全套
+2026-11-05	fix-round7	TC-058 門檻還原為 600：launch 說明刪掉 "new "（603 到 599 字元）	TC-058 寫約 600，測試不該放寬到 700	mcp_server.py launch description；test_launch_profiles.py test_tc058	待全套
+2026-11-05	fix-round7	test_tc001 的自我比對斷言換成真正檢查 OVERWRITE 區塊（added by the platform 一次、report/timeline.overwrite）	原斷言恆真	test_launch_profiles.py test_tc001_tc002_tc003_tc004	100+通過
+2026-11-05	fix-round7	docs/TESTING.md 把 Head job ended by the scheduler 小節移回原處，新節放在它之後（檔尾）	TC-012 既有段落歸屬不能變	git diff origin/v3 -- docs/TESTING.md 只有新增行	通過

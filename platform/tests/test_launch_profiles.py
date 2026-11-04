@@ -254,7 +254,8 @@ def test_tc001_tc002_tc003_tc004_a_test_launch_without_a_samplesheet_is_proposed
     assert b["profiles"] == ["test"] and b["samplesheet"] is None
     assert sorted(b["files"]) == ["head.sh", "nextflow.config", "params.yaml"]
     assert "input" not in b["files"]["params.yaml"] and "outdir" in b["files"]["params.yaml"]
-    assert b["files"]["nextflow.config"] == render()["files"]["nextflow.config"].replace(render()["files"]["nextflow.config"], b["files"]["nextflow.config"])
+    cfg = b["files"]["nextflow.config"]
+    assert cfg.count("added by the platform") == 1 and "report.overwrite = true" in cfg and "timeline.overwrite = true" in cfg    # TC-004: the overwrite block, once
     assert w.jobs() == []
 
 
@@ -432,7 +433,7 @@ def test_tc058_the_description_is_short_and_says_what_to_do(w):
     # TC-058: about 600 characters
     tools, _ = w.mcp([])
     d = [t for t in tools if t.name == "launch"][0].description
-    assert len(d) <= 700, len(d)
+    assert len(d) <= 600, len(d)
     for must in ("does NOT start", "resume or relaunch", "same arguments", "profiles", "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used."):
         assert must in d, must
 

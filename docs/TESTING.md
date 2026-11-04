@@ -1038,6 +1038,11 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
 4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
 
+### Head job ended by the scheduler (manual, on nano4)
+
+1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
+2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.
+
 ## nano4 test profile 驗收 (launch-test-profile): the maintainer checks
 
 Run on nano4 after the platform with this change is installed. A launch may now carry `profiles=["test"]`; with a `test`, `test_full` or `test_*` profile no samplesheet is needed, and the pipeline runs on its own test data. The person still says yes on the confirmation page.
@@ -1056,8 +1061,3 @@ For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrn
 2. The answer is "pending" with a page address. Open it: the screen says `Config profiles: test` and `Samplesheet: from the pipeline's test profile`, and head.sh has ` -profile test` after the site `-c` lines and before `-with-tower`. Say yes there.
 3. Wait until the run ends. It must reach SUCCEEDED; write the run name and its final status in the ledger.
 4. Also try `profiles=["nope"]`: nothing is sent and the answer lists the names the site has.
-
-### Head job ended by the scheduler (manual, on nano4)
-
-1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
-2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.
