@@ -131,7 +131,7 @@ _VALUE_PATTERNS = [
 
 # A URL that carries its secret (D9). Kept apart from _VALUE_PATTERNS because test_model_key_refusal pins that list exactly.
 _URL_SECRET_PATTERNS = [
-    re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s/?#@]*:[^\s/?#@]*@"),              # https://user:pw@host/ - userinfo ends at the first / ? #
+    re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://[^\s/?#@:]*:[^\s/?#@]*@"),   # https://user:pw@host/ - userinfo ends at the first / ? #; scheme anchored by lookbehind and no ':' in the user part, so it is linear
     re.compile(r"[?&](?:X-Amz-Signature|X-Goog-Signature)=[A-Za-z0-9%+/=]{16,}", re.I),   # a pre-signed URL carries its secret in the query
 ]
 
