@@ -283,7 +283,7 @@ def validate_pipeline(platform_path, pipeline_id, version=None, *, caller=None, 
     """Check one version of a pipeline (no version means the newest) and keep the result as the latest one of that version. The
     outer `ok` says the call worked; `validation.ok` says the graph has no error. Only the platform's own database is written.
     With `lint=True` the check is kept as always and then one lint of the project files is asked of an agent of the caller (on
-    `compute_env` if one is named); the answer is `lint`: queued with its job_id, or refused with the reason, and a refusal does
+    `compute_env` if one is named); the answer is `lint`: sent with its job_id, or refused with the reason, and a refusal does
     not undo the check. The lint result is collected later by get_validation. Nothing waits and nothing is started here."""
     if lint is not True and lint is not False:
         return _no("lint 只能是 True 或 False (lint must be True or False)")

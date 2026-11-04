@@ -11,3 +11,4 @@
 - Full-suite fix round: kind list/slice pins also in test_cleanup_confirm, test_cleanup_store, test_pipeline_files_queue, test_resume_scope (append lint_pipeline; no assertion weakened).
 
 - Full-suite fix round 2: kind-list/CHECK pins in test_launch_platform, test_station_platform (two), test_cloud_cost (append lint_pipeline); test_web_nano4_path TC-043 digest strips the new CHECK entry like test_k8s_launch. No assertion weakened.
+- Full-suite fix round 3: test_http_site_samplesheet TC-057 digest strips the new CHECK entry; pipelines.py docstring reworded (no word "queue", pinned by test_pipelines_store).
