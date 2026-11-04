@@ -436,6 +436,21 @@ def test_tc024_the_confirmation_page_shows_a_launch_without_a_samplesheet(w):
     assert "Config profiles" in page.text and "test profile" in page.text
 
 
+def test_tc024_the_summary_names_the_profile_and_never_says_zero_samples(w):
+    # TC-024 (fix round: the plain summary at the top of the confirmation page)
+    import re
+    from abf_platform import actions
+    out = ask(w, w.ann, ["test"])
+    facts = actions.request_facts(w.state_db, out["id"])
+    assert "samples" not in facts and facts["profiles"] == "test", facts
+    client = w.web()
+    assert w.login(client, "ann").status_code in (200, 303)
+    page = client.get("/c/" + out["id"]).text
+    block = re.search(r'<dl class="fields plain">(.*?)</dl>', page, re.S).group(1)
+    assert "樣本數" not in block and "<dd>0</dd>" not in block, block
+    assert "Config profiles" in block and "<dd>test</dd>" in block, block
+
+
 def test_tc024_the_form_answer_sends_the_test_launch(w):
     # TC-024 TC-001: a client with a form: the person presses send, and the launch job is queued with the same bundle
     out = ask(w, w.ann, ["test"], answer=form_answer())
