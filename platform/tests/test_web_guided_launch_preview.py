@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from abf_launch import build
-from test_web_actions import area_sheet, login
+from test_web_actions import area_sheet, login, form_values, rid_of, request_of, pending
 from test_web_board import no_cjk
 from test_web_guided_launch import SEL, rig, set_env  # noqa: F401  (rig is a fixture)
 from test_web_guided_launch_2 import A, fk, good_files, loading_files, error_files, plain_text, step  # noqa: F401  (fk is a fixture)
@@ -51,6 +51,21 @@ def page(rig, content, name="s.csv", lang=""):
 
 def four_of(r):
     return step(r.text, 4)
+
+
+def press_send(rig, c, name):
+    """Really press the send button: post the form as the page would, and return the id of the confirmation page it lands on."""
+    before = pending(rig)
+    r = c.post("/launch", data=form_values(rig, c, "ann", samplesheet=name))
+    if r.status_code != 303:
+        # The sheet is one the EXISTING send check refuses (NUL, bad UTF-8, empty); that is what it does with no preview at all, and it must not be the preview's doing.
+        refusal = re.findall(r'<p class="bad"[^>]*>(未送出[^<]*)</p>', r.text)
+        assert r.status_code == 400 and len(refusal) == 1 and "預覽" not in refusal[0] and pending(rig) == before, (name, r.status_code, refusal)
+        return None
+    rid = rid_of(r)      # 303 to /c/<id>: the existing confirmation page, not stopped by the preview
+    assert pending(rig) == before + 1 and request_of(rig, rid)["state"] == "pending"
+    assert c.get("/c/" + rid).status_code == 200
+    return rid
 
 
 def test_preview_replaces_not_yet_open(rig, fk):
@@ -121,12 +136,13 @@ def test_column_roles_symbol_and_text(rig, fk):
 def test_maintainer_example_no_chatty_sentence(rig, fk):
     # TC-104, TC-105, TC-521, TC-108
     with_schema(fk, ["sample", "forwardReads", "reverseReads"])
-    _, r, _ = page(rig, csv_text(("sample", "forwardReads"), [("a", "b")]))
+    c, r, _ = page(rig, csv_text(("sample", "forwardReads"), [("a", "b")]))
     four = plain_text(four_of(r))
     assert "✗ 缺少必填欄" in four and "reverseReads" in four
     for bad in ("AI", "改不了", "選用這個樣本", "用過的", "樣本表少了"):
         assert bad not in four
     assert "送出（前往確認頁）" in r.text
+    press_send(rig, c, "s.csv")      # TC-108: the missing required column does not stop the send
 
 
 def test_no_pipeline_selected_preview_only(rig, fk):
@@ -210,17 +226,19 @@ def test_only_own_uploads(rig, fk):
 
 def test_unreadable_sheet_says_so_and_send_still_works(rig, fk):
     # TC-308 .. TC-311, TC-313, TC-314, TC-316
-    cases = [(b"a,b\n" + b"x," * 700_000 + b"\n", "樣本表大於 1 MiB，無法預覽。"),
+    cases = [(b"a,b\n" + b"11,22\n" * 200_000, "樣本表大於 1 MiB，無法預覽。"),
              (b"a,b\n1,\x002\n", "樣本表不是 UTF-8 文字檔，無法預覽。"),
              (b"a,b\n\xff\xfe,2\n", "樣本表不是 UTF-8 文字檔，無法預覽。"),
              (b"", "樣本表是空的，沒有標頭列。")]
     for i, (content, said) in enumerate(cases):
-        _, r, _ = page(rig, content, name="bad%d.csv" % i)
+        c, r, _ = page(rig, content, name="bad%d.csv" % i)
         four = four_of(r)
         assert r.status_code == 200 and said in plain_text(four), (i, plain_text(four))
         assert '<p class="bad"><span class="csym">✗</span> %s</p>' % said in four
         assert "樣本表預覽" not in four and "欄位角色" not in four
         assert "送出（前往確認頁）" in r.text and "Traceback" not in four
+        sent = press_send(rig, c, "bad%d.csv" % i)      # TC-315: an unreadable sheet does not stop the send either
+        assert (sent is not None) == (i == 0), i      # the over-1-MiB sheet is well formed, so it really lands on the confirmation page
 
 
 def test_unreadable_when_gone(rig, fk, monkeypatch):
