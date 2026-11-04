@@ -16,3 +16,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	fix	全套發現：jobs.py 的註解不得含 sched 字樣（既有 aws/azure 範圍測試）；pitfalls_format_test 釘死 94 條，加 #59 後改為 95（只增不減）；#59 的 Touches 項目改成條目文字內有的詞	TC-025 計畫要求新增一條	tests/pitfalls_format_test.sh	—
 2026-11-04	fix	修剪 jobs 時保留帶壞結束事實的 fetch_run_records；_fetches_of 不再只取 20 筆	對抗審：7 天後事實被刪 Failed 變回 lost；20 筆普通抓取擠掉事實（裁決 P1/P2）	jobs.py:_insert_job, _fetches_of; test_head_nodefail.py TC-035/036	測試綠
 2026-11-04	fix	修剪條件的 SQL 移到 failures.kept_fact_sql	全套發現 aws/azure 範圍測試禁 jobs.py 出現 sched 字樣	failures.py:kept_fact_sql	相關測試綠
+2026-11-04T12:00	fix	新增 actions._shown_status，forget_check 與 my_usage 都用 get_run 顯示的狀態；失敗通知時間沒有 ended_at 時改用 last_message_at	一個 run 只能有一個狀態；對抗審 ADV-1..3	platform/abf_platform/actions/__init__.py _shown_status; web_board.py _failure_notice	test_head_nodefail 71 全過

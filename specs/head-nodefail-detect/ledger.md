@@ -11,3 +11,4 @@
 - [x] 對抗審第二輪（11-04）：續跑後同資料夾的 .nextflow.log 是續跑的，不能遮住第一次嘗試的 NODE_FAIL；完成行要每個「看得出真的跑過」的 log 都有才不問排程器（fetch.py）。平台端 head_state 仍只取最新讀回（TC-014 d 釘住），因站台不再回 None 而不會翻回 lost。
 - [x] 裁決 P（11-04）：git merge origin/v3（PITFALLS.md 衝突已解）；P1 head_state 只取有 scheduler 事實的最新抓取；P2 scheduler=None 不蓋掉終結事實；P3 已知終結事實不再排抓取、caller=None 不排站台工作；P4 輪替檔缺啟動標記且無完成行時仍問排程器（TC-030..034）。其餘 C 級後續項不做。
 - [x] 對抗審修正（11-04）：TC-035 帶壞結束事實的讀回不被 7 天修剪刪掉（Failed 不會退回 lost）；TC-036 _fetches_of 不再以 20 筆截斷，普通抓取擠不掉事實。
+- [x] 對抗審第三輪（11-04）：forget、用量頁、失敗通知時間與 get_run 一致（ADV-1..3，test_head_nodefail.py 尾段；合約無對應條目，視為 TC-031 延伸）
