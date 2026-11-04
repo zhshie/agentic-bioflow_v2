@@ -27,3 +27,28 @@ FAIL missing path: one line, launch not called: usage: ui_check.py [-h] [--base-
 ui_check.py: error: unrecognized arguments: --chromium-path /nonexistent/chrome
 ui_check_script_test: FAIL
 ```
+
+## GREEN (after the change)
+```
+ok   --help exits 0
+ok   --help lists --base-url
+ok   --help lists --out
+ok   --help lists --pages
+ok   --help lists --start
+ok   --help lists --chromium-path
+ok   .gitignore has ui-check-*/
+ok   unknown option exits 2
+ok   missing --base-url/--start exits 2
+ok   unknown page name exits 2
+ok   no playwright exits 3
+ok   one explicit line
+ok   --chromium-path reaches launch as executable_path
+ok   launch failure with the flag still exits 3
+ok   $CHROME_PATH is the default
+ok   --chromium-path beats $CHROME_PATH
+ok   empty $CHROME_PATH counts as unset
+ok   no flag, no env: launch() unchanged, exit 3
+ok   missing chromium path exits 3
+ok   missing path: one line naming it, launch not called
+ui_check_script_test: PASS
+```
