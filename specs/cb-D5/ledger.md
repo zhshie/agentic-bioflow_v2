@@ -38,3 +38,34 @@ collect_provenance.py has no ^...$ literal                 FAIL: ['^(execution_r
 
 FAIL
 ```
+
+## Fix commit
+7aba0822 Fix: end methods_text and collect_provenance validators with \Z; drop dead assets_dir
+
+## Targeted tests after fix
+methods_text_anchor_test.sh, regex_end_anchor_test.sh, package_gaps_test.sh: all rc=0
+
+## Full suite (HEAD 7aba0822, 136/144 passed, 8 failed - NOT green locally)
+Failures are environmental and identical in kind to cloud-burn D1/D3 runs on unrelated code: agent_ctl_connection_id (USER unbound), why_pending, wsl_bridge (rsync/MSYS), platform_clock/platform_test/platform_shard_5-7 (station/cli snapshot/read-only cache tests as root, not touching these files). None touch methods_text, collect_provenance, package_gaps or regex_end_anchor.
+```
+FAIL       agent          not running - Platform will show no outputs (scripts/on_site.sh --script scripts/agent_ctl.sh start)
+FAIL       resources      tar: Child returned status 141
+FAIL       compute-env    ce is 'unreachable'>>
+missing rsync on MSYS is FAILed by name                    ok
+and it says plainly that Git Bash ships none               ok
+and gives an install route rather than nothing             ok
+
+-- (i) install_deps.sh: tw on MSYS is named plainly, not folded into 'unknown platform' --
+install_deps.sh --cli-only fails cleanly, not silently     ok
+it names the gap as unmeasured (R4), a real answer         ok
+and gives the Windows asset to fetch by hand               ok
+it does not fall back to the generic unknown-platform text ok
+shim does not run wsl.exe from the caller's own cwd        ok
+and lands in a directory that exists                       ok
+only settings.sh decides whether the bridge is in play     ok
+and nothing hardcodes the control-path default beside it   ok
+
+3 failed
+
+136/144 passed, 8 failed
+```
