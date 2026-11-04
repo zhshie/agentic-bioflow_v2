@@ -1061,3 +1061,15 @@ For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrn
 2. The answer is "pending" with a page address. Open it: the screen says `Config profiles: test` and `Samplesheet: from the pipeline's test profile`, and head.sh has ` -profile test` after the site `-c` lines and before `-with-tower`. Say yes there.
 3. Wait until the run ends. It must reach SUCCEEDED; write the run name and its final status in the ledger.
 4. Also try `profiles=["nope"]`: nothing is sent and the answer lists the names the site has.
+
+## pipe-reg-store: pipeline registration record (manual checks)
+
+### (a) The diff stays inside the scope
+
+1. Run `git diff --stat origin/v3...HEAD`.
+2. It lists only `platform/abf_platform/actions/registrations.py`, `platform/abf_platform/actions/__init__.py`, `platform/tests/test_pipeline_registrations.py`, `platform/tests/test_actions_layer.py`, `platform/tests/test_owner_guard.py`, `platform/tests/test_web_parity.py`, `docs/TESTING.md` and files under `specs/pipe-reg-store/`. None of `compute_envs.py`, `store.py`, `abf_station/`, `web*.py`, `mcp_server.py`, `cli.py`, `jobs.py` appears.
+
+### (b) The three list tests only gained lines
+
+1. Run `git diff origin/v3...HEAD -- platform/tests/test_actions_layer.py platform/tests/test_owner_guard.py platform/tests/test_web_parity.py`.
+2. Every changed line begins with `+` (apart from the file headers); no line begins with `-`.

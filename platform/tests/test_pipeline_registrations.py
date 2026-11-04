@@ -62,13 +62,13 @@ def count(w, table="pipeline_registrations"):
 def propose(w, ce="lab-a", pipeline=RN, revision=R1, caller=None, by="PAGE"):
     a = A()
     return a.propose_pipeline_registration(w.db, ce=ce, pipeline=pipeline, revision=revision,
-                                           confirmed_by=getattr(a, by) if isinstance(by, str) else by, caller=caller or w.ann)
+                                           confirmed_by=getattr(a, by) if by == "PAGE" else by, caller=caller or w.ann)
 
 
 def remove(w, ce="lab-a", pipeline=RN, revision=R1, caller=None, by="PAGE"):
     a = A()
     return a.remove_pipeline_registration(w.db, ce=ce, pipeline=pipeline, revision=revision,
-                                          confirmed_by=getattr(a, by) if isinstance(by, str) else by, caller=caller or w.ann)
+                                          confirmed_by=getattr(a, by) if by == "PAGE" else by, caller=caller or w.ann)
 
 
 def listing(w, ce="lab-a", caller=None):

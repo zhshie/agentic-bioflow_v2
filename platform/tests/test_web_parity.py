@@ -46,6 +46,11 @@ WEB_ONLY = {
     # 012a-settings-page: the person's own two switches; no MCP tool, so no AI can turn development mode on or off for anyone
     "get_my_settings": "網頁專用唯讀 (GET /settings): the caller's own step-by-step and development-mode flags; reads only; no MCP tool",
     "set_my_setting": "寫入需在網頁按鈕確認 (POST /settings/personal, the PAGE channel); no MCP tool",
+    # pipe-reg-store: the registration record's actions; no web route yet, pipe-reg-settings-ui 接上; no MCP tool
+    "list_pipeline_registrations": "暫列，pipe-reg-settings-ui 接上 (no route yet): the caller's pipeline registrations; reads only; no MCP tool",
+    "list_registered_pipelines": "暫列，pipe-reg-launch-filter 接上 (no route yet): the caller's registered pipeline versions; reads only; no MCP tool",
+    "propose_pipeline_registration": "暫列，pipe-reg-settings-ui 接上 (no route yet): 寫入需在網頁確認頁確認 (the PAGE channel); no MCP tool",
+    "remove_pipeline_registration": "暫列，pipe-reg-settings-ui 接上 (no route yet): 寫入需在網頁確認頁確認 (the PAGE channel); no MCP tool",
 }
 # Actions with an MCP tool of the same name and no web route yet. The list only shrinks: adding a name means changing this test, the ledger and the plan (R2).
 OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "012d", "read_task_log": "011c",
