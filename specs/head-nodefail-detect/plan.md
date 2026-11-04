@@ -130,6 +130,10 @@ R. /code-review 第三次對 PR #318 的裁決（11-04，只收兩項，其餘�
  3. 其餘六項（NODE_FAIL 重排風險、kept_fact_sql 效能、symlink 日誌、list_runs 多餘查詢、狀態表重複、區域 import）進 backlog，不擋這支 PR。
  4. 第一步仍是 git merge origin/v3；測試編號從 TC-044 起。
 
+## 裁決 R4（11-04，developer-agent，Opus 對抗審後）
+
+對抗審對：6 小時放棄上限只能在「至少問過一次卻沒答案」之後生效；從未被問過的失聯 run，有人第一次打開時要問一次（隔夜才看的 t1 NODE_FAIL 才顯示原因）。合約 TC-044 的 [no_fetch] 變體已由我改成「恰好排一筆，之後不再排」，[only_none] 不變。改 `jobs.ask_head_state`：放棄條件加上「已有至少一筆抓取列」。先寫 RED 再改。
+
 ## 專長守則（backend）
 
 ### executor
