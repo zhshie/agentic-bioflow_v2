@@ -13,7 +13,8 @@
 #   - fails on a baseline line that is no longer a duplicate (the baseline may only
 #     shrink: delete the line so the gain is kept).
 # It never fails because the baseline is long. To pay one down, source one copy
-# from scripts/utils/ and delete its lines here.
+# from scripts/utils/ and delete its lines here. `bash tests/shell_helper_dupes_test.sh
+# --print` prints today's set in the baseline's format.
 #
 # A function is a line that starts (after indentation) with `name()` or
 # `function name`. A name defined twice inside ONE file is not counted: that is
@@ -61,6 +62,10 @@ compare() {
         echo "STALE $n in $f is no longer a duplicate: delete its line from the baseline"
     done
 }
+
+if [ "${1:-}" = "--print" ]; then   # prints today's set in baseline format
+    dupes "$ROOT"; exit 0
+fi
 
 # --- the real tree ---------------------------------------------------------
 if [ ! -f "$BASELINE" ]; then
