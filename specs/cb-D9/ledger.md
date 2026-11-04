@@ -90,3 +90,40 @@ FAILED platform/tests/test_url_credential_patterns.py::test_credential_check_is_
 FAILED platform/tests/test_url_credential_patterns.py::test_credential_check_is_linear_on_hostile_input[text2]
 3 failed, 39 deselected in 82.04s (0:01:22)
 ```
+
+## Fix round: GREEN for the timing test, corpus compare, full suite
+
+Fixed regex: `(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://[^\s/?#@:]*:[^\s/?#@]*@`.
+`pytest test_url_credential_patterns.py test_model_key_refusal.py test_k8s_paste_rule.py`: 87 passed (timing test included; it failed 3/3 above).
+Measured on the fixed regex via `looks_like_credential`: `'a.'*500000` 0.274 s, `'x://'+'a:'*500000` 0.269 s (both False).
+
+Corpus compare after the regex change (every line and string constant of every .py/.md/.sh in the worktree plus 19 hand shapes, 178120 strings):
+base refuses 518, branch refuses 558, LOST 0, GAINED 40, all gained strings are `scheme://user:pw@host` URLs or `X-Goog/X-Amz-Signature=` URLs
+(or lines quoting them). Counter-examples `https://h/a.fq.gz`, `git@github.com:org/repo.git`, `https://h/x?y=z@w`, `user@host:22`, `a@b.c` stay accepted.
+
+Full suite at code commit 32d3b603: NOT green locally: 134/143 passed, 9 failed, identical set to the previous round (environment: VM runs as root, no USER var,
+no tw, no rsync; test_station_e2e tc056/tc082, test_cli_snapshots[cli_help_top], three read-only-cache tests, 7 test_wrapper_nf2 setup errors; none touches compute_envs).
+Last 20 lines of run_all:
+
+```
+FAIL       resources      tar: Child returned status 141
+FAIL       compute-env    ce is 'unreachable'>>
+missing rsync on MSYS is FAILed by name                    ok
+and it says plainly that Git Bash ships none               ok
+and gives an install route rather than nothing             ok
+
+-- (i) install_deps.sh: tw on MSYS is named plainly, not folded into 'unknown platform' --
+install_deps.sh --cli-only fails cleanly, not silently     ok
+it names the gap as unmeasured (R4), a real answer         ok
+and gives the Windows asset to fetch by hand               ok
+it does not fall back to the generic unknown-platform text ok
+shim does not run wsl.exe from the caller's own cwd        ok
+and lands in a directory that exists                       ok
+only settings.sh decides whether the bridge is in play     ok
+and nothing hardcodes the control-path default beside it   ok
+
+3 failed
+
+134/143 passed, 9 failed
+EXIT 1
+```
