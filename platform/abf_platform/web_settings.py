@@ -9,7 +9,7 @@ yet stays greyed "coming later".
 import hashlib
 import re
 
-from . import web_board, web_launch
+from . import web_board, web_devmode, web_launch
 from .web_board import esc
 
 DONE, MISSING, LATER, GONE, FAIL = "done", "missing", "later", "gone", "fail"
@@ -103,7 +103,7 @@ STRINGS = {
 }
 SYMBOL = {DONE: "✓", MISSING: "✗", LATER: "—", GONE: "○", FAIL: "✕"}
 CLASS = {DONE: "chip state-succeeded", MISSING: "chip state-failed", LATER: "chip muted", GONE: "chip muted", FAIL: "chip state-failed"}
-NOTICES = ("added_queued", "added_no_agent", "added_not_checkable", "added_check_refused", "removed", "gone", "inv_queued", "inv_no_agent")      # the only values ?notice= may carry
+NOTICES = ("added_queued", "added_no_agent", "added_not_checkable", "added_check_refused", "removed", "gone", "inv_queued", "inv_no_agent", "personal-saved")      # the only values ?notice= may carry
 SLURM_TYPE = "slurm-platform"
 CLOUD_TYPES = ("googlebatch-platform", "awsbatch-platform", "azbatch-platform")      # compute_envs.PLATFORM_HOST_TYPES (this module may not import it; a test keeps the two equal)
 FIELDS = ("pipeline", "revision", "module", "home")
@@ -290,9 +290,29 @@ def _compute(t, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_
     return '<section class="card sec"><h2>%s</h2>%s%s</section>' % (esc(t["set_ce"]), body, _grey_line(t, "ce_later"))
 
 
-def _credentials(t):
-    return ('<section class="card sec"><h2>%s</h2><p class="muted">%s</p>%s</section>'
-            % (esc(t["set_cred"]), esc(t["token_hint"]), _grey_line(t, "tok_later")))
+def _credentials(t, has_token=False):
+    """The token line says only "set" or "not set" (012a-settings-page): no value, no hash, no list."""
+    state = _chip(DONE, t["cred_set"]) if has_token else _chip(LATER, t["cred_not"])
+    line = '<p>%s</p>' % (esc(t["cred_line"] % (t["st_token"], "")) + state)
+    return ('<section class="card sec"><h2>%s</h2><p class="muted">%s</p>%s%s</section>'
+            % (esc(t["set_cred"]), esc(t["token_hint"]), line, _grey_line(t, "tok_later")))
+
+
+def _pref_row(t, lang, key, on, pp_csrf):
+    """One switch: label, state (symbol and word) and one button that posts the opposite value. No script, no confirmation step."""
+    label = t["set_step"] if key == "step_mode" else t["set_dev"]
+    state = _chip(DONE, t["pref_on"]) if on else _chip(LATER, t["pref_off"])
+    form = ""
+    if pp_csrf:
+        form = ('<form method="post" action="/settings/personal">%s<button type="submit">%s</button></form>'
+                % (_hidden([("csrf", pp_csrf), ("key", key), ("on", "0" if on else "1"), ("lang", lang)]), esc(t["pref_turn_off" if on else "pref_turn_on"])))
+    return '<li class="pref"><span>%s</span>%s%s</li>' % (esc(label), state, form)
+
+
+def _own_prefs(t, lang, prefs=None, pp_csrf=None):
+    prefs = prefs or {"step_mode": True, "dev_mode": False}
+    return ('<section class="card sec"><h2>%s</h2><ul>%s%s</ul></section>'
+            % (esc(t["set_me"]), _pref_row(t, lang, "step_mode", prefs["step_mode"], pp_csrf), _pref_row(t, lang, "dev_mode", prefs["dev_mode"], pp_csrf)))
 
 
 def _keys(t):
@@ -302,7 +322,7 @@ def _keys(t):
 
 def _rest(t):
     out = ""
-    for head, entries in web_board.SETTINGS[3:]:      # personal, operator panel, roles: as before, still to come
+    for head, entries in web_board.SETTINGS[4:]:      # operator panel, roles: as before, still to come (the personal section is _own_prefs)
         inner = "<ul>%s</ul>" % "".join("<li>%s</li>" % web_board._grey(t, e) for e in entries) if entries else "<p>%s</p>" % web_board._later(t)
         out += '<section class="card sec"><h2>%s</h2>%s</section>' % (esc(t[head]), inner)
     return out
@@ -311,6 +331,7 @@ def _rest(t):
 def words(lang):
     t = dict(web_board.STRINGS[web_board.pick_lang(lang)])
     t.update(STRINGS[web_board.pick_lang(lang)])
+    t.update(web_devmode.personal_words(web_board.pick_lang(lang)))      # 012a: kept out of STRINGS (its hash is pinned by test_ce08)
     return t
 
 
@@ -331,20 +352,21 @@ def field_error(lang, field, value):
     return None
 
 
-def render_middle(lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None):
-    """The middle column. `envs` is the list inside the answer of list_compute_envs."""
+def render_middle(lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None, prefs=None, pp_csrf=None, has_token=False):
+    """The middle column. `envs` is the list inside the answer of list_compute_envs; `prefs` is the answer of get_my_settings, `pp_csrf` the token
+    of the two switch forms (without it no button is drawn) and `has_token` says whether the person has a live access token."""
     lang = web_board.pick_lang(lang)
     t = words(lang)
-    return ('<main class="main" data-pane="middle"><h1>%s</h1>%s%s%s%s%s%s</main>'
+    return ('<main class="main" data-pane="middle"><h1>%s</h1>%s%s%s%s%s%s%s</main>'
             % (esc(t["settings"]), _flash(t, flash, None), _setup(t, lang, envs), _compute(t, lang, envs, pf_csrf, flash, given, inv, inv_csrf),
-               _credentials(t), _keys(t), _rest(t)))
+               _credentials(t, has_token), _keys(t), _own_prefs(t, lang, prefs, pp_csrf), _rest(t)))
 
 
-def render(name, csrf, runs, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None):
+def render(name, csrf, runs, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None, prefs=None, pp_csrf=None, has_token=False):
     """GET /settings: the same frame as the board, this middle column. The left and right columns stay as web_board draws them.
     `pf_csrf` is the token of the register and remove forms (without it no form is drawn); `flash` says a notice or a failure; `given` holds
     what a person typed, {environment name: {box: text}}, so that a refused form comes back filled."""
-    return web_board._frame(name, csrf, runs, lang, "settings", lambda t, lang_: render_middle(lang, envs, pf_csrf, flash, given, inv, inv_csrf),
+    return web_board._frame(name, csrf, runs, lang, "settings", lambda t, lang_: render_middle(lang, envs, pf_csrf, flash, given, inv, inv_csrf, prefs, pp_csrf, has_token),
                             lambda t, lang_: web_board._right(t, None), path="/settings")
 
 

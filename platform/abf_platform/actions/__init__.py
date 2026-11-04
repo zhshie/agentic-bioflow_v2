@@ -1155,6 +1155,21 @@ def register_site_pipeline(platform_path, *, ce, pipeline, revision, module, hom
     return {"ok": True, "changed": True, "preflight": code}
 
 
+def get_my_settings(tokens_path, *, caller=None):
+    """The caller's own two personal flags, {"step_mode": bool, "dev_mode": bool}; nobody else's, and no way to ask for another person."""
+    return store.user_prefs(tokens_path, caller.user_id) if caller else dict(store.PREF_DEFAULTS)
+
+
+def set_my_setting(tokens_path, key, on, *, confirmed_by=None, caller=None):
+    """Save one of the caller's own personal flags (step_mode, dev_mode). Only through a person's channel; no MCP tool calls it.
+    Returns {"ok": True}, or {"ok": False, "message"} for a key that is not one of the two or an `on` that is not true or false."""
+    _require_human(confirmed_by)
+    if caller is None or key not in store.PREF_DEFAULTS or not isinstance(on, bool):
+        return {"ok": False, "message": "只能設定逐步模式或開發模式，且須為開或關 (only step_mode or dev_mode, on or off)"}
+    store.set_user_pref(tokens_path, caller.user_id, key, on)
+    return {"ok": True}
+
+
 def remove_site_pipeline(platform_path, *, ce, pipeline, revision, confirmed_by=None, caller=None):
     """Remove one pipeline version from the caller's own compute environment, only after a person's yes. No check is queued. A version that
     is not listed changes nothing: {"ok": True, "changed": False}."""
