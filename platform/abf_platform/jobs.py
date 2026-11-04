@@ -445,6 +445,26 @@ def _newest_fact(rows, launch):
     return _newest_fact_row(rows, launch)[0]
 
 
+def _bad_end_began(rows, launch):
+    """When the head job was first said to have ended badly, in the unbroken line of bad answers that ends with the newest one. The
+    six hours of ruling Q1 count from there, not from the latest repeat of the same answer (which would never let them pass). An
+    answer that says the head is alive again, or ended well, breaks the line."""
+    began = 0
+    for row in rows:
+        if row["state"] != "done":
+            continue
+        try:
+            fact = failures.head_fact_of(json.loads(row["result_json"]))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        if fact is None or fact["job_id"] != str(launch["slurm_job_id"]):
+            continue
+        if fact["state"] not in failures.ENDED_BAD:
+            break
+        began = row["finished_at"] or row["created_at"] or 0
+    return began
+
+
 def head_state(state_path, run_name):
     """What the newest read-back of this run that really asked Slurm said of its Slurm head job: {job_id, state, source}, or
     None. Only reads. The fact counts only if it names this launch's own Slurm number and a word of the table; nothing else is believed."""
@@ -481,7 +501,7 @@ def ask_head_state(state_path, run_name, clock=time.time):
         if known is not None and known["state"] == "COMPLETED":      # a head that ended well does not change
             return False
         if known is not None and known["state"] in failures.ENDED_BAD:      # ruling Q1: a bad end is asked again, slowly, and not for ever
-            if now - (known_row["finished_at"] or known_row["created_at"] or 0) > BAD_END_GIVE_UP_SECONDS:
+            if now - _bad_end_began(rows, launch) > BAD_END_GIVE_UP_SECONDS:
                 return False
             wait = BAD_END_REASK_SECONDS
         for row in rows:

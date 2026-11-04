@@ -39,10 +39,16 @@ def head_fact_of(result):
 
 
 def kept_fact_sql():
-    """A SQL condition on result_json of a read-back that carries a bad end of the head job: such a row is not pruned with the
-    others, since the Failed look of a run rests on it."""
+    """A SQL condition on a row of `jobs` that is a read-back carrying a bad end of the head job: such a row is not pruned with the
+    others, since the Failed look of a run rests on it. A bad end that a newer read-back of the same run took back (the head was
+    alive or had ended well after it) is not kept: dropping the newer answer alone would bring the older bad end back (ruling Q1)."""
     ended = " OR ".join("instr(result_json, '\"%s\"') > 0" % word for word in sorted(ENDED_BAD))
-    return "(state = 'done' AND instr(result_json, '\"scheduler\"') > 0 AND (%s))" % ended
+    later = " OR ".join("instr(n.result_json, '\"%s\"') > 0" % word for word in sorted(KNOWN_STATES - ENDED_BAD))
+    taken_back = ("EXISTS (SELECT 1 FROM jobs n WHERE n.kind = 'fetch_run_records' AND n.state = 'done' AND n.id > jobs.id "
+                  "AND n.compute_env = jobs.compute_env "
+                  "AND json_extract(n.args_json, '$.run_name') = json_extract(jobs.args_json, '$.run_name') "
+                  "AND instr(n.result_json, '\"scheduler\"') > 0 AND (%s))" % later)
+    return "(state = 'done' AND instr(result_json, '\"scheduler\"') > 0 AND (%s) AND NOT %s)" % (ended, taken_back)
 
 
 def head_fact_entry(result):
