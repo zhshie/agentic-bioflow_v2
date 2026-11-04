@@ -14,3 +14,6 @@
 - [x] 對抗審第三輪（11-04）：forget、用量頁、失敗通知時間與 get_run 一致（ADV-1..3，test_head_nodefail.py 尾段；合約無對應條目，視為 TC-031 延伸）
 - [x] 裁決 Q（11-04）：Q1 壞結束事實每 10 分鐘最多再問一次、事實超過 6 小時不再問，最新真實答案為準（TC-037,040..042）；Q2 覆蓋層成 Failed 的 run 以 last_message_at 當 ended_at，Ended 欄與耗時一致（TC-038,039）；舊 TC-035/036 註解改標 ADV-4/ADV-5（TC-043 與合約內容不符，見 decisions.tsv）。origin/v3 之後又前進 10 個提交，落地前再 merge。
 - [x] 對抗審修正（11-04，Q1）：ADV-6 修剪不留被較新答案取回的壞結束（kept_fact_sql）；ADV-7 6 小時從連續壞答案第一筆起算（jobs._bad_end_began）。待辦（資訊）：docs/PLATFORM.md 仍寫「最多每分鐘問一次」，未補 Q1 規則。
+- [x] 裁決 R（11-04，PR #318 第三次 code-review）：R1 無事實時 6 小時放棄上限（jobs.ask_head_state，TC-044/045）；R2 get_run 的 MCP 標註 read_only_hint=false、說明加一句、chat_tools.QUERY_TOOLS 讓網頁聊天仍提供它（TC-046..048）。第一步 origin/v3 已是祖先，無需再 merge。
+  - TC-049 既有 MCP 測試的同步（只改 get_run 不再算唯讀這一件事）：test_actions_layer.py（tce01、tca10 另比對 get_run 與舊版：說明為舊文加一句、schema 與其他標註相同）、test_chat_tools.py（offered_by_rule 與 tc025）、test_guidance.py tc501、test_keep_submissions.py tc094、test_launch_platform.py tc010、test_mcp.py tc024、test_mcp_canvas_read.py、test_mcp_run_file.py（唯讀 16→15）、test_mcp_server_doc.py（16→15）、mcp/test_mcp_contract_tools.py（get_run 說明凍結上限 683→804）、mcp/test_mcp_contract_writes.py（寫入工具清單排除 get_run）。
+  - TC-050 backlog（C 級，本輪未動）：NODE_FAIL 重排風險、kept_fact_sql 效能、symlink 日誌、list_runs 多餘查詢、狀態表重複、區域 import。

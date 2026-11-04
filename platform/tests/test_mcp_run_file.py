@@ -318,7 +318,7 @@ def test_tc007_030_031_032_035_tool_registration(w):
     # TC-007, TC-030, TC-031, TC-032, TC-035
     by, tools = tools_of(w)
     assert len(tools) == 21 and "read_run_file" in by and by["read_run_file"].annotations.read_only_hint is True
-    assert sum(1 for t in tools if t.annotations and t.annotations.read_only_hint) == 16
+    assert sum(1 for t in tools if t.annotations and t.annotations.read_only_hint) == 15      # ruling R2: get_run is no longer one of them
     d = by["read_run_file"].description
     for s in ("the text goes to the model you chose", "200,000", "next_offset", "/run/file", "25 MB", "loading", "ready", "error", "unavailable",
               "too_large", "site path", "results/", "run_outputs", "Read-only", "your own"):

@@ -398,8 +398,9 @@ def test_tc501_six_read_only_tools_remain(tmp_path):
     # 009e: and `resume` and `relaunch`, which are asked in the same way
     tools = asyncio.run(_server(tmp_path).list_tools())
     assert sorted(t.name for t in tools) == sorted(READ_TOOLS + ["launch", "cancel", "forget", "resume", "relaunch"])  # keep-submissions (TC-040)
-    reads = [t for t in tools if t.name in READ_TOOLS]
+    reads = [t for t in tools if t.name in READ_TOOLS and t.name != "get_run"]      # ruling R2: get_run is not marked read-only
     assert all(t.annotations.read_only_hint is True and t.annotations.destructive_hint is not True for t in reads)
+    assert [t for t in tools if t.name == "get_run"][0].annotations.destructive_hint is not True
 
 
 def _snapshot(root):

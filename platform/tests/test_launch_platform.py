@@ -309,7 +309,7 @@ def test_tc010_the_mcp_tools_are_six_read_only_ones_and_two_that_ask_a_person_wi
             assert t.annotations.read_only_hint is False
             assert not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
             continue
-        assert t.annotations.read_only_hint is True
+        assert t.annotations.read_only_hint is (t.name != "get_run")      # ruling R2: get_run queues a read of the site for a lost run
         # run-diag-tools: read_task_log names the run it reads about (plan, Goal 2: read_task_log(run_name, task, which)); it is the one read-only
         # tool allowed that argument, and it still has no field that could launch, cancel, confirm or name a kind or a command
         allowed = {"run_name"} if t.name == "read_task_log" else set()
