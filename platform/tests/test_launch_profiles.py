@@ -111,8 +111,8 @@ def test_tc035_tc036_duplicates_and_nine_are_refused():
     refused("profiles", profiles=[1])
 
 
-def test_tc051_to_tc054_the_clouds_refuse_profiles_and_render_as_before_without():
-    # TC-051 TC-052 TC-053 TC-054
+def test_the_clouds_refuse_profiles_in_the_bundle():
+    # TC-051 TC-052 TC-053 TC-054 (bundle level; the MCP level, with the sentence and no writes, is test_non_site_module_and_other_platforms_refuse_profiles)
     from abf_station import launch
     for plat in (launch.GCB, launch.AWS, launch.AZURE, launch.K8S):
         ce = copy.deepcopy(inputs()["ce"])
@@ -715,3 +715,19 @@ def test_tc076_no_secret_reaches_the_params_file_the_refusals_or_the_log(w, monk
     for v in canaries.values():
         assert not [i for i, t in enumerate(texts) if v in t], v
     assert set(re.findall(r"^([A-Za-z_]+):", b["files"]["params.yaml"], re.M)) <= {"outdir", "input"}
+
+
+@pytest.mark.parametrize("which", ["GCB", "AWS", "AZURE", "K8S"])
+def test_non_site_module_and_other_platforms_refuse_profiles(w, which):
+    # TC-051 TC-052 TC-053 TC-054: through the MCP launch on a cloud environment: a plain "未送出：" sentence, and nothing written
+    import sqlite3
+    from abf_station import launch
+    con = sqlite3.connect(str(w.ip.state_db))
+    with con:
+        con.execute("UPDATE compute_envs SET platform = ? WHERE name = 'lab-a'", (getattr(launch, which),))
+    con.close()
+    before = tables(w)
+    out = ask(w, w.ann, ["test"])
+    msg = refused_out(w, out, "profiles: 這種環境還不支援 Config profiles")
+    assert not re.search(r"Traceback|SELECT |\.py|/home/|File \"", msg), msg
+    assert tables(w) == before and w.jobs() == [] and w.confirmations() == []

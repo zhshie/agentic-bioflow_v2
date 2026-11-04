@@ -8,3 +8,4 @@
 - [ ] 手動驗收 (a)(b)：待操作員在 nano4 重跑預檢並對八個 pipeline 各跑一次 test run，結果記在這裡
 - [x] 修正輪：補 TC-068／069／072／073／074／076／077／078 的測試於 `test_launch_profiles.py`（93 通過）；TC-006 的 or 斷言收緊
 - [x] 修正輪 2：核可頁摘要對無樣本表的 test 送出不再顯示「樣本數 0」，改列 Config profiles（confirm.py facts、web.py 標籤）；新增 TC-024 摘要測試（94 通過）
+- [x] 修正輪 3：補 TC-051 至 TC-054 經 MCP launch 的測試（test_non_site_module_and_other_platforms_refuse_profiles，四種雲端），檢查「未送出：」、profiles 不支援句、無寫入；拿掉拒絕程式碼時此測試變紅（98 通過）
