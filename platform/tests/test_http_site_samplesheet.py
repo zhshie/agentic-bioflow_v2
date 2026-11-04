@@ -623,3 +623,17 @@ def test_cs03_every_shape_the_base_refused_is_still_refused_and_the_one_allowed_
         assert "bob" not in out["message"] and "y.fq" not in out["message"]
     assert counts(d) == (0, 0, 0)
     assert pending(by_text(d, d.a, ["%s/x.fq" % SHARED]))       # the one shape the maintainer allowed
+
+
+def test_tc060_over_http_profiles_test_without_a_samplesheet_is_asked_as_in_process(w):
+    # TC-060 (launch-test-profile): an HTTP caller (a bearer-found user) asks for the pipeline's own test data
+    from profiles_harness import ask, feed, install_eight, profiles_map
+    ann = w.user("ann")
+    install_eight(w)
+    feed(w, profiles_map())
+    out = ask(w, ann, ["test"])
+    assert out["ok"] is True and out["state"] == "pending" and out["sent"] is False and out["confirmation_url"], out
+    row = w.confirmations()[-1]
+    b = json.loads(row["bundle_json"])
+    assert b["profiles"] == ["test"] and "samplesheet.csv" not in b["files"] and b["samplesheet"] is None
+    assert "Config profiles: test" in row["screen_text"]
