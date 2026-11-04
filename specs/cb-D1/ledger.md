@@ -27,3 +27,31 @@ FAILED tests/test_su_finite.py::test_non_finite_price_or_su_gives_no_dollars[-In
 FAILED tests/test_su_finite.py::test_the_finite_check_is_the_one_in_cloud_cost
 21 failed, 15 passed in 3.06s
 ```
+
+## GREEN (su.py changed; HEAD below is the commit before this ledger entry)
+test_su_finite.py: 36 passed. test_estimate_su, test_su_in_get_run, test_su_packaged, test_su_usd, test_cloud_cost, test_cloud_wire: all passed.
+Not green locally: run_all.sh 132/141 passed, 9 failed. 8 of them fail identically on the unrelated T6 checkout (no platform/ change): agent_ctl_connection_id (USER unbound), platform_clock, platform_shard_4/5/6/7 (missing httpx in venv, snapshot, read-only-cache-as-root), why_pending, wsl_bridge.
+The 9th is platform_upgrade_test.sh TC-U28 "platform/ ... untouched": it fails for any branch that touches platform/ (also T5), and tests/ is outside this task's files. FINDING.
+run_all tail:
+```
+FAIL       agent          not running - Platform will show no outputs (scripts/on_site.sh --script scripts/agent_ctl.sh start)
+FAIL       resources      tar: Child returned status 141
+FAIL       compute-env    ce is 'unreachable'>>
+missing rsync on MSYS is FAILed by name                    ok
+and it says plainly that Git Bash ships none               ok
+and gives an install route rather than nothing             ok
+
+-- (i) install_deps.sh: tw on MSYS is named plainly, not folded into 'unknown platform' --
+install_deps.sh --cli-only fails cleanly, not silently     ok
+it names the gap as unmeasured (R4), a real answer         ok
+and gives the Windows asset to fetch by hand               ok
+it does not fall back to the generic unknown-platform text ok
+shim does not run wsl.exe from the caller's own cwd        ok
+and lands in a directory that exists                       ok
+only settings.sh decides whether the bridge is in play     ok
+and nothing hardcodes the control-path default beside it   ok
+
+3 failed
+
+132/141 passed, 9 failed
+```
