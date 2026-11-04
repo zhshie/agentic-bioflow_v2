@@ -120,6 +120,25 @@ B. **預覽用新讀取動作還是頁內直接讀**：預設新增唯讀動作 
 C. **缺必填欄是否阻擋送出**：預設**不阻擋**，只標 `✗ 缺少必填欄`（預覽是資訊；既有送出前確認頁與管線自己的驗證仍會擋）。若要阻擋，送出鍵邏輯要改，測試加倍，風險升。
 D. **012b-2 剩餘片的順序**：預設 (b) 本片 →（核對後）guided-launch-search →（012a 合併後）逐步模式行為 → 版本政策。
 
+## 裁決（自動補，2026-11-04）
+
+針對 verifier 退回的 planIssues 逐條裁定；與前文衝突時以本節為準。
+
+1. **CLAUDE.md 沒有「For the executor and verifier」一節**：確認屬實，本片不改 CLAUDE.md。對應位置改指：測試指令見 CLAUDE.md「Running tests」（全套 `bash tests/run_all.sh`，單類 `bash tests/run_all.sh --only <字串>`；平台測試檔 `platform/tests/test_web_guided_launch_preview.py` 以該檔自己的方式單跑）；不變式與安全網見 `.specify/memory/constitution.md`；角色與閘門見 CLAUDE.md「Invariants, safety net, and how changes are made」與 `.claude/agents/verifier.md`／`executor.md`；手動驗收步驟見 `docs/TESTING.md`。「禁止執行的指令」以 constitution Safety Net 為準。注意：worktree 的 HEAD 落後，`platform/` 與 `scripts/dev/` 要先 `git merge origin/v3` 才看得到；verifier 與 executor 都要先合併再讀。
+2. **沒選管線時第 4 步的預期**：`test_web_guided_launch_2b.py:616` 的 `"no pipeline"` 清單改為 `["尚未選擇", "分析名稱", "送出（前往確認頁）"]`，只刪 `預覽與欄位角色（尚未開放）`。`尚未選擇`（`g_s_unset`，web_board.py:973）屬第 5 步參數狀態，保留。第 4 步在沒選管線時：有樣本表清單就照常顯示選單；無 schema_input 故不列角色；有選樣本表才顯示預覽表，沒選則顯示下一條的提示句。
+3. **有清單但沒選樣本表**：不得顯示「尚未上傳」。改顯示 `<p class="muted">`：zh `選定樣本表後顯示預覽。` en `The preview appears once a samplesheet is selected.`（字串 `g_pv_pick`）。「尚未上傳」只在清單為空時出現（沿用 v3 現行 `g_no_sheet`「尚無已上傳的樣本表，請先上傳。」與 `/upload` 連結；前文作法 1 的舊句作廢）。TC：清單有、未選 → 有 `g_pv_pick`、無預覽表、無 `g_no_sheet`、頁面 200。
+4. **schema_input 讀取中**：預覽表照常顯示（預覽只依樣本表檔，與 schema 無關），其下顯示 `reading(t, quiet)` 的既有「讀取中」，不列角色、不列配對。
+5. **`preview_samplesheet` 回傳鍵名**：定為 `{"columns": [...], "rows": [[...]], "total": n, "truncated": bool, "paired": n}`。「範圍：檔案」那個四鍵版本作廢。`paired` 恆存在；檔內欄位不含 fastq_1 與 fastq_2 時為 `None`，頁面端另依 schema 與檔內欄名決定是否顯示 `已配對`。
+6. **手動／截圖 TC**：`scripts/dev/ui_check.py`、`tests/ui_check_script_test.sh`、`docs/TESTING.md` 在 origin/v3 都存在（合併後可見）。ui_check.py 改為「必跑」（1440／390 × zh／en＋axe）；`docs/TESTING.md` 加入範圍檔案，只新增第 4 步三種狀態（有預覽、缺必填欄、讀取失敗）的手動檢查條目，不改既有條目。合併前找不到腳本時 verifier 才標 UNVERIFIED 並寫明。
+7. **確切字串**（進 `STRINGS` zh／en 兩邊，須過 `test_web_wording_sweep.py` 禁字表）：
+   - 讀取失敗，各一句，前綴 `<span class="csym">✗</span>`，class `bad`，不含檔案內容、路徑、Traceback：太大 zh `樣本表超過 1 MiB，無法預覽。` en `The samplesheet is larger than 1 MiB and cannot be previewed.`；含 NUL 或非 UTF-8 zh `樣本表不是 UTF-8 文字檔，無法預覽。` en `The samplesheet is not a UTF-8 text file and cannot be previewed.`；讀不到或不屬於呼叫者 zh `無法讀取所選樣本表，請重新上傳。` en `The selected samplesheet cannot be read. Please upload it again.`
+   - 列數：zh `共 N 列`、`僅顯示前 5 列`；en `N rows in total`（1 列時 `1 row in total`）、`Showing the first 5 rows`。
+   - 讀取中沿用既有 `reading()` 字串，不新增。
+   - 角色：zh `✓ 必填`、`✓ 選填`、`— 管線無此欄`、`✗ 缺少必填欄`、`已配對 n／N`；en `✓ Required`、`✓ Optional`、`— Not in this pipeline`、`✗ Missing required column`、`Paired n/N`。
+8. **欄名 escape**：欄名（預覽表標頭與角色列）與儲存格同樣一律 `esc`；加 TC：標頭含 `<b>x</b>` 與 `"` 時輸出為 `&lt;b&gt;`／`&quot;`，整頁無 `<script`。
+9. **完全空檔（0 位元組）**：視為讀取失敗，`✗` 一句：zh `樣本表是空的，沒有標頭列。` en `The samplesheet is empty and has no header row.`；不顯示預覽表與角色。「只有標頭」維持「共 0 列」。`preview_samplesheet` 對空檔拋 `Refusal`，頁面端轉成上句。
+10. **單格截斷**：超過 60 字元者取前 60 字元再加 `…`（結果 61 字元）；恰 60 字元不截斷；截斷時原文後段不得出現在 HTML。以 Python 字元（code point）計，不以位元組計。
+
 ## 專長守則（ui）
 
 ### executor
