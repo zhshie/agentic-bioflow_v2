@@ -124,8 +124,6 @@ LIMIT = 600
 OVER_LIMIT = {
     "get_run": 683,
     "launch": 968,
-    "read_run_file": 1016,
-    "resume": 807,
     "run_outputs": 700,
 }
 
@@ -178,7 +176,6 @@ ASPECT_GAPS = {
     ('my_usage', 'next_step'),
     ('my_usage', 'return'),
     ('my_usage', 'when'),
-    ('read_run_file', 'next_step'),
     ('read_task_log', 'next_step'),
     ('read_task_log', 'return'),
     ('read_task_log', 'when_not'),
@@ -197,7 +194,6 @@ UNDESCRIBED_PARAMS = {
     ('launch', 'run_name'),
     ('list_site_files', 'compute_env'),
     ('list_site_files', 'path'),
-    ('read_run_file', 'run_id'),
     ('read_task_log', 'run_name'),
     ('run_outputs', 'run_id'),
 }
