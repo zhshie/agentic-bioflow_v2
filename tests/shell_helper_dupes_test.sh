@@ -101,11 +101,13 @@ if [ -z "$(compare "$TMP/fx.cur" "$TMP/full.base")" ]; then ok "ratchet: a dupli
 else fail "ratchet: a baselined duplicate was reported"; fi
 
 grep -v 'scripts/b.sh' "$TMP/fx.cur" > "$TMP/third.base"
-if compare "$TMP/fx.cur" "$TMP/third.base" | grep -q '^NEW   die in scripts/b.sh'; then ok "ratchet: a new copy of an already-duplicated name is reported"
+third=$(compare "$TMP/fx.cur" "$TMP/third.base")
+if grep -q '^NEW   die in scripts/b.sh' <<< "$third"; then ok "ratchet: a new copy of an already-duplicated name is reported"
 else fail "ratchet: a new copy of an old duplicate was NOT reported"; fi
 
 { cat "$TMP/fx.cur"; printf 'gone\tscripts/a.sh\n'; } > "$TMP/stale.base"
-if compare "$TMP/fx.cur" "$TMP/stale.base" | grep -q '^STALE gone'; then ok "ratchet: a baseline line that is no longer a duplicate is reported (baseline only shrinks)"
+stale=$(compare "$TMP/fx.cur" "$TMP/stale.base")
+if grep -q '^STALE gone' <<< "$stale"; then ok "ratchet: a baseline line that is no longer a duplicate is reported (baseline only shrinks)"
 else fail "ratchet: a stale baseline line was NOT reported"; fi
 
 if [ "$fails" -eq 0 ]; then echo "all passed"; exit 0; fi
