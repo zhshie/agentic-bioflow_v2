@@ -986,7 +986,14 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
 4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
 
-### Head job ended by the scheduler (manual, on nano4)
+### A refused launch shows why (refusal-visibility): the maintainer checks by hand
+
+1. Close the shared connection to the site (`ssh -O exit ...`), then ask for a launch and press 送出 on `/c/<id>`.
+2. The page must say the connection is not open and nothing was submitted, name the platform host, and show one line in a box. It must not say 已送出.
+3. Paste the line into a WSL terminal, log in, and call launch again; the new request must go through.
+4. Screenshots (reviewer): `/c/<id>` and `/` at 1440 and 390 px wide, zh and en, into `specs/refusal-visibility/screens/`.
+
+## Head job ended by the scheduler (manual, on nano4)
 
 1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
 2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.

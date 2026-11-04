@@ -1207,8 +1207,33 @@ def _clean_inventory(raw):
     return out
 
 
-def clean_result(kind, result, stored=None):
-    """Only what the platform expects, with every text bounded; an agent cannot make the platform store more."""
+_OPEN_COMMAND = re.compile(r"(wsl\.exe -e )?s{2}h( -o [A-Za-z]+=[^\s;&|$`]+)+ [\w.@-]+ true")
+_OPEN_COMMAND_LIMIT = 600
+
+
+def valid_open_command(value, host):
+    """The line to open the shared connection when it is the strict shape, at most 600 characters, and names the compute environment's own host
+    (the part after `user@`); anything else, and any value when the environment has no host on record, is None. Nothing else is trusted."""
+    if not isinstance(value, str) or not isinstance(host, str) or not host or len(value) > _OPEN_COMMAND_LIMIT:
+        return None
+    if _OPEN_COMMAND.fullmatch(value) is None:
+        return None
+    target = value[:-len(" true")].rsplit(" ", 1)[1]
+    return value if target.rsplit("@", 1)[-1] == host else None
+
+
+def host_of(config_json):
+    """hostName of a stored environment configuration, or None."""
+    try:
+        host = json.loads(config_json).get("hostName")
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return host if isinstance(host, str) and host else None
+
+
+def clean_result(kind, result, stored=None, host=None):
+    """Only what the platform expects, with every text bounded; an agent cannot make the platform store more.
+    `host` is the hostName of the job's compute environment: a launch's `open_command` is kept only if it names that host."""
     if not isinstance(result, dict):
         return {"ok": False, "message": "the agent sent no result"}
     out = {"ok": bool(result.get("ok"))}
@@ -1258,6 +1283,8 @@ def clean_result(kind, result, stored=None):
         for key, limit in (("run_name", 64), ("run_folder", 1100), ("left_on_site", 600)):
             if isinstance(result.get(key), str):
                 out[key] = _short(result[key], limit)
+        if kind == "launch_nextflow" and valid_open_command(result.get("open_command"), host) is not None:
+            out["open_command"] = result["open_command"]
     elif kind == "read_task_log":
         if isinstance(result.get("text"), str):
             out["text"], cut = cap_log(result["text"])
@@ -1335,6 +1362,66 @@ def _apply_handover(con, job, state, cleaned, now):
     return None
 
 
+_INTERNAL_WORDS = re.compile(r"Traceback|File \"|\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b|sqlite|args_json|deadline_at|result_json|"
+                             r"Exception|, line \d+")      # the same list as actions._outputs_reason; jobs does not import actions
+_NO_REASON = "the site did not say why (站台沒有說明原因)"
+REFUSAL_LIMIT = 300
+SITE_DOWN = "No open connection to the site"
+
+
+def _first_sentence(message):
+    """The first plain sentence of the site's message; a stack, SQL, an internal field name or a credential-looking text is never passed on."""
+    text = str(message or "")
+    line = next((x.strip() for x in text.splitlines() if x.strip()), "")
+    if not line or _INTERNAL_WORDS.search(text) or compute_envs.looks_like_credential(text):
+        return _NO_REASON
+    m = re.search(r"(?<=[。！？])|(?<=\.)(?=\s)", line)
+    return _short(line[:m.start()] if m else line, REFUSAL_LIMIT)
+
+
+def _refusal_of_row(con, row):
+    """{state, reason, site_down, open_command, host, ce, job_id} of a job row that is refused or error, else None. Read only."""
+    if row is None or row["state"] not in ("refused", "error"):
+        return None
+    try:
+        result = json.loads(row["result_json"] or "{}")
+    except ValueError:
+        result = {}
+    if not isinstance(result, dict):
+        result = {}
+    env_row = con.execute("SELECT config_json FROM compute_envs WHERE name = ?", (row["compute_env"],)).fetchone()
+    message = result.get("message")
+    return {"state": row["state"], "reason": _first_sentence(message), "site_down": isinstance(message, str) and SITE_DOWN in message,
+            "open_command": valid_open_command(result.get("open_command"), host_of(env_row[0]) if env_row else None),
+            "host": row["agent"] or row["compute_env"], "ce": row["compute_env"], "job_id": row["id"]}
+
+
+def refusal_of(state_path, job_id):
+    """Why this job was turned back: None unless it is refused or error. The stored command is checked again on the way out."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        return _refusal_of_row(con, con.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
+    finally:
+        con.close()
+
+
+def latest_refusal(state_path, user_id, now, max_age=3600):
+    """The refusal of this person's newest launch job when it is refused and finished at most `max_age` seconds ago, else None."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT j.* FROM jobs j JOIN confirmations c ON c.id = j.confirmation_id WHERE j.kind = 'launch_nextflow' "
+                          "AND c.caller_user_id = ? ORDER BY j.created_at DESC, j.id DESC LIMIT 1", (user_id,)).fetchone()
+        if row is None or row["state"] != "refused" or row["finished_at"] is None or now - row["finished_at"] > max_age:
+            return None
+        return _refusal_of_row(con, row)
+    finally:
+        con.close()
+
+
 def take_result(state_path, agent, job_id, state, result, clock, tokens_path=None, records_dir=None):
     """Record an agent's answer. Returns (http status, body).
 
@@ -1363,7 +1450,8 @@ def take_result(state_path, agent, job_id, state, result, clock, tokens_path=Non
             if job["agent"] != agent:
                 con.execute("ROLLBACK")
                 return 403, {"message": "This job belongs to another agent"}
-            cleaned = clean_result(job["kind"], result, stored)
+            env_row = con.execute("SELECT config_json FROM compute_envs WHERE name = ?", (job["compute_env"],)).fetchone()
+            cleaned = clean_result(job["kind"], result, stored, host=host_of(env_row[0]) if env_row else None)
             if job["state"] == "queued":
                 con.execute("ROLLBACK")
                 return 409, {"message": "This job was not handed out"}

@@ -17,7 +17,20 @@ SLURM = "slurm-platform"
 
 
 class Refusal(Exception):
-    """The agent will not do this; the text goes back to the platform as the reason."""
+    """The agent will not do this; the text goes back to the platform as the reason.
+    `open_command` (refusal-visibility) is set only when the reason is a missing shared connection: the one line on_site.sh printed."""
+
+    def __init__(self, text="", open_command=None):
+        super().__init__(text)
+        self.open_command = open_command
+
+
+def open_command_in(detail):
+    """The line on_site.sh offered, when a failed connect check carries it at its end (handlers.connect_failure puts it there, word for word), else ''."""
+    if not isinstance(detail, str) or not detail.startswith("No open connection to the site"):
+        return ""
+    m = re.search(r"((?:wsl\.exe -e )?ssh\s\S.*)\Z", detail)
+    return m.group(1).strip() if m and "ControlPath" in m.group(1) and m.group(1).rstrip().endswith(" true") else ""
 
 
 def path_problem(value):

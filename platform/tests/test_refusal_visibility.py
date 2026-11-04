@@ -288,7 +288,7 @@ def test_tcr029_the_page_shows_the_line_the_site_sent_through_the_platform(w):
     ann = w.user("ann")
     rid, job = queue(w, ann)
     row = w.sql("SELECT agent FROM jobs WHERE id = ?", (job,))[0]
-    claimed = jobs.claim(w.ip.state_db, row["agent"], w.clock)
+    claimed = jobs.claim(w.ip.state_db, row["agent"], w.clock, tokens_path=w.ip.tokens)
     assert claimed is not None
     line = "ssh -o ControlMaster=auto -o ControlPath=/tmp/x-y -o ServerAliveInterval=60 me@" + HOST + " true"
     jobs.take_result(w.ip.state_db, row["agent"], job, "refused", {"ok": False, "message": DOWN, "open_command": line}, w.clock)
@@ -297,7 +297,7 @@ def test_tcr029_the_page_shows_the_line_the_site_sent_through_the_platform(w):
     assert re.search(r"<pre>\s*%s\s*</pre>" % re.escape(line), logged_in(w, "ann").get("/c/" + rid).text)
     # a line for another host does not get through the platform
     rid2, job2 = queue(w, ann, run="run-two")
-    jobs.claim(w.ip.state_db, row["agent"], w.clock)
+    jobs.claim(w.ip.state_db, row["agent"], w.clock, tokens_path=w.ip.tokens)
     jobs.take_result(w.ip.state_db, row["agent"], job2, "refused", {"ok": False, "message": DOWN, "open_command": line.replace(HOST, "evil.example.org")}, w.clock)
     assert "open_command" not in json.loads(w.sql("SELECT result_json FROM jobs WHERE id = ?", (job2,))[0][0])
 

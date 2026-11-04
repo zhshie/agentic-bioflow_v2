@@ -1877,7 +1877,9 @@ def _prechecks(job, ctx, preflight, env, bundle, shape):
     verdict = preflight(env, ctx)
     failed = [c for c in verdict["checks"] if c["status"] != "pass"]
     if failed:
-        raise rules.Refusal("預檢未通過，沒有建立任何東西：" + "；".join("%s（%s）" % (c["name"], c["detail"]) for c in failed))
+        gone = next((rules.open_command_in(c["detail"]) for c in failed if c["name"] == "connect"), "")
+        raise rules.Refusal("預檢未通過，沒有建立任何東西：" + "；".join("%s（%s）" % (c["name"], c["detail"]) for c in failed),
+                            open_command=gone or None)
     cache = next((e["value"] for e in shape["ce"].get("environment", []) if e.get("name") == "NXF_SINGULARITY_CACHEDIR" and e.get("head", True)), None)
     if cache:
         if rules.path_problem(cache):

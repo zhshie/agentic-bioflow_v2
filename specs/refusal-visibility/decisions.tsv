@@ -1,2 +1,3 @@
 ts	phase	decision	why	evidence	result
 2026-11-04	RED	先寫測試檔 test_refusal_visibility.py，站台用真的 handle 加 launch._prechecks，網頁用 World 造 refused job	測試先紅再實作	platform/tests/test_refusal_visibility.py	42 紅（預期）
+2026-11-04T10:00	GREEN	指令取自 connect detail 結尾，不改 verdict 形狀	改動最小，且與 on_site 印的一行同源	rules.py:open_command_in	測試全綠
