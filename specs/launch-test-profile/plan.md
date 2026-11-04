@@ -119,6 +119,12 @@ MCP 的 `launch` 多一個選填 `profiles`（字串清單）。給了 `test`，
 5. **其餘六個 pipeline 的夾具**：測試內用 `station_harness.make_site_pipeline` 為 sarek、scrnaseq、atacseq、crisprseq、nanoseq、proteinfold 補夾具（不改 `SITE_CE`；在新測試檔內組合自己的 CE，版本採環境事實清單），八個名稱各提出一次（TC-010）。
 6. **`request_pipeline_launch`**：現況簽名沒有 `profiles` 參數，MCP 的 `launch` 也只走 `request_launch`（`mcp_server.py` 沒有 pipeline_id 路徑）。決定：**不替它新增參數**，所以不可能生效；`request_pipeline_launch` 不改。`test_non_site_module_and_other_platforms_refuse_profiles` 改成只測 GitHub pipeline 與 gcb／aws／azure／k8s 入口；另加一條以 `inspect.signature` 確認 `request_pipeline_launch` 沒有 `profiles` 參數（TC-067 以此為準）。「範圍：檔案」中該入口的拒絕敘述作廢。
 
+## 裁決 C（11-04 第 4 輪後，developer-agent）
+
+1. 裁決 A 縮小成「每個環境最新一筆帶 site_profiles 的 done 預檢不清」：接受（理由：不准改 test_job_results_older_than_seven_days… 這條既有測試）。
+2. test_no_schema_change：v3 的 CI 在 #289、#355 合併後是綠的（run 41821927314），不是既有紅；你的紅是 base 太舊。先 `git fetch origin && git merge origin/v3` 再跑；仍紅就寫 BLOCKED 附 git diff e428661b origin/v3 -- platform/abf_platform/store.py 的輸出。
+3. test_azure_ce 單跑綠＝不穩定，不算你的紅；shard_2 逾時請單獨重跑該 shard。
+
 ## 專長守則（backend）
 
 ### executor
@@ -172,11 +178,3 @@ MCP 的 `launch` 多一個選填 `profiles`（字串清單）。給了 `test`，
 - **UNVERIFIED**：HTTP 傳輸路徑沒跑過、MCP 檢查器／conformance 工具未跑。
 - **「需要人看的事」**：description 是否讓模型選對工具（可另附問答評測文件，但不執行）、命名是否直覺。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
-
-## 裁決（11-04 developer-agent）
-- TC-069：接受 web.py 確認頁 2 行標籤（讓核可頁顯示 Config profiles）。其餘網頁檔與選項仍不准動。
-
-## 裁決（11-04 第 3 輪後，Opus 對抗審兩條，developer-agent）
-- A（7 天後 profile 清單消失）：改 `jobs.py::_insert_job` 的清理條件——每個環境「最新一筆 state='done' 的 preflight」永不清理（仿 fetch_run_records 的保留例外：`AND NOT (kind='preflight' AND state='done' AND id = (SELECT MAX(id) FROM jobs j2 WHERE j2.compute_env = jobs.compute_env AND j2.kind='preflight' AND j2.state='done'))`）。`jobs.py` 本就在範圍內。加失敗先行測試：8 天後排入別的工作，`launch(profiles=["test"])` 仍被提案；舊的第二筆 preflight 仍照常清理。拒絕訊息不用改。
-- B（落後 v3）：先 `git merge origin/v3`（v3 已有 `launch_pipeline`，共 22 個工具），把 `test_launch_profiles.py::test_tc059` 的工具清單加上 `launch_pipeline`、數量 22；TC-070 的前提改為「launch_pipeline 已存在，且遇非空 profiles 一律拒絕」並重驗。合併後全套要綠。
-- 測試函式名稱與合約不完全相同：不算問題，不改。
