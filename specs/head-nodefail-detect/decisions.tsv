@@ -23,3 +23,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	fix	裁決 R1：無事實的 lost run 靜默超過6小時（取最後訊息與送出時間較新者）就不再問排程器；R2：get_run 標註改 read_only_hint=false、說明加一句，chat_tools 加 QUERY_TOOLS 讓它仍可提供	裁決 R；MCP 標註釘死的既有測試只改 get_run 這一件事（見 ledger）	jobs.py ask_head_state; mcp_server.py _QUERY; test_head_nodefail.py TC-044..048	pass
 2026-11-04	test	get_run 唯讀標註同步再補兩支 v3 新增的測試（test_station_envs tc071、test_su_usd tc033）	全套發現；與 TC-049 同類，只改 get_run 這一項，其他工具仍須唯讀	tests/test_station_envs.py:382; tests/test_su_usd.py:230	兩檔全過
 2026-11-04	fix	TC-048 補 MCP Client 呼叫 get_run 的 (a) 斷言；PLATFORM.md 唯讀工具數 16→15 並說明 get_run	驗卷者指出測試比合約弱、文件與實際不符	platform/tests/test_head_nodefail.py:777; docs/PLATFORM.md:436	單檔測試過
+2026-11-04	fix	PLATFORM.md 第 6 行保留釘住的「nine read-only tools」字樣，改在句後註明 get_run 沒有 readOnlyHint	全套發現 platform_storage_doc_test 釘死該片語；不得改測試	docs/PLATFORM.md:6; tests/platform_storage_doc_test.sh:140	該檔過
