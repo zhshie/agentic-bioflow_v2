@@ -924,6 +924,17 @@ The automatic tests use fakes for the `az` program and never touch the network. 
 6. **Wildcard.** Check that `delete-batch --pattern "<prefix>*"` really matches across `/` on your account (blobs two folders deep must go), and that it did not touch `work2/`.
 
 
+## Changing the parameters of a resume on the web (resume-edit-web): the maintainer and the reviewer check
+
+The automatic tests use a fake read of the pipeline's files and a fake site. These steps need the real site, one colleague account (not the maintainer) and one run that failed because a process ran out of memory.
+
+1. **The whole way, on the real site.** Log in as the colleague, open the failed run, open the menu 更多 and press 修改後續跑 (or the same link in the red notice). Check: the page lists the run, the pipeline and version, and the environment; the parameters of the first submission are in the boxes. In the box for extra settings write `process.memory = '16 GB'` and press 送出（前往確認頁）. Check: the confirmation page lists the change in the 改動 section above the folded full content; press 送出. Check: after the run finishes, `.nextflow.log` in the same folder shows `-resume` and the tasks that had already finished are cached (this is what a fake site cannot say). The colleague asked nobody.
+2. **A parameter.** Do the same, changing one parameter instead (for example `trunclenf` from 120 to 200). Check: the confirmation page shows `trunclenf：120 → 200`, nothing else.
+3. **A narrow screen (390 px).** Open the page in the normal state, in the error state (a number box holding `abc`, then 送出) and with the pipeline's table not readable: nothing scrolls sideways, the table is the same as step 5 of the launch page, the buttons are easy to hit. Attach the screenshots to the PR.
+4. **The keyboard.** Press Tab through the page: the focus outline is visible on every box, the extra-settings box, the submit button and 返回, in that order; Enter in a box submits.
+5. **Both languages.** Look at the page and the error line once with `?lang=en`: no Chinese in the page's own words.
+6. **The reviewer.** Against the base: `git diff <base>...HEAD --stat` shows nothing under `platform/abf_platform/actions/`, `platform/abf_launch/`, `platform/abf_station/`, `confirm.py`, `jobs.py` or `mcp_server.py`; `web_board.STYLE` is unchanged; `web_board.py` gained only the new strings (`RESUME_EDIT`), `Acts.edit_link` and its two call sites; `web_launch.py` gained only new functions; the existing tests changed only where `specs/resume-edit-web/ledger.md` lists them, and every change only adds.
+
 ## 國網，網頁從頭到完成 (web-nano4-path): the maintainer checks by hand
 
 The automatic tests use fake environments and fake jobs: nothing reaches the site. These steps need a real platform that people reach through Tailscale (Funnel), the test account `abf-test`, and an `available` national-HPC environment (nano4). A real run uses real SU.
@@ -974,3 +985,8 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 2. Log in again, wait 30 seconds, call `run_outputs(run_id)`: it says `loading`; ask again after a few seconds: it is `ready` with the list (the web Outputs tab does the same when opened again).
 3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
 4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
+
+### Head job ended by the scheduler (manual, on nano4)
+
+1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
+2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.

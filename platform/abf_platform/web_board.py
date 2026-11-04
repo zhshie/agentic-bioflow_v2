@@ -533,6 +533,10 @@ class Acts:
                 '<input type="hidden" name="csrf" value="%s">%s<button type="submit">%s</button></form>'
                 % (verb, esc(run_id), esc(self.csrf_for(run_id)), keep, esc(self.t[{"resume": "resume", "relaunch": "rerun", "cancel": "cancel"}[verb]])))
 
+    def edit_link(self, run_id):
+        """The link beside the Resume button (resume-edit-web): a plain GET to the page that lists the first parameters and asks for changes; it asks for nothing."""
+        return '<a href="%s">%s</a>' % (_url(self.lang, run_id, path="/act/resume/edit"), esc(self.t["re_link"]))
+
 
 def _chip(t, status):
     """A status as a small coloured square (its own element, coloured by the style sheet) and the word."""
@@ -569,14 +573,14 @@ def _failure_notice(t, run, acts=None):
     step = first_failed(failure)
     verb = (failure.get("actions") or ["relaunch"])[0]
     word = t["resume" if verb == "resume" else "rerun"]
-    when = _clock_hm(run.get("last_message_at") if lost else run.get("ended_at"))
+    when = _clock_hm(run.get("last_message_at") if lost else (run.get("ended_at") or run.get("last_message_at")))      # a lost run shown failed has no end
     rows = (("f_step", "<code>%s</code>" % esc(step) if step else "—"),
             ("f_reason", "<br>".join(esc(x) for x in _reason_lines(t, failure))),
             ("f_next", esc(word + t["confirm_suffix"])))
     return ('<article class="notice state-failed"><div class="nhead"><span class="level state-%s"><span class="sq"></span> %s</span>'
             '<span class="when">%s</span></div><dl class="fields">%s</dl><div class="acts">%s</div></article>'
             % (_css(run["status"]), esc(_state(t, run["status"])), esc(when), "".join("<dt>%s</dt><dd>%s</dd>" % (esc(t[k]), v) for k, v in rows),
-               acts.form(verb, run["id"]) if acts else ""))
+               (acts.form(verb, run["id"]) + (acts.edit_link(run["id"]) if verb == "resume" else "")) if acts else ""))
 
 
 def _clean_notice(t, run, lang="zh"):
@@ -781,7 +785,8 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     status = selected["status"]
     badge = '<span class="badge state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(_state(t, status)))
     running = current == "running"
-    buttons = ("".join(acts.form(verb, selected["id"]) for verb in ("resume", "relaunch", "cancel")) if acts else "") if running else ""
+    buttons = ("".join(acts.form(verb, selected["id"]) + (acts.edit_link(selected["id"]) if verb == "resume" and _failure_of(selected) else "")
+                       for verb in ("resume", "relaunch", "cancel")) if acts else "") if running else ""
     quick = '<a href="%s">%s</a>' % (esc("/launch?from=" + urllib.parse.quote(str(selected["id"]), safe="") + ("&lang=en" if lang == "en" else "")),
                                     esc(t["quick"])) if running else ""
     menu = '<details class="menu"><summary>%s</summary>%s%s</details>' % (esc(t["menu_more"]), buttons, quick) if running else ""
@@ -1014,8 +1019,29 @@ GUIDED = {
     },
 }
 
+# resume-edit-web: the words of the page that changes the parameters and the extra settings of a resume, and of the list of changes on the confirmation page
+RESUME_EDIT = {
+    "zh": {
+        "re_link": "修改後續跑", "re_title": "修改後續跑", "re_fixed": "管線、版本、樣本表與運算環境沿用第一次送出的內容，不能修改。",
+        "re_params": "參數", "re_none": "第一次送出未指定參數，均使用管線預設值。",
+        "re_extra": "額外設定（每行一項，例 process.memory = '16 GB'）", "re_submit": "送出（前往確認頁）", "re_back": "返回",
+        "re_err": "✕ 未能完成：%s", "re_too_long": "額外設定的字數多於上限 %d 個字元，請刪減後再送出。",
+        "re_bad_type": "參數 %s 的值與型別 %s 不符，請修正後再送出。", "re_changes": "改動", "re_changes_extra": "額外設定",
+    },
+    "en": {
+        "re_link": "Edit and resume", "re_title": "Edit and resume",
+        "re_fixed": "The pipeline, version, samplesheet and compute environment stay as first submitted and cannot be changed.",
+        "re_params": "Parameters", "re_none": "No parameters were specified at the first submission; all use the pipeline defaults.",
+        "re_extra": "Extra settings (one per line, e.g. process.memory = '16 GB')", "re_submit": "Submit (go to the confirmation page)", "re_back": "Back",
+        "re_err": "✕ Could not complete: %s", "re_too_long": "The extra settings are longer than the limit of %d characters; shorten them and submit again.",
+        "re_bad_type": "The value of parameter %s does not match its type %s; correct it and submit again.", "re_changes": "Changes",
+        "re_changes_extra": "Extra settings",
+    },
+}
+
 for _lang in GUIDED:
     STRINGS[_lang].update(GUIDED[_lang])
+    STRINGS[_lang].update(RESUME_EDIT[_lang])
     STRINGS[_lang]["launch_intro"] = GUIDED[_lang]["g_intro"]
 
 ENV_MARK = {"available": ("✓", "g_es_available"), "creating": ("…", "g_es_creating"), "invalid": ("✗", "g_es_invalid"),

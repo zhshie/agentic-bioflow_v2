@@ -1,5 +1,7 @@
 *.pyc
 __pycache__/
+platform/*.egg-info/
+platform/build/
 relay.json
 relay.log
 agent.json
@@ -39,3 +41,5 @@ platform/abf_station/plugin/
 
 # SU rates: copied from configs/sites/su_rates.json into the wheel at build time (platform/setup.py), never committed
 platform/abf_platform/data/su_rates.json
+ui-check-*/
+!specs/ui-check-script/

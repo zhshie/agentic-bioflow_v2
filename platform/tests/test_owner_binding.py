@@ -821,7 +821,7 @@ def test_tc068_no_new_way_to_log_in(w):
     # 009i: the login is still the one name + web password; 011a added the board; the other routes added are the OAuth ones, which log nobody in
     assert {r.path for r in client.app.routes} == {"/", "/settings", "/login", "/logout", "/c/{rid}", "/consent/{rid}", "/authorize", "/token",
                                                    "/register", "/revoke", "/.well-known/oauth-authorization-server",
-                                                   "/launch", "/launch/diagram", "/act/{verb}", "/usage", "/welcome",
+                                                   "/launch", "/launch/diagram", "/act/{verb}", "/act/{verb}/edit", "/usage", "/welcome",
                                                    "/settings/pipelines", "/settings/pipelines/confirm", "/settings/inventory",      # settings-pick-installed: the reload button of the site list
                                                    "/upload", "/upload/{batch}", "/run/file"}      # results-files: the download of one result file, it logs nobody in;      # settings-register-pipeline: neither logs anybody in      # web-change-password: /welcome sets the temporary password; 012b: the launch form and the three asking buttons; none of them logs anybody in
     page = (PLATFORM_DIR / "abf_platform" / "web.py").read_text(encoding="utf-8")
