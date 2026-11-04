@@ -46,7 +46,7 @@ def test_r3_refused_state_is_unchanged(w):
     "ssh -o ControlPath=(x) u@" + HOST + " true",
     "ssh -o ControlPath='x' u@" + HOST + " true",
     'ssh -o ControlPath="x" u@' + HOST + " true",
-    "ssh -o ControlPath=a\b u@" + HOST + " true",
+    "ssh -o ControlPath=a" + chr(92) + "b u@" + HOST + " true",
     "ssh -o ProxyCommand=foo u@" + HOST + " true",
     "ssh -o LocalCommand=foo u@" + HOST + " true",
     "ssh -o PermitLocalCommand=yes u@" + HOST + " true",

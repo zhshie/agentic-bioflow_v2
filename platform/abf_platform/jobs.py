@@ -1209,6 +1209,10 @@ def _clean_inventory(raw):
 
 _OPEN_COMMAND = re.compile(r"(wsl\.exe -e )?s{2}h( -o [A-Za-z]+=[^\s;&|$`]+)+ [\w.@-]+ true")
 _OPEN_COMMAND_LIMIT = 600
+_OPEN_COMMAND_BAD_CHARS = frozenset("<>()'\"" + chr(92))
+_OPEN_COMMAND_OPTIONS = frozenset(("ServerAliveInterval", "ServerAliveCountMax", "ConnectTimeout", "StrictHostKeyChecking", "UserKnownHostsFile",
+                                   "ControlMaster", "ControlPath", "ControlPersist", "IdentitiesOnly", "IdentityFile", "Port", "User",
+                                   "A", "K"))  # A and K: the contract test cases TC-010, TC-011, TC-013, TC-019 use them as legal examples (ruling R3-3)
 
 
 def valid_open_command(value, host):
@@ -1216,8 +1220,11 @@ def valid_open_command(value, host):
     (the part after `user@`); anything else, and any value when the environment has no host on record, is None. Nothing else is trusted."""
     if not isinstance(value, str) or not isinstance(host, str) or not host or len(value) > _OPEN_COMMAND_LIMIT:
         return None
-    if _OPEN_COMMAND.fullmatch(value) is None:
+    if _OPEN_COMMAND.fullmatch(value) is None or _OPEN_COMMAND_BAD_CHARS.intersection(value):
         return None
+    for name in re.findall(r" -o ([A-Za-z]+)=", value):
+        if name not in _OPEN_COMMAND_OPTIONS:
+            return None
     target = value[:-len(" true")].rsplit(" ", 1)[1]
     return value if target.rsplit("@", 1)[-1] == host else None
 
@@ -1393,6 +1400,8 @@ def _refusal_of_row(con, row):
     message = result.get("message")
     return {"state": row["state"], "reason": _first_sentence(message), "site_down": isinstance(message, str) and SITE_DOWN in message,
             "open_command": valid_open_command(result.get("open_command"), host_of(env_row[0]) if env_row else None),
+            "left": _short(result["left_on_site"], 600) if isinstance(result.get("left_on_site"), str) and not _INTERNAL_WORDS.search(result["left_on_site"])
+            and not compute_envs.looks_like_credential(result["left_on_site"]) else "",
             "host": row["agent"] or row["compute_env"], "ce": row["compute_env"], "job_id": row["id"]}
 
 

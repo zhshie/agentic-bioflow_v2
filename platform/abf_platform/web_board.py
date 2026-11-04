@@ -42,6 +42,9 @@ STRINGS = {
         "refusal_site_down_do": "平台主機 %s。請在 WSL 終端機貼上這一行，輸入 passphrase 與 OTP，然後重新呼叫 launch。",
         "refusal_site_down_nocmd": "請查看站台主機的終端機提示，照提示重新登入站台後再重新呼叫 launch。",
         "refusal_other": "站台拒絕了送出，工作沒有送出：%s",
+        "refusal_error": "站台回報送出結果不明，工作可能已經送出。請先查看站台上的資料夾與 Slurm 工作（見下方說明）再決定要不要重送。",
+        "refusal_error_msg": "站台的回報：%s",
+        "refusal_error_left": "站台上留下的東西：%s",
         "title": "agentic-bioflow", "mine": "我的分析", "none_yet": "尚無分析紀錄。", "later": "之後開放",
         "new_project": "＋ 新專案", "search_projects": "搜尋專案或分析", "upload": "↑ 上傳資料", "settings": "設定", "explorer": "資料瀏覽",
         "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "usd_about": "（約 US$%s）", "usd_under": "（約 US$0.01 以下）", "cost_cloud": "雲端 US$ —", "more": "還有 %d 筆",
@@ -100,6 +103,9 @@ STRINGS = {
         "refusal_site_down_do": "stat" "ion host %s: paste this line into a WSL terminal, enter your passphrase and OTP, then call launch again.",
         "refusal_site_down_nocmd": "check the terminal prompt of the stat" "ion host, log in to the site as it says, then call launch again.",
         "refusal_other": "The site did not accept this launch; nothing was submitted: %s",
+        "refusal_error": "The site reports that the result of the submission is unknown; the job may already have been submitted. Check the folder on the site and the Slurm jobs (see below) before deciding to submit again.",
+        "refusal_error_msg": "What the site reported: %s",
+        "refusal_error_left": "What was left on the site: %s",
         "title": "agentic-bioflow", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
         "new_project": "+ New project", "search_projects": "Search projects or analyses", "upload": "↑ Upload data", "settings": "Settings",
         "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "usd_about": " (≈ US$%s)", "usd_under": " (≈ under US$0.01)", "cost_cloud": "Cloud US$ —",
@@ -858,7 +864,11 @@ def refusal_block(r, lang="zh"):
     """The one block that tells a person why a launch was turned back (confirmation page and board share it). `r` is jobs.refusal_of's answer.
     The command is shown only as text in a <pre>; there is no button, form, link or script here."""
     t = STRINGS[pick_lang(lang)]
-    if r["site_down"]:
+    if r["state"] == "error":
+        body = '<p class="bad">%s</p><p>%s</p>' % (esc(t["refusal_error"]), esc(t["refusal_error_msg"] % r["reason"]))
+        if r.get("left"):
+            body += "<p>%s</p>" % esc(t["refusal_error_left"] % r["left"])
+    elif r["site_down"]:
         host = esc(r["host"])
         if r["open_command"]:
             body = '<p class="bad">%s</p><p>%s</p><pre>%s</pre>' % (esc(t["refusal_site_down"]), esc(t["refusal_site_down_do"] % r["host"]), esc(r["open_command"]))

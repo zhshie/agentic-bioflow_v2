@@ -98,7 +98,7 @@ def test_ce08_no_new_strings():
     from abf_platform import web_board, web_settings
     got = [hashlib.sha256(json.dumps(m.STRINGS, sort_keys=True, ensure_ascii=False).encode()).hexdigest() for m in (web_settings, web_board)]
     assert got == ["82228e36c502def9667ae1c87a618f96b4b53baa811f2bfa4338621cb081094b",
-                   "95ac5281aa3e0ca77facf0f857489123cf1e03ecfd3e659761251fdc9d50b9d7"]      # resume-edit-web merges RESUME_EDIT into web_board.STRINGS
+                   "14aa4bd6317e28f5d9e4d61b39cdb4560c3141c2f206f0a91e5a83da514b0871"]      # resume-edit-web merges RESUME_EDIT into web_board.STRINGS
 
 
 def test_ce09_no_inline_style(w):
