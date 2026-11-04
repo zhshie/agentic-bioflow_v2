@@ -1,0 +1,2 @@
+ts	phase	decision	why	evidence	result
+2026-11-04T12:00	continue	接手前一輪成果，只補 TESTING.md 與 ledger	security.yml 與測試已在 HEAD	0ce2ca05	12 項靜態檢查綠
