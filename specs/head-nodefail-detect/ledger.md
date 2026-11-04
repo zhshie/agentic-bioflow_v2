@@ -1,0 +1,16 @@
+# Slurm 主任務 NODE_FAIL 等結束狀態要顯示為失敗 progress ledger
+
+- [x] 站台端：fetch_run_records 加 slurm_job_id，無完成行時問 squeue 再 sacct（TC-007..011, 020）
+- [x] 平台端：jobs.head_state / ask_head_state / clean_scheduler；failures.with_head_state；get_run 與 list_runs 疊加；build._predecessor 放行（TC-001..006, 012..019, 021..023）
+- [x] docs/PLATFORM.md、PITFALLS.md（#59）、TESTING.md 手動步驟
+- [ ] TODO（人工）：在 nano4 手動驗收（docs/TESTING.md 新段）；本任務沒有碰真實站台
+- 備註：tests/constitution_scope_test.sh 在 WSL 內為紅，屬環境問題，與本任務無關。
+- 備註：TC-012 與 v3 的 failures 測試矛盾（見 decisions.tsv），保留 v3 行為。
+- 證據：`git diff --stat` 見 commit；sacct 在 origin/v3 尚無使用。
+- [x] 裁決 O（對抗審）：限流算任何狀態且與排程同一交易、slurm_job_id 只走 head-state 路徑、_fetches_of 先依 run 過濾再取 20 筆、截斷的 log 不算完成行（TC-026..029）
+- [x] 對抗審第二輪（11-04）：續跑後同資料夾的 .nextflow.log 是續跑的，不能遮住第一次嘗試的 NODE_FAIL；完成行要每個「看得出真的跑過」的 log 都有才不問排程器（fetch.py）。平台端 head_state 仍只取最新讀回（TC-014 d 釘住），因站台不再回 None 而不會翻回 lost。
+- [x] 裁決 P（11-04）：git merge origin/v3（PITFALLS.md 衝突已解）；P1 head_state 只取有 scheduler 事實的最新抓取；P2 scheduler=None 不蓋掉終結事實；P3 已知終結事實不再排抓取、caller=None 不排站台工作；P4 輪替檔缺啟動標記且無完成行時仍問排程器（TC-030..034）。其餘 C 級後續項不做。
+- [x] 對抗審修正（11-04）：TC-035 帶壞結束事實的讀回不被 7 天修剪刪掉（Failed 不會退回 lost）；TC-036 _fetches_of 不再以 20 筆截斷，普通抓取擠不掉事實。
+- [x] 對抗審第三輪（11-04）：forget、用量頁、失敗通知時間與 get_run 一致（ADV-1..3，test_head_nodefail.py 尾段；合約無對應條目，視為 TC-031 延伸）
+- [x] 裁決 Q（11-04）：Q1 壞結束事實每 10 分鐘最多再問一次、事實超過 6 小時不再問，最新真實答案為準（TC-037,040..042）；Q2 覆蓋層成 Failed 的 run 以 last_message_at 當 ended_at，Ended 欄與耗時一致（TC-038,039）；舊 TC-035/036 註解改標 ADV-4/ADV-5（TC-043 與合約內容不符，見 decisions.tsv）。origin/v3 之後又前進 10 個提交，落地前再 merge。
+- [x] 對抗審修正（11-04，Q1）：ADV-6 修剪不留被較新答案取回的壞結束（kept_fact_sql）；ADV-7 6 小時從連續壞答案第一筆起算（jobs._bad_end_began）。待辦（資訊）：docs/PLATFORM.md 仍寫「最多每分鐘問一次」，未補 Q1 規則。
