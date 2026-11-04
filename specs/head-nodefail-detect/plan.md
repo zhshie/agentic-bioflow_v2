@@ -122,6 +122,14 @@ O. 對抗審修正（11-03，Opus 審查，三項已重現）：
  (4) `.nextflow.log` 超過 20 MB 被截斷時，不可當作「已有完成行」：截斷＝完成行未知，仍要問排程器（排程器回 COMPLETED 之類就維持原顯示）。
  新增測試案例 TC-026～TC-029 對應 (1)～(4)，已寫進 test-case.md；實作不得改弱既有測試。
 
+P. （11-04，濃縮重寫：原文曾被 build-dev-plans.py 洗掉）最新一筆真實排程器答案為準；None 不覆蓋較早的結束事實；已結束的 head 不重問；沒有呼叫者就不做事；輪轉日誌缺開始標記時問排程器；第一步 `git merge origin/v3`；測試 TC-030 起。
+Q. /code-review 第二次裁決（11-04）：(1) 壞結束事實不是永久的：每 10 分鐘最多再問一次（事實年齡超過 6 小時不再問），最新一筆真實排程器答案為準，答案是 RUNNING／PENDING 時覆蓋層撤掉（修改 P3），須有測試 NODE_FAIL 後 RUNNING → 不再顯示 Failed、不提供 resume／relaunch。(2) 被覆蓋層顯示成 Failed 的 run 沒有 ended_at：web_board 的 _duration 與所有 Ended 欄位要用與失敗通知相同的備用時間。(3) 其餘列 C 級後續。(4) 註解中 TC-035／036 改標，測試編號從 TC-037 起（已實作為 ADV-4／ADV-5，維護者端接受）。
+R. /code-review 第三次對 PR #318 的裁決（11-04，只收兩項，其餘進 backlog 列 C 級）：
+ 1. 沒有任何可用事實時也要有放棄上限：run 失聯超過 6 小時（以最後訊息時間或建立時間算）且仍沒有事實，就不再每分鐘問排程器；須有測試（失聯 7 小時、事實 None → 不再排新的 fetch_run_records）。
+ 2. get_run 的 MCP 標註不再是純唯讀（會排一個站台讀取工作、寫 platform.db）：read_only_hint 改為 false（保留 idempotent），工具說明加一句「失聯的 run 會觸發一次唯讀的站台查詢」；既有 MCP 合約測試若釘死該標註，同步改並在 ledger 說明。
+ 3. 其餘六項（NODE_FAIL 重排風險、kept_fact_sql 效能、symlink 日誌、list_runs 多餘查詢、狀態表重複、區域 import）進 backlog，不擋這支 PR。
+ 4. 第一步仍是 git merge origin/v3；測試編號從 TC-044 起。
+
 ## 專長守則（backend）
 
 ### executor
@@ -146,18 +154,3 @@ O. 對抗審修正（11-03，Opus 審查，三項已重現）：
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
-
-P. /code-review 對 PR #318 的裁決（11-04，高信心項目必須在修正輪處理，每項先寫會失敗的測試）：
- 1. head_state 只認「有問過排程器的 fetch」（結果帶 scheduler 鍵，且是這個 run 的）中最新的一筆；沒問排程器的普通 fetch 不得蓋掉較早的 NODE_FAIL 事實。
- 2. 站台這次問不到（squeue／sacct 都失敗、查無、SSH 斷線）= 沒有新事實，不得以 scheduler=None 覆蓋先前已有的終結壞狀態事實；run 不可在 Failed 與 lost 之間來回。
- 3. get_run 對已知有事實的 lost run 不再每分鐘排新的 fetch（已有終結事實就不再問）；caller 為 None 時也不得因此替任何人排站台工作。
- 4. 日誌輪替檔缺 _STARTED 標記時，不得把第一次嘗試的 NODE_FAIL 靜默丟掉（寧可問排程器）。
- 其餘（SLURM 狀態表重複、_no_resume 鍵洩漏、函式內 import、scheduler 欄位補 None）列為 C 級後續，不擋這支 PR。
- 5. 修正輪第一步：在 worktree 執行 `git merge origin/v3`（PR #318 與 v3 有衝突），手動解掉衝突、全套測試先綠，再做 1–4。不要 rebase、不要 force push。
- 6. 驗收合約補充：1–4 每項至少一個新測試（TC-030 起），合約若沿用舊 test-case.md，由 verifier 在閱卷時逐項對照裁決 P 判 PASS/FAIL。
-
-Q. /code-review 第二次對 PR #318 的裁決（11-04，只收兩項，其餘進 backlog）：
- 1. 壞結束事實不是永久的：Slurm 可能把 NODE_FAIL 的任務重新排隊而再度 RUNNING。有壞結束事實的 run，每 10 分鐘最多再問排程器一次（事實年齡超過 6 小時就不再問）；最新一筆真實排程器答案為準，答案是 RUNNING／PENDING 時覆蓋層撤掉、run 回到「失聯」顯示。此項修改裁決 P3 的「已有終結事實就不再問」為「10 分鐘一次、6 小時封頂」。須有測試：先 NODE_FAIL、後 RUNNING → 不再顯示 Failed、不提供 resume／relaunch。
- 2. 被覆蓋層顯示成 Failed 的 run 沒有 ended_at：web_board 的 _duration 與所有「Ended」欄位要用與失敗通知相同的備用時間（last_message_at 或事實時間），耗時不得持續增加、Ended 欄不得顯示「—」。須有測試。
- 3. 其餘（輕量專用工作、list_runs 的多餘查詢、pruning 無上限、覆蓋邏輯五處複製、_no_resume 洩漏、SQL NULL 寫法、節流被普通抓取干擾、續跑第一次嘗試缺完成行）一律列 C 級後續，不擋這支 PR。
- 4. 測試編號從 TC-037 起，避免與合約的 TC-035（合併 origin/v3）撞名；程式碼中已標 TC-035／TC-036 的兩處註解改成 TC-037／TC-038 對應的新編號（同步改測試名稱）。
