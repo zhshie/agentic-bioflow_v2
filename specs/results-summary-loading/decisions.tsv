@@ -1,0 +1,2 @@
+ts	phase	decision	why	evidence	result
+2026-11-04T00:00	GREEN	_report_cell 加 reading 參數，只在輸出分頁第一層 loading 時寫讀取中	其他分頁不排工作，寫讀取中會永遠不變	980a44df	待整套測試
