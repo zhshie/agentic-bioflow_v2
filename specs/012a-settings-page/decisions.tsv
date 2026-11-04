@@ -1,0 +1,8 @@
+ts	phase	decision	why	evidence	result
+2026-11-04T00:00	RED	先寫 33 個測試再實作	合約要求先紅後綠	6f1f080a	紅
+2026-11-04T00:00	GREEN	每請求旗標用 contextvar，在 user_of 重設	共用 _frame 不必改每個頁面的參數，且兩人請求不互相看到	test_web_settings_personal.py::test_banner_is_per_person	通過
+2026-11-04T00:00	GREEN	憑證狀態由 web.py 直接讀 store.has_live_pat	test_st07 禁止出現 list_my_tokens 動作	test_web_settings.py::test_st07	通過
+2026-11-04T00:00	GREEN	csrf 錯誤和欄位不合都回 400 並在頁首顯示一句話，不用 403 頁	TC-023..029 要 400 且保留目前值	test_web_settings_personal.py::test_post_refused_cases	通過
+2026-11-04T00:00	GREEN	橫幅字串移到新檔 web_devmode.py	test_tcs03_s04 禁止 web_board.py 含 NCHC	test_web_board.py::test_tcs03_s04_cost_readout	通過
+2026-11-04T00:00	GREEN	放寬既有測試的表單／路由集合，加 /settings/personal	新增的兩個開關表單屬於計畫範圍	test_web_settings.py:292,294; test_web_board.py:812,825,966,1240	通過
+2026-11-04T00:00	GREEN	自己的 test_english 先把逐步模式關掉，才同時看到「開啟」「關閉」按鈕	原寫法兩個開關都開，不會出現「Turn on」，是測試自身的錯	test_web_settings_personal.py::test_english	通過

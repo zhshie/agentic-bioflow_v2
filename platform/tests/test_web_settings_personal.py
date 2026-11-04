@@ -1,5 +1,6 @@
 # Nothing existing: tests of the personal section and the development-mode banner (specs/012a-settings-page); the page and its limits are ours.
 """012a-settings-page: step-by-step and development mode flags, the banner, and the credentials "set / not set" line. Test cases are named in the comments."""
+import base64
 import hashlib
 import re
 import sqlite3
@@ -58,8 +59,6 @@ def post(c, key, on, csrf=None, **extra):
 
 
 def prefs(w, name):
-    from abf_platform import actions
-    caller = w.user(name) if False else None
     con = sqlite3.connect(str(w.ip.tokens))
     try:
         r = con.execute("SELECT step_mode, dev_mode FROM users WHERE name = ?", (name,)).fetchone()
@@ -358,6 +357,7 @@ def test_english(w):
     pat(w, ann, "laptop")
     ca = login(w, "ann")
     post(ca, "dev_mode", "1")
+    post(ca, "step_mode", "0")      # so that both a "Turn off" and a "Turn on" button are on the page
     text, mid = mid_of(ca, "/settings?lang=en")
     assert not CJK.search(mid) and BANNER_EN in text and "!" in text
     sec = personal(mid, "Personal")
@@ -390,7 +390,8 @@ def test_no_script_no_inline_style(w):
             assert "<script" not in r.text and "style=" not in r.text and r.text.count("<style>") == 1
             csp = r.headers["content-security-policy"]
             assert csp.startswith("default-src 'none'; style-src 'sha256-") and csp.endswith("form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
-            assert hashlib.sha256(re.search(r"<style>(.*?)</style>", r.text, re.S).group(1).encode()).digest().hex() or True
+            digest = base64.b64encode(hashlib.sha256(re.search(r"<style>(.*?)</style>", r.text, re.S).group(1).encode()).digest()).decode()
+            assert "'sha256-%s'" % digest in csp
 
 
 def test_switches_are_native_buttons(w):

@@ -55,6 +55,12 @@ STRINGS = {
         "pf_c_action": "動作", "pf_c_env": "運算環境", "pf_op_add": "新增", "pf_op_remove": "移除",
         "pf_expired_title": "表單已失效", "pf_expired": "表單驗證碼不符或已失效，未變更任何內容。請重新整理頁面後再試。",
         "pf_foreign_title": "來源不符", "pf_foreign": "此表單並非由本頁送出，未變更任何內容。請重新整理頁面後再試。",
+        # 012a-settings-page: the personal section, the credentials line and the sentences of the personal form
+        "pref_on": "開", "pref_off": "關", "pref_turn_on": "開啟", "pref_turn_off": "關閉",
+        "cred_set": "已設定", "cred_not": "未設定", "cred_line": "%s：%s",
+        "pf_n_personal-saved": "已儲存。",
+        "pref_bad": "送出的內容不正確，未變更任何內容。請重新整理頁面後再試。",
+        "pref_failed": "未能儲存，未變更任何內容。請稍後再試。",
     },
     "en": {
         "setup": "Before you start", "s_done": "Done", "s_missing": "Missing", "s_later": "Coming later",
@@ -99,11 +105,16 @@ STRINGS = {
         "pf_c_action": "Action", "pf_c_env": "Compute environment", "pf_op_add": "Add", "pf_op_remove": "Remove",
         "pf_expired_title": "Form expired", "pf_expired": "The form token is wrong or has expired; nothing was changed. Reload the page and try again.",
         "pf_foreign_title": "Wrong origin", "pf_foreign": "The form was not sent from this page; nothing was changed. Reload the page and try again.",
+        "pref_on": "On", "pref_off": "Off", "pref_turn_on": "Turn on", "pref_turn_off": "Turn off",
+        "cred_set": "Set", "cred_not": "Not set", "cred_line": "%s: %s",
+        "pf_n_personal-saved": "Saved.",
+        "pref_bad": "What was sent is not valid; nothing was changed. Reload the page and try again.",
+        "pref_failed": "Could not save; nothing was changed. Try again later.",
     },
 }
 SYMBOL = {DONE: "✓", MISSING: "✗", LATER: "—", GONE: "○", FAIL: "✕"}
 CLASS = {DONE: "chip state-succeeded", MISSING: "chip state-failed", LATER: "chip muted", GONE: "chip muted", FAIL: "chip state-failed"}
-NOTICES = ("added_queued", "added_no_agent", "added_not_checkable", "added_check_refused", "removed", "gone", "inv_queued", "inv_no_agent")      # the only values ?notice= may carry
+NOTICES = ("added_queued", "added_no_agent", "added_not_checkable", "added_check_refused", "removed", "gone", "inv_queued", "inv_no_agent", "personal-saved")      # the only values ?notice= may carry
 SLURM_TYPE = "slurm-platform"
 CLOUD_TYPES = ("googlebatch-platform", "awsbatch-platform", "azbatch-platform")      # compute_envs.PLATFORM_HOST_TYPES (this module may not import it; a test keeps the two equal)
 FIELDS = ("pipeline", "revision", "module", "home")
@@ -290,9 +301,29 @@ def _compute(t, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_
     return '<section class="card sec"><h2>%s</h2>%s%s</section>' % (esc(t["set_ce"]), body, _grey_line(t, "ce_later"))
 
 
-def _credentials(t):
-    return ('<section class="card sec"><h2>%s</h2><p class="muted">%s</p>%s</section>'
-            % (esc(t["set_cred"]), esc(t["token_hint"]), _grey_line(t, "tok_later")))
+def _credentials(t, has_token=False):
+    """The token line says only "set" or "not set" (012a-settings-page): no value, no hash, no list."""
+    state = _chip(DONE, t["cred_set"]) if has_token else _chip(LATER, t["cred_not"])
+    line = '<p>%s</p>' % (esc(t["cred_line"] % (t["st_token"], "")) + state)
+    return ('<section class="card sec"><h2>%s</h2><p class="muted">%s</p>%s%s</section>'
+            % (esc(t["set_cred"]), esc(t["token_hint"]), line, _grey_line(t, "tok_later")))
+
+
+def _pref_row(t, lang, key, on, pp_csrf):
+    """One switch: label, state (symbol and word) and one button that posts the opposite value. No script, no confirmation step."""
+    label = t["set_step"] if key == "step_mode" else t["set_dev"]
+    state = _chip(DONE, t["pref_on"]) if on else _chip(LATER, t["pref_off"])
+    form = ""
+    if pp_csrf:
+        form = ('<form method="post" action="/settings/personal">%s<button type="submit">%s</button></form>'
+                % (_hidden([("csrf", pp_csrf), ("key", key), ("on", "0" if on else "1"), ("lang", lang)]), esc(t["pref_turn_off" if on else "pref_turn_on"])))
+    return '<li class="pref"><span>%s</span>%s%s</li>' % (esc(label), state, form)
+
+
+def _personal(t, lang, prefs=None, pp_csrf=None):
+    prefs = prefs or {"step_mode": True, "dev_mode": False}
+    return ('<section class="card sec"><h2>%s</h2><ul>%s%s</ul></section>'
+            % (esc(t["set_me"]), _pref_row(t, lang, "step_mode", prefs["step_mode"], pp_csrf), _pref_row(t, lang, "dev_mode", prefs["dev_mode"], pp_csrf)))
 
 
 def _keys(t):
@@ -302,7 +333,7 @@ def _keys(t):
 
 def _rest(t):
     out = ""
-    for head, entries in web_board.SETTINGS[3:]:      # personal, operator panel, roles: as before, still to come
+    for head, entries in web_board.SETTINGS[4:]:      # operator panel, roles: as before, still to come (the personal section is _personal)
         inner = "<ul>%s</ul>" % "".join("<li>%s</li>" % web_board._grey(t, e) for e in entries) if entries else "<p>%s</p>" % web_board._later(t)
         out += '<section class="card sec"><h2>%s</h2>%s</section>' % (esc(t[head]), inner)
     return out
@@ -331,20 +362,21 @@ def field_error(lang, field, value):
     return None
 
 
-def render_middle(lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None):
-    """The middle column. `envs` is the list inside the answer of list_compute_envs."""
+def render_middle(lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None, prefs=None, pp_csrf=None, has_token=False):
+    """The middle column. `envs` is the list inside the answer of list_compute_envs; `prefs` is the answer of get_my_settings, `pp_csrf` the token
+    of the two switch forms (without it no button is drawn) and `has_token` says whether the person has a live access token."""
     lang = web_board.pick_lang(lang)
     t = words(lang)
-    return ('<main class="main" data-pane="middle"><h1>%s</h1>%s%s%s%s%s%s</main>'
+    return ('<main class="main" data-pane="middle"><h1>%s</h1>%s%s%s%s%s%s%s</main>'
             % (esc(t["settings"]), _flash(t, flash, None), _setup(t, lang, envs), _compute(t, lang, envs, pf_csrf, flash, given, inv, inv_csrf),
-               _credentials(t), _keys(t), _rest(t)))
+               _credentials(t, has_token), _keys(t), _personal(t, lang, prefs, pp_csrf), _rest(t)))
 
 
-def render(name, csrf, runs, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None):
+def render(name, csrf, runs, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None, prefs=None, pp_csrf=None, has_token=False):
     """GET /settings: the same frame as the board, this middle column. The left and right columns stay as web_board draws them.
     `pf_csrf` is the token of the register and remove forms (without it no form is drawn); `flash` says a notice or a failure; `given` holds
     what a person typed, {environment name: {box: text}}, so that a refused form comes back filled."""
-    return web_board._frame(name, csrf, runs, lang, "settings", lambda t, lang_: render_middle(lang, envs, pf_csrf, flash, given, inv, inv_csrf),
+    return web_board._frame(name, csrf, runs, lang, "settings", lambda t, lang_: render_middle(lang, envs, pf_csrf, flash, given, inv, inv_csrf, prefs, pp_csrf, has_token),
                             lambda t, lang_: web_board._right(t, None), path="/settings")
 
 
