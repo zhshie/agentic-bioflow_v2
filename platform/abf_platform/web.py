@@ -66,7 +66,7 @@ from starlette.responses import HTMLResponse, PlainTextResponse, RedirectRespons
 from starlette.routing import Route
 
 from abf_launch.build import CONFIG_LIMIT       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
-from . import actions, jobs, oauth, store, web_board, web_cost, web_launch, web_settings
+from . import actions, oauth, store, web_board, web_cost, web_launch, web_refusal, web_settings
 from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
@@ -450,7 +450,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             refused = None
             if req["kind"] == "launch" and req["job_id"] is not None:
                 try:
-                    refused = jobs.refusal_of(platform_path, req["job_id"])
+                    refused = web_refusal.refusal_of(platform_path, req["job_id"])
                 except sqlite3.Error:
                     refused = None
             if refused:
@@ -572,7 +572,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 if asked:
                     selected["clean_request"] = asked
         try:
-            refusal = await run_in_threadpool(jobs.latest_refusal, platform_path, user["user_id"], clock())
+            refusal = await run_in_threadpool(web_refusal.latest_refusal, platform_path, user["user_id"], clock())
         except sqlite3.Error:
             refusal = None
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
