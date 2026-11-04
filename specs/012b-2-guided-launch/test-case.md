@@ -94,7 +94,7 @@
 | TC-305 | 補充裁決（名稱不在清單） | 例外 | 有已上傳的樣本表；網址帶入選的檔名為 `../x` | 開 `/launch` | 視同未選：顯示「選定樣本表後顯示預覽。」，沒有預覽表，頁面 200 | 自動：`test_only_own_uploads` |
 | TC-306 | 補充裁決；作法 7 | 例外 | 另一位使用者的上傳夾有檔 `other.csv`（內含獨有字串）；網址帶入該檔名 | 開 `/launch` | 視同未選（同 TC-305 的句子）；獨有字串不出現在頁面 | 自動：`test_only_own_uploads` |
 | TC-307 | 裁決 2（沒選管線） | 例外 | 尚未選管線；有已上傳的樣本表 | 開 `/launch` | 第 4 步仍顯示樣本表選單；頁面含「分析名稱」與「送出（前往確認頁）」；不含「預覽與欄位角色（尚未開放）」 | 自動 |
-| TC-308 | 裁決 7；`test_unreadable_sheet_says_so_and_send_still_works` | 例外 | 已選的樣本表檔大於 1 MiB | 開 `/launch` | 第 4 步顯示「樣本表超過 1 MiB，無法預覽。」，前面有 `✗`；頁面 200 | 自動：`test_unreadable_sheet_says_so_and_send_still_works` |
+| TC-308 | 裁決 7；`test_unreadable_sheet_says_so_and_send_still_works` | 例外 | 已選的樣本表檔大於 1 MiB | 開 `/launch` | 第 4 步顯示「樣本表大於 1 MiB，無法預覽。」，前面有 `✗`；頁面 200 | 自動：`test_unreadable_sheet_says_so_and_send_still_works` |
 | TC-309 | 裁決 7 | 例外 | 已選的樣本表檔內含 NUL 位元組 | 開 `/launch` | 顯示「樣本表不是 UTF-8 文字檔，無法預覽。」，前面有 `✗` | 自動：`test_unreadable_sheet_says_so_and_send_still_works` |
 | TC-310 | 裁決 7 | 例外 | 已選的樣本表檔不是 UTF-8 編碼 | 開 `/launch` | 顯示「樣本表不是 UTF-8 文字檔，無法預覽。」，前面有 `✗` | 自動：`test_unreadable_sheet_says_so_and_send_still_works` |
 | TC-311 | 裁決 9 | 例外 | 已選的樣本表檔是 0 位元組 | 開 `/launch` | 顯示「樣本表是空的，沒有標頭列。」，前面有 `✗`；不顯示預覽表，不列角色與配對 | 自動 |
