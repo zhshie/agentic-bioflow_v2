@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-11-04	build	五條 H 全寫成綠測試，不用 xfail	離線渲染 12 個測試第一次跑就綠，沒有平台端缺陷	platform/tests/test_resume_cache_stability.py	12 passed
+2026-11-04	build	nf_hash_diff 欄位名稱依型別／值猜測	Nextflow 不命名 entries；無真實 nano4 日誌可對	scripts/nf_hash_diff.py:label	測試綠，格式待操作員驗證
+2026-11-04	build	不改 launch.py 與既有測試	裁決 2；沒有 H 成立	git diff --stat	無

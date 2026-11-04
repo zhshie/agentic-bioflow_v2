@@ -442,6 +442,41 @@ This one is read, not run. Open `specs/116b-owner-gaps/ledger.md` next to `git d
 6. **The pull request** says "not yet accepted on NCHC" until 3 and 4 are done.
 7. **The runs skill on a test platform (manual).** On a test platform with one failed run and one running run, ask the AI about each, following the new `skills/runs/SKILL.md`. Pass: it reads them with `list_runs` and `get_run`, reads a failed task's log with `read_task_log` (the task folder comes from the `workdir` that `get_run` gives), and never runs `tw`; it says plainly "v3 尚未提供" for what v3 lacks (such as the params a run was started with) instead of guessing; and every cancel, resume or relaunch only sends a request and waits for the person's yes before anything starts.
 
+## 續跑快取診斷（nano4）(resume-cache-miss): the operator runs it by hand, the maintainer says y each time
+
+Why: on 2026-10-25 a resume with edits of `/work/u9613010/runs/runs/ampliseq_day5_nano4_r6` re-ran 71 of 72 tasks, even a FASTQC whose inputs did not change. `platform/tests/test_resume_cache_stability.py` shows offline that the platform's files differ from the first launch only where the edit is (H1 to H5 in `specs/resume-cache-miss/ledger.md`), so the cause is looked for on nano4. The operator does this with the skill `nano4-acceptance`; the code of this task never starts anything on nano4.
+
+**Rules for every step.** Every resume below asks the maintainer, and the maintainer himself says y; the operator cannot answer for him. After each one record: the new run name, its session id (`.nextflow/history` in the folder, or `get_run`), and from `get_run` the number of CACHED tasks and the total (for example 70/72). Use the same folder for all of them: `/work/u9613010/runs/runs/ampliseq_day5_nano4_r6`.
+
+1. **Resume 1, no edit.** `abf-platform resume ampliseq_day5_nano4_r6`, then y. Expected: nearly all CACHED. If this step alone re-runs most tasks, the cause is the session, the work folder or file timestamps (the site or Nextflow), and has nothing to do with edits.
+2. **Resume 2, one parameter only.** `abf-platform resume ampliseq_day5_nano4_r6 --param <a parameter that only a downstream process uses>=<new value>`, then y. Pick a parameter used downstream: changing one that an upstream process reads makes the processes after it run again, and that is normal. Expected: only the tasks that use it run again.
+3. **Resume 3, extra config only.** `abf-platform resume ampliseq_day5_nano4_r6 --config-file <a file with the single line process.memory = '16 GB'>`, then y. Expected: all CACHED (memory is not part of the task hash).
+
+**First layer, nothing is started and nothing is written to the run folder.** Each resume leaves its `.nextflow.log` in the r6 folder. Copy the log after each step, on the login node, with `cp` only, and read it with `grep`: `mkdir -p ~/r6-diag && cp /work/u9613010/runs/runs/ampliseq_day5_nano4_r6/.nextflow.log ~/r6-diag/resume-1.log` (then `resume-2.log`, `resume-3.log`). This starts no Nextflow and does not touch `.nextflow/cache`. Then `python3 scripts/nf_hash_diff.py ~/r6-diag/resume-1.log ~/r6-diag/resume-2.log`. It prints the first field that differs (exit 1), "無差異" (exit 0) or "格式不認得" (exit 2). `.nextflow.log` only holds the hash blocks if the run logged them; if the tool says 格式不認得, go to the second layer.
+
+**Second layer, a fourth resume by hand with `-dump-hashes`. This is not read-only.** The head scripts the platform writes do not carry `-dump-hashes`. Take the last line of the `head-<N>.sh` of one of the three resumes (it is `exec nextflow run ... -resume <session id> -name <new name> ...`), add `-dump-hashes` and start it in the r6 folder. It writes to `.nextflow/cache` and to `.nextflow.log`, so it needs the maintainer's own y, comes after the three platform resumes, and its session id is recorded as well. Use a new `-name` (for example `ampliseq_day5_nano4_r6-dump1`), run it once before the edit is made (the same line as resume 1) and once with the edit (the line of resume 2), copying `.nextflow.log` after each to `~/r6-diag/dump-before.log` and `~/r6-diag/dump-after.log`. Then `python3 scripts/nf_hash_diff.py ~/r6-diag/dump-before.log ~/r6-diag/dump-after.log`.
+
+**Reading the result.**
+
+| What you see | Points to | Do |
+|---|---|---|
+| Resume 1 (no edit) already re-runs most tasks | The site or Nextflow: session, work folder, file timestamps. Not the edit, not the platform | Do not guess a fix. Report to the maintainer; a later task decides |
+| Resume 1 all CACHED, resume 2 re-runs more than the tasks that use the parameter | The parameter is read upstream, or Nextflow; check the hash diff | Run the second layer; see the next table |
+| Resume 3 (extra config only) re-runs tasks | Something in the extra config enters the hash (`container`, `env`, `ext.args`) or the platform wrote it | Read `extra-<N>.config`; offline tests say the platform adds only a comment line |
+| All three CACHED | The 2026-10-25 case did not repeat; note the date and the edit that was made then | Report; ask what edit it was |
+
+First differing field in `nf_hash_diff.py`:
+
+| Field | Points to |
+|---|---|
+| input (path, size or mtime; the tool says "值相同但雜湊不同" for size or mtime) | The site: input files changed, were copied again or live on a file system that changes mtime |
+| container | The site: the image name or path changed (offline site, image cache) |
+| script | The pipeline or the parameters: a different script text |
+| env, other | The environment of the head job or `ext.args`; compare the `export` lines of the two head scripts |
+| session | The resume did not use the same session id |
+
+**The reviewer checks (read, not run).** (1) `git diff --stat origin/v3...HEAD` lists only `platform/tests/test_resume_cache_stability.py`, `docs/TESTING.md` (this section only), `scripts/nf_hash_diff.py`, `specs/resume-cache-miss/` files and, if it was touched, `platform/tests/resume_harness.py` with added cases only. (2) `platform/abf_station/launch.py` (including `OVERWRITE_BLOCK` and `relaunch`), `web.py`, `mcp_server.py`, `static/`, `platform/abf_platform/jobs.py` and `docs/PITFALLS.md` are unchanged, and there is no `store.py` or migration change. (3) `scripts/nf_hash_diff.py` imports only the standard library and has no network, ssh, sbatch or nextflow call. (4) The ledger table has H1 to H5, each with a test name that exists in the test file, and no existing assertion was deleted or loosened. (5) The made-up logs in the tests are in the shape described at the top of `scripts/nf_hash_diff.py`, whose source is named there; nothing in the files is a token or a password.
+
 ## Browser chat backend (014a): the reviewer checks three things
 
 The automated tests are `platform/tests/test_chat_tools.py` and `platform/tests/test_model_key_refusal.py`. Three test cases cannot be checked by a test and are done by hand, from the root of the branch.
