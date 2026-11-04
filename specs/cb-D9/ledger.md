@@ -77,3 +77,16 @@ and nothing hardcodes the control-path default beside it   ok
 
 134/143 passed, 9 failed
 ```
+
+## Fix round: RED timing test (checker: userinfo regex is quadratic)
+
+Added `test_credential_check_is_linear_on_hostile_input` (`'a.'*100000`, `'x://'+'a:'*50000`, `'http://'+'a:'*50000+' no at sign'`, each < 1 s).
+On the current regex (`\b[A-Za-z][A-Za-z0-9+.-]*://[^\s/?#@]*:[^\s/?#@]*@`):
+
+```
+E       assert (23463.468378913 - 23439.489433623) < 1.0      (one case took ~24 s)
+FAILED platform/tests/test_url_credential_patterns.py::test_credential_check_is_linear_on_hostile_input[text0]
+FAILED platform/tests/test_url_credential_patterns.py::test_credential_check_is_linear_on_hostile_input[text1]
+FAILED platform/tests/test_url_credential_patterns.py::test_credential_check_is_linear_on_hostile_input[text2]
+3 failed, 39 deselected in 82.04s (0:01:22)
+```

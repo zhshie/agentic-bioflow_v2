@@ -72,3 +72,12 @@ def test_the_secret_is_not_in_the_refusal():
     from abf_platform import compute_envs as ce
     msg = ce.credential_findings({"description": "https://user:" + PW + "@h.org/a"}, "x")
     assert msg and PW not in repr(msg)
+
+
+@pytest.mark.parametrize("text", ["a." * 100000, "x://" + "a:" * 50000, "http://" + "a:" * 50000 + " no at sign"])
+def test_credential_check_is_linear_on_hostile_input(text):
+    # The userinfo rule must not backtrack quadratically on a long dotted or colon-heavy cell.
+    import time
+    t0 = time.monotonic()
+    compute_envs.looks_like_credential(text)
+    assert time.monotonic() - t0 < 1.0
