@@ -2,3 +2,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	RED	先寫測試檔 test_refusal_visibility.py，站台用真的 handle 加 launch._prechecks，網頁用 World 造 refused job	測試先紅再實作	platform/tests/test_refusal_visibility.py	42 紅（預期）
 2026-11-04T10:00	GREEN	指令取自 connect detail 結尾，不改 verdict 形狀	改動最小，且與 on_site 印的一行同源	rules.py:open_command_in	測試全綠
 2026-11-05	GREEN	新增 web_refusal.py 作為網頁讀退回紀錄的唯一入口；re-pin web_board.STRINGS 雜湊	web.py 不得 import jobs (TC-H16f)、actions/__init__.py 本片凍結；STRINGS 新增 refusal_* 是計畫明定，釘死的雜湊只能跟著更新（有前例 fa063902）	web_refusal.py; test_web_settings_ce_mobile.py:ce08	待全套
+2026-11-05	BLOCKED	合併 origin/v3 兩次後全套仍只剩 test_no_schema_change 紅	套件跑的環境裡 origin/v3 是舊參照（紅的差異量隨我合併增加），不是本片改了 store.py	git diff e240928b..HEAD 對 store.py 為空	603/604
