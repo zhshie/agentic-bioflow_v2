@@ -777,6 +777,26 @@ def test_tc047_get_run_description_says_a_lost_run_triggers_one_site_query(rig):
 def test_tc048_get_run_stays_a_query_that_needs_no_yes(rig):
     # TC-048 (R2)
     import asyncio
+    import importlib
+    from helpers import tool_json
+    run_id = lost_run(rig, "q48")
+    hits = []
+    for mod, name in [("abf_platform.confirm", "approve"), ("abf_platform.actions", "approve"), ("abf_platform.actions", "launch"),
+                      ("abf_platform.actions", "cancel"), ("abf_platform.actions", "forget"), ("abf_platform.jobs", "enqueue_confirmed"),
+                      ("abf_platform.jobs", "enqueue_launch"), ("abf_platform.jobs", "enqueue_cancel")]:
+        m = importlib.import_module(mod)
+        assert hasattr(m, name), "write point %s.%s is gone" % (mod, name)
+        rig.w.monkeypatch.setattr(m, name, lambda *a, _n=name, **k: hits.append(_n))
+    before = len(rig.sql("SELECT id FROM jobs"))
+    # (a) over MCP with the SDK's in-memory Client (no form support, nobody says yes): the run comes back at once, no write point is reached
+    _, outs = rig.w.mcp([("get_run", {"run_id": run_id})], caller=owner(rig))
+    assert not outs[0].is_error
+    out = tool_json(outs[0])
+    assert out.get("id") == run_id and out.get("name") == "q48", out
+    assert "confirm" not in json.dumps(out).lower() and "not sent" not in json.dumps(out).lower()      # not the write tools' "asked, waiting for a yes" answer
+    assert hits == []
+    new = rig.sql("SELECT kind FROM jobs ORDER BY id")[before:]
+    assert len(new) <= 1 and all(r["kind"] == "fetch_run_records" for r in new), [r["kind"] for r in new]
     from abf_platform.actions import chat_tools
     assert "get_run" not in chat_tools.REQUEST_TOOLS and chat_tools.REQUEST_TOOLS == {"launch", "cancel", "resume", "relaunch", "forget"}
     names = {s["name"] for s in asyncio.run(chat_tools.tool_specs(str(rig.index), str(rig.state)))}

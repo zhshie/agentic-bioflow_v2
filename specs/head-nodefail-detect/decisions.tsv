@@ -22,3 +22,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	fix	7 天修剪：被較新答案（RUNNING/PENDING/COMPLETED 等）取回的壞結束列不再保留；6 小時從連續壞答案的第一筆起算	對抗審：修剪留下舊 NODE_FAIL 刪掉新 RUNNING 會讓 run 永遠 Failed；每次重問都重設事實年齡使 6 小時封頂永不發生	failures.py:kept_fact_sql; jobs.py:_bad_end_began; test_head_nodefail.py ADV-6,ADV-7	test_head_nodefail 82 全過
 2026-11-04	fix	裁決 R1：無事實的 lost run 靜默超過6小時（取最後訊息與送出時間較新者）就不再問排程器；R2：get_run 標註改 read_only_hint=false、說明加一句，chat_tools 加 QUERY_TOOLS 讓它仍可提供	裁決 R；MCP 標註釘死的既有測試只改 get_run 這一件事（見 ledger）	jobs.py ask_head_state; mcp_server.py _QUERY; test_head_nodefail.py TC-044..048	pass
 2026-11-04	test	get_run 唯讀標註同步再補兩支 v3 新增的測試（test_station_envs tc071、test_su_usd tc033）	全套發現；與 TC-049 同類，只改 get_run 這一項，其他工具仍須唯讀	tests/test_station_envs.py:382; tests/test_su_usd.py:230	兩檔全過
+2026-11-04	fix	TC-048 補 MCP Client 呼叫 get_run 的 (a) 斷言；PLATFORM.md 唯讀工具數 16→15 並說明 get_run	驗卷者指出測試比合約弱、文件與實際不符	platform/tests/test_head_nodefail.py:777; docs/PLATFORM.md:436	單檔測試過

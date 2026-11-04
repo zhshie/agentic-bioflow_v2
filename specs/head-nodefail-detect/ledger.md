@@ -18,3 +18,4 @@
   - TC-049 既有 MCP 測試的同步（只改 get_run 不再算唯讀這一件事）：test_actions_layer.py（tce01、tca10 另比對 get_run 與舊版：說明為舊文加一句、schema 與其他標註相同）、test_chat_tools.py（offered_by_rule 與 tc025）、test_guidance.py tc501、test_keep_submissions.py tc094、test_launch_platform.py tc010、test_mcp.py tc024、test_mcp_canvas_read.py、test_mcp_run_file.py（唯讀 16→15）、test_mcp_server_doc.py（16→15）、mcp/test_mcp_contract_tools.py（get_run 說明凍結上限 683→804）、mcp/test_mcp_contract_writes.py（寫入工具清單排除 get_run）。
   - TC-050 backlog（C 級，本輪未動）：NODE_FAIL 重排風險、kept_fact_sql 效能、symlink 日誌、list_runs 多餘查詢、狀態表重複、區域 import。
   - TC-049 補充（11-04）：test_station_envs.py tc071、test_su_usd.py tc033 同步（get_run 非唯讀，其他仍唯讀）。
+  - 修正輪（11-04，驗卷者）：TC-048 補 (a) MCP in-memory Client 呼叫 get_run（lost run）：立即回傳、寫入點記錄器零次、佇列最多多一個 fetch_run_records；TC-049 補 docs/PLATFORM.md 第 6、436 行（十六→十五個唯讀，get_run 移出清單並說明為何非唯讀）。維護者待確認：get_run 說明長度上限 683→804 放寬、外部用戶端對非唯讀工具的許可詢問、第 936 行段落尚未寫 6 小時放棄規則。
