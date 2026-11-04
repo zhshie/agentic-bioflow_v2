@@ -565,7 +565,7 @@ def test_adv3_the_failure_notice_of_a_failed_overlay_keeps_a_time(rig):
     rid = lost_run(rig, run="x")
     add_fetch(rig, "x", fact("NODE_FAIL"))
     v = get(rig, rid)
-    assert v["status"] == "failed" and v.get("ended_at") is None
+    assert v["status"] == "failed" and v.get("ended_at") == v.get("last_message_at")      # ruling Q2: the view carries the notice's own time as its end
     assert when(v) == plain != "\u2014"
 
 
@@ -574,10 +574,10 @@ def test_adv3_the_failure_notice_of_a_failed_overlay_keeps_a_time(rig):
 @pytest.mark.parametrize("alive", ["RUNNING", "PENDING"])
 def test_tc037_the_newest_real_answer_wins_over_an_earlier_bad_end(rig, alive):
     # TC-037 (Q1): NODE_FAIL first, then RUNNING/PENDING (Slurm requeued it): back to lost, as a run with no fact at all
-    rid = lost_run(rig)
+    rid = lost_run(rig, succeeded=0)      # nothing to reuse: a plain lost run offers relaunch only
     add_fetch(rig, "x", fact("NODE_FAIL"), age=900)
     add_fetch(rig, "x", fact(alive, "squeue"), age=300)
-    plain = lost_run(rig, "y", slurm=777)
+    plain = lost_run(rig, "y", slurm=777, succeeded=0)
     v = get(rig, rid)
     base = get(rig, plain)
     assert v["status"] == "lost" and v["failure"]["failure_reason"] is None

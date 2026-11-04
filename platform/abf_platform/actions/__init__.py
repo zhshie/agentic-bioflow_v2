@@ -92,6 +92,7 @@ def list_runs(index_path, *, caller=None, platform_path=None):
             if full is not None:
                 full = failures.with_head_state(full, jobs.head_state(path, row["name"]))
                 row["status"] = full["status"]
+                row["ended_at"] = full.get("ended_at", row.get("ended_at"))
                 asked = jobs.cancel_requested_at(path, row["name"])
                 if asked is not None:
                     full["cancel_requested_at"] = common.epoch_iso_ms(asked)

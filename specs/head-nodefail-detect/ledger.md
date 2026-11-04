@@ -12,3 +12,4 @@
 - [x] 裁決 P（11-04）：git merge origin/v3（PITFALLS.md 衝突已解）；P1 head_state 只取有 scheduler 事實的最新抓取；P2 scheduler=None 不蓋掉終結事實；P3 已知終結事實不再排抓取、caller=None 不排站台工作；P4 輪替檔缺啟動標記且無完成行時仍問排程器（TC-030..034）。其餘 C 級後續項不做。
 - [x] 對抗審修正（11-04）：TC-035 帶壞結束事實的讀回不被 7 天修剪刪掉（Failed 不會退回 lost）；TC-036 _fetches_of 不再以 20 筆截斷，普通抓取擠不掉事實。
 - [x] 對抗審第三輪（11-04）：forget、用量頁、失敗通知時間與 get_run 一致（ADV-1..3，test_head_nodefail.py 尾段；合約無對應條目，視為 TC-031 延伸）
+- [x] 裁決 Q（11-04）：Q1 壞結束事實每 10 分鐘最多再問一次、事實超過 6 小時不再問，最新真實答案為準（TC-037,040..042）；Q2 覆蓋層成 Failed 的 run 以 last_message_at 當 ended_at，Ended 欄與耗時一致（TC-038,039）；舊 TC-035/036 註解改標 ADV-4/ADV-5（TC-043 與合約內容不符，見 decisions.tsv）。origin/v3 之後又前進 10 個提交，落地前再 merge。

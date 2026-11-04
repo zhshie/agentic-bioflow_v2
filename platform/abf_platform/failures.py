@@ -64,7 +64,8 @@ def with_head_state(view, fact):
     if not fact or not isinstance(view, dict) or view.get("status") != "lost":
         return view
     if fact["state"] in ENDED_BAD:
-        return dict(view, status="failed", failure_reason=head_reason(fact))
+        # a lost run has no ended_at: the end shown is the last message, as the failure notice does, so no Ended place is a dash and the duration stops
+        return dict(view, status="failed", failure_reason=head_reason(fact), ended_at=view.get("ended_at") or view.get("last_message_at"))
     if fact["state"] == "COMPLETED":
         return dict(view, failure_reason=head_reason(fact), _no_resume=True)
     return view

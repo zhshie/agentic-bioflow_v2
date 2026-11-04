@@ -405,6 +405,8 @@ def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, 
 
 
 HEAD_STATE_FRESH_SECONDS = 60
+BAD_END_REASK_SECONDS = 600           # ruling Q1: a bad end is not for ever (Slurm may requeue the job); ask again at most this often ...
+BAD_END_GIVE_UP_SECONDS = 6 * 3600    # ... and not at all once the fact is older than this
 
 
 def _fetches_of(con, launch):
@@ -423,8 +425,8 @@ def _fetches_of(con, launch):
     return out
 
 
-def _newest_fact(rows, launch):
-    """The newest checked fact among the finished read-backs that asked Slurm about this launch's own Slurm number. A read-back
+def _newest_fact_row(rows, launch):
+    """(fact, row) of the newest checked fact among the finished read-backs that asked Slurm about this launch's own Slurm number. A read-back
     that has no Slurm answer (a plain fetch, or a site that could not ask: answer None) or a fact that does not fit is no new
     fact and never covers an earlier one."""
     for row in rows:
@@ -435,8 +437,12 @@ def _newest_fact(rows, launch):
         except (ValueError, AttributeError, TypeError):
             continue
         if fact is not None and fact["job_id"] == str(launch["slurm_job_id"]):
-            return fact
-    return None
+            return fact, row
+    return None, None
+
+
+def _newest_fact(rows, launch):
+    return _newest_fact_row(rows, launch)[0]
 
 
 def head_state(state_path, run_name):
@@ -470,13 +476,18 @@ def ask_head_state(state_path, run_name, clock=time.time):
         if launch is None or launch["slurm_job_id"] is None:
             return False
         rows = _fetches_of(con, launch)
-        known = _newest_fact(rows, launch)
-        if known is not None and (known["state"] in failures.ENDED_BAD or known["state"] == "COMPLETED"):      # an ended head does not come back
+        known, known_row = _newest_fact_row(rows, launch)
+        wait = HEAD_STATE_FRESH_SECONDS
+        if known is not None and known["state"] == "COMPLETED":      # a head that ended well does not change
             return False
+        if known is not None and known["state"] in failures.ENDED_BAD:      # ruling Q1: a bad end is asked again, slowly, and not for ever
+            if now - (known_row["finished_at"] or known_row["created_at"] or 0) > BAD_END_GIVE_UP_SECONDS:
+                return False
+            wait = BAD_END_REASK_SECONDS
         for row in rows:
             if row["state"] in ("queued", "claimed") and row["deadline_at"] > now:
                 return False
-            if max(row["created_at"] or 0, row["finished_at"] or 0) > now - HEAD_STATE_FRESH_SECONDS:
+            if max(row["created_at"] or 0, row["finished_at"] or 0) > now - wait:
                 return False
         _enqueue_fetch_in(con, run_name, now, seconds, None, True)
         return True
