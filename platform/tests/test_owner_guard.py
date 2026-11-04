@@ -147,6 +147,7 @@ NO_TOOL = {
     "list_samplesheets": "web launch page",
     "nfcore_catalogue": "web launch page",
     "pipeline_files": "web launch page",
+    "preview_samplesheet": "web launch page: the first rows of the caller's own samplesheet",
     "read_confined_samplesheet": "helper of the launch page",
     "request_pipeline_launch": "web launch page",
     "start_upload_batch": "web upload page: the press of Upload is the yes (web-upload-page)",

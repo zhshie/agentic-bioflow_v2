@@ -962,7 +962,11 @@ GUIDED = {
         "g_th_pipeline": "管線", "g_th_revision": "版本", "g_th_run": "上次分析名稱", "g_th_at": "上次送出時間", "g_th_ce": "運算環境",
         "g_select": "選用", "g_quick": "沿用設定重新分析", "g_no_used": "尚無使用紀錄。",
         "g_search": "搜尋全部 nf-core（尚未開放）",
-        "g_preview": "預覽與欄位角色（尚未開放）",
+        "g_pv_title": "樣本表預覽", "g_pv_pick": "選定樣本表後顯示預覽。", "g_pv_total": "共 %d 列", "g_pv_total1": "共 1 列", "g_pv_first": "僅顯示前 5 列",
+        "g_pv_roles": "欄位角色", "g_pv_th_role": "角色", "g_pv_req": "✓ 必填", "g_pv_opt": "✓ 選填", "g_pv_none": "— 管線無此欄",
+        "g_pv_miss": "✗ 缺少必填欄", "g_pv_paired": "已配對 %d／%d",
+        "g_pv_big": "樣本表大於 1 MiB，無法預覽。", "g_pv_text": "樣本表不是 UTF-8 文字檔，無法預覽。",
+        "g_pv_empty": "樣本表是空的，沒有標頭列。", "g_pv_unread": "無法讀取所選樣本表，請重新上傳。",
         "g_no_sheet": "尚無已上傳的樣本表，請先上傳。", "g_go_board": "前往看板", "g_go_upload": "前往上傳資料", "g_go_settings": "前往設定頁",
         "g_reg_bad": "此管線版本尚未在所選運算環境登記，請先至設定頁登記。",
         "g_ver_wait": "正在讀取版本清單…",
@@ -993,7 +997,13 @@ GUIDED = {
         "g_th_pipeline": "Pipeline", "g_th_revision": "Revision", "g_th_run": "Last analysis", "g_th_at": "Last launched", "g_th_ce": "Compute environment",
         "g_select": "Select", "g_quick": "Re-run with the same settings", "g_no_used": "No usage history.",
         "g_search": "Search all of nf-core (not yet available)",
-        "g_preview": "Preview and column roles (not yet available)",
+        "g_pv_title": "Samplesheet preview", "g_pv_pick": "The preview appears once a samplesheet is selected.", "g_pv_total": "%d rows in total",
+        "g_pv_total1": "1 row in total", "g_pv_first": "Showing the first 5 rows",
+        "g_pv_roles": "Column roles", "g_pv_th_role": "Role", "g_pv_req": "✓ Required", "g_pv_opt": "✓ Optional", "g_pv_none": "— Not in this pipeline",
+        "g_pv_miss": "✗ Missing required column", "g_pv_paired": "Paired %d/%d",
+        "g_pv_big": "The samplesheet is larger than 1 MiB and cannot be previewed.",
+        "g_pv_text": "The samplesheet is not a UTF-8 text file and cannot be previewed.",
+        "g_pv_empty": "The samplesheet is empty and has no header row.", "g_pv_unread": "The selected samplesheet cannot be read. Please upload it again.",
         "g_no_sheet": "No samplesheet has been uploaded. Please upload one first.", "g_go_board": "Go to the board", "g_go_upload": "Go to upload data", "g_go_settings": "Go to the settings page",
         "g_reg_bad": "This pipeline version is not registered on the selected compute environment. Register it on the Settings page first.",
         "g_ver_wait": "Reading the version list…",
@@ -1154,7 +1164,8 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
         four = ('<p class="bad"><span class="csym">✗</span> %s</p><p><a href="%s">%s</a></p>'
                 % (esc(t["g_no_sheet"]), _url(lang, path="/upload"), esc(t["g_go_upload"])))
     four += web_launch.samplesheet_block(t, lang, pair, quiet)
-    four += '<p class="off">%s</p>' % esc(t["g_preview"])
+    if sheets:
+        four += web_launch.preview_block(t, lang, g.get("preview"), pair)
     # 5 parameters: whether the table was read, the earlier analysis to follow, the table (every box holds its default), the box for the rest
     reuse_opts = '<option value="">%s</option>' % esc(t["g_reuse_off"]) + "".join(
         '<option value="%s"%s>%s</option>' % (esc(r["run_name"]), " selected" if r["run_name"] == given.get("params_from") else "",
