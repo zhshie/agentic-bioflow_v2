@@ -36,3 +36,10 @@ FAILED tests/test_path_rules_parity.py::test_same_answer[dotdot_middle] - Ass...
 FAILED tests/test_path_rules_parity.py::test_same_answer[dotdot_trailing] - A...
 5 failed, 44 passed in 0.17s
 ```
+
+## Full suite, first run at 80381d07 (before the fix below)
+`platform_test.sh` failed `test_scope.py::test_tc072_no_personal_or_cluster_paths`: my test table used `/work/<name>/` paths, which match the repo's no-hardcoded-paths pattern (`/work/run1/`, `/work/a..b/c`). Fixed by using `/data/...` in the test table (same inputs otherwise, 49 passed again).
+
+## Environment / pre-existing failures (also fail in the T3 and T4 full runs on this VM)
+agent_ctl_connection_id_test, why_pending_test, wsl_bridge_test, platform_clock_test, platform_shard_4/6/7 (and shard_5 in T3/T4).
+`platform_upgrade_test.sh` TC-U28 ("platform/ ... untouched since the merge base with origin/v3") fails for ANY commit that touches platform/, including this one: FINDING, not fixed (tests/ not in scope).
