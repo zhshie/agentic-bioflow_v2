@@ -172,3 +172,10 @@ D. **012b-2 剩餘片的順序**：預設 (b) 本片 →（核對後）guided-la
   - repo 還沒有 `ui_check.py`：verifier 自己用 Playwright（經 `with_server.py`）拍同樣 4 張截圖；axe 沒跑就標 **axe：UNVERIFIED**，並寫明缺什麼。
   - 截圖只能存到 repo 之外或 `.gitignore` 排除的資料夾，**絕不存進 Drive 工作區**；報告只貼路徑與張數。
   - 起不了應用程式（缺依賴、埠被占）標 UNVERIFIED 並寫明需要什麼，不改以靜態 HTML 當作通過。
+
+## 補充裁決（11-04 developer-agent，回應 verifier 出題的疑點）
+- 選的樣本表檔名不在 `list_samplesheets` 清單內（含 `../x`、他人檔名）：視同「未選」，顯示與「清單有、未選」相同的句子；不預覽、不洩漏內容。
+- schema_input 讀取錯誤（`_failure`）：預覽表照常顯示，只是不列角色與配對。
+- 恰好 5 列：`truncated` 為 False；只有超過 5 列才寫「僅顯示前 5 列」。純空白儲存格視為空。
+- 英文「無樣本表」句：沿用 v3 現行 `g_no_sheet`，不要求逐字等於 DESIGN.md。
+- `ui_check.py` 以 `scripts/dev/ui_check.py` 為準。
