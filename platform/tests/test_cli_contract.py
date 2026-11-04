@@ -331,8 +331,8 @@ def test_errors_never_leak_in_a_real_process(tmp_path):
 
 
 def test_documented_gaps():
-    # TC-012: today the command line has no --json, --debug or --version (nor a NO_COLOR handler); when one lands, this turns red
-    # so that its contract tests are written with it. It is a statement of the present, not a skipped test.
+    # TC-012, updated by cli-json-debug-version: --version, --json and --debug now exist, on the root only (their tests are in
+    # test_cli_flags.py); there is still no NO_COLOR handler. It is a statement of the present, not a skipped test.
     def parsers(p):
         yield p
         for a in p._actions:
@@ -341,6 +341,8 @@ def test_documented_gaps():
                     yield from parsers(child)
     root = cli.build_parser()
     options = {o for p in parsers(root) for a in p._actions for o in a.option_strings}
-    assert not options & {"--json", "--debug"}, options & {"--json", "--debug"}
-    # `dataset register|show` have a --version of their own (the dataset's version); the program has none at the top
-    assert "--version" not in {o for a in root._actions for o in a.option_strings}
+    top = {o for a in root._actions for o in a.option_strings}
+    assert {"--json", "--debug", "--version"} <= top
+    # a leaf has none of --json and --debug; `dataset register|show` keep a --version of their own (the dataset's version)
+    leaves = {o for p in parsers(root) if p is not root for a in p._actions for o in a.option_strings}
+    assert not leaves & {"--json", "--debug"}, leaves & {"--json", "--debug"}
