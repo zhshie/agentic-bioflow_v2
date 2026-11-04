@@ -25,8 +25,8 @@ import re
 import sys
 
 HEADER = re.compile(r"(?:^|\s-\s)\[(.+?)\] cache hash: ([0-9a-fA-F]+); mode: (\w+); entries:")
-ENTRY = re.compile(r"^\s+([0-9a-fA-F]{8,})\s+\[([^\]\s]+)\]\s?(.*)$")
-IMAGE = re.compile(r"^(?:(?:docker|oras|library|shub)://)?[\w.\-]+(?::\d+)?(?:/[\w.\-]+)+(?:[:@][\w.\-:]+)?$|^\S+\.(?:sif|img)$")
+ENTRY = re.compile(r"^\s+([0-9a-fA-F]{8,})\s+\[([^\]\s]+)\]\s?(.*)\Z")
+IMAGE = re.compile(r"^(?:(?:docker|oras|library|shub)://)?[\w.\-]+(?::\d+)?(?:/[\w.\-]+)+(?:[:@][\w.\-:]+)?\Z|^\S+\.(?:sif|img)\Z")
 
 
 class NotAHashLog(Exception):
