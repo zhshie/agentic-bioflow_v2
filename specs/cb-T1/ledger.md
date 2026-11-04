@@ -73,3 +73,33 @@ FAILED tests/test_common_untested.py::test_run_failure_reason_table[line1\nline2
 ```
 
 After restoring, git diff on common.py is empty; new file: 76 passed.
+
+## Full suite (bash tests/run_all.sh), run on HEAD daffb2ac25e3749c870c1f476218010a29f5ceed (the test commit; this ledger edit came after)
+Not green locally: 133/141 passed, 8 failed. Same 8 names fail in the other cb worktrees (T3, T4, T5, T2) and none is in test_common_untested.py:
+- platform_upgrade_test.sh TC-U28 fails BY DESIGN for any branch touching platform/ ('platform/, backup.sh and deploy/systemd untouched' vs merge-base origin/v3); this task's only code file is under platform/tests/. Cannot be fixed inside the allowed files.
+- agent_ctl_connection_id_test.sh: 'scripts/agent_ctl.sh line 95: USER: unbound variable' (VM has no $USER).
+- platform_clock_test, platform_shard_4/6/7 (pytest: test_station_e2e tc056/tc082, test_cli_snapshots help snapshot, test_pipeline_launch_station tc124, test_station_launch tc022, test_station_resume tc026), why_pending_test, wsl_bridge_test: environment-dependent, unrelated to common.py.
+
+Last 20 lines of run_all output:
+```
+FAIL       agent          not running - Platform will show no outputs (scripts/on_site.sh --script scripts/agent_ctl.sh start)
+FAIL       resources      tar: Child returned status 141
+FAIL       compute-env    ce is 'unreachable'>>
+missing rsync on MSYS is FAILed by name                    ok
+and it says plainly that Git Bash ships none               ok
+and gives an install route rather than nothing             ok
+
+-- (i) install_deps.sh: tw on MSYS is named plainly, not folded into 'unknown platform' --
+install_deps.sh --cli-only fails cleanly, not silently     ok
+it names the gap as unmeasured (R4), a real answer         ok
+and gives the Windows asset to fetch by hand               ok
+it does not fall back to the generic unknown-platform text ok
+shim does not run wsl.exe from the caller's own cwd        ok
+and lands in a directory that exists                       ok
+only settings.sh decides whether the bridge is in play     ok
+and nothing hardcodes the control-path default beside it   ok
+
+3 failed
+
+133/141 passed, 8 failed
+```
