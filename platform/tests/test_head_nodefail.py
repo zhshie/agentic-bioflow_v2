@@ -642,3 +642,64 @@ def test_tc039_the_duration_of_a_run_shown_failed_does_not_grow(rig):
     v = get(rig, rid)
     now = time.time()
     assert web_board._duration(t, v, now) == web_board._duration(t, v, now + 3600) != "\u2014"
+
+
+# ---- adversary round (11-04, on ruling Q): the prune and the six hours -----------------------------------------------------------
+
+def test_adv6_the_prune_does_not_bring_back_a_bad_end_that_a_newer_answer_took_back(rig):
+    # ADV-6 (Q1): NODE_FAIL then RUNNING, both older than the prune age: the run must not turn Failed again, nor offer resume
+    from abf_platform import jobs
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=8 * 86400 + 600)
+    add_fetch(rig, "x", fact("RUNNING", "squeue"), age=8 * 86400)
+    lost_run(rig, "y", slurm=777)
+    get(rig, "id-y")                       # queues a job on another run: the insert runs the prune
+    assert jobs.head_state(rig.state, "x") is None or jobs.head_state(rig.state, "x")["state"] == "RUNNING"
+    v = get(rig, rid)
+    assert v["status"] == "lost" and v["failure"]["failure_reason"] is None
+    assert "還在跑" in rig.resume("x", person=FakePerson(True))["message"]
+
+
+def test_adv6_a_later_bad_end_after_a_taken_back_one_is_still_kept(rig):
+    # ADV-6: NODE_FAIL, RUNNING, NODE_FAIL: the newest bad end survives the prune; the run stays Failed
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=9 * 86400)
+    add_fetch(rig, "x", fact("RUNNING", "squeue"), age=8.5 * 86400)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=8 * 86400)
+    lost_run(rig, "y", slurm=777)
+    get(rig, "id-y")
+    assert get(rig, rid)["status"] == "failed"
+
+
+def test_adv7_the_six_hours_count_from_the_first_bad_answer_not_from_the_last(rig):
+    # ADV-7 (Q1): the site keeps saying NODE_FAIL and someone keeps opening the run: the scheduler is not asked after six hours
+    from abf_platform import jobs
+    lost_run(rig)
+    t0 = time.time()
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=0)
+    asked = []
+    for k in range(1, 60):                          # every 11 minutes, 10.8 hours in all
+        T = t0 + k * 660
+        con = sqlite3.connect(str(rig.state))
+        with con:
+            con.execute("UPDATE agents SET last_seen_at = ?", (T,))
+        con.close()
+        if jobs.ask_head_state(rig.state, "x", clock=lambda T=T: T):
+            asked.append(k * 660 / 3600)
+            con = sqlite3.connect(str(rig.state))
+            with con:
+                con.execute("UPDATE jobs SET state='done', result_json=?, finished_at=? WHERE state='queued' AND kind='fetch_run_records'",
+                            (json.dumps({"ok": True, "files": [], "refused": [], "scheduler": fact("NODE_FAIL")}), T + 30))
+            con.close()
+    assert asked and max(asked) <= 6.0, asked
+
+
+def test_adv7_a_new_streak_after_an_alive_answer_gets_its_own_six_hours(rig):
+    # ADV-7: NODE_FAIL 7h ago, RUNNING 5h ago, NODE_FAIL 20 minutes ago: the bad end is young again, so it is asked again
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=7 * 3600)
+    add_fetch(rig, "x", fact("RUNNING", "squeue"), age=5 * 3600)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=20 * 60)
+    n = len(fetch_jobs(rig))
+    assert get(rig, rid)["status"] == "failed"
+    assert len(fetch_jobs(rig)) == n + 1
