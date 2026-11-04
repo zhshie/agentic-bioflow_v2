@@ -138,6 +138,9 @@ R. /code-review 第三次對 PR #318 的裁決（11-04，只收兩項，其餘�
 
 程式已 GREEN（HEAD 986c6c35），工作樹我已清乾淨。剩：`git merge origin/v3`（會在 docs/PLATFORM.md、platform/abf_platform/actions/chat_tools.py 衝突，兩邊都要保留：v3 新增的內容＋本案的 QUERY_TOOLS／get_run 說明），解完跑全套、寫 GREEN、提交。不要用 rm/git clean；有暫存檔放 $TMPDIR。
 
+## 裁決 R6（11-05，developer-agent）
+`test_no_schema_change` 的舊基準 e428661b 已過期（v3 自己改過 store.py），我已把基準改成 origin/v3（commit 8ac934e1，與 launch-test-profile 同一修法）。其他 143 個測試已綠；不要再因這條 BLOCKED，直接跑全套交閱卷。
+
 ## 專長守則（backend）
 
 ### executor
