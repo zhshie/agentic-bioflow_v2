@@ -14,7 +14,7 @@ The four inputs of `docs/reports/audit-2026-11/03_web_cell_credential_gate.py` a
 - `platform/tests/test_url_credential_patterns.py` (new)
 
 ## Approach
-Two new regexes: userinfo `scheme://[^\s/?#@]*:[^\s/?#@]*@`-shaped (userinfo ends at the first `/ ? #`,
+Two new regexes in a new list `_URL_SECRET_PATTERNS` that `looks_like_credential` checks after `_VALUE_PATTERNS`: userinfo `scheme://[^\s/?#@]*:[^\s/?#@]*@`-shaped (userinfo ends at the first `/ ? #`,
 so '@' in a path, query or fragment does not match; a name with no password does not match) and
 `[?&](X-Amz-Signature|X-Goog-Signature)=<16+ chars>` (case-insensitive).
 
@@ -26,8 +26,9 @@ New file green, RED output in ledger, old shapes identical on base and branch (c
 run_all green, scope guard OK.
 
 ## Environment facts
-Existing tests `test_model_key_refusal.py::test_tc015` and `test_k8s_paste_rule.py` pin the exact content
-of `_VALUE_PATTERNS` and cannot be edited here (outside allowed files). See ledger for how this is handled.
+`test_model_key_refusal.py::test_tc015` pins the exact content of `_VALUE_PATTERNS` and cannot be edited here
+(outside allowed files). Appending to `_VALUE_PATTERNS` fails it (shown in the ledger), so the new rules live in a
+sibling list. Consequence: `abf_station/gcb_preflight._scrub`, which iterates `_VALUE_PATTERNS`, does not scrub them.
 
 ## Not doing
 No change to abf_station, to the samplesheet check, to other pattern lists, or to any existing test.

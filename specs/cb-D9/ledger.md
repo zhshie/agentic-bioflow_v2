@@ -26,3 +26,24 @@ FAILED platform/tests/test_url_credential_patterns.py::test_the_secret_is_not_in
 ```
 
 Note: the AWS audit input is already refused on base (AKIA rule); it passes in RED and stays as a regression case.
+
+## Why a sibling list, not _VALUE_PATTERNS
+
+Appending the two rules to `_VALUE_PATTERNS` (as the brief says) made
+`platform/tests/test_model_key_refusal.py::test_tc015_the_six_existing_patterns_are_unchanged_and_the_new_ones_come_after`
+fail: "Left contains 2 more items" (`got[6:]` is compared for equality). That file is not in the allowed list and a
+pin may not be weakened, so the rules went into `_URL_SECRET_PATTERNS`, checked by `looks_like_credential`.
+Both pin files pass unchanged.
+
+## GREEN
+
+`pytest platform/tests/test_url_credential_patterns.py test_model_key_refusal.py test_k8s_paste_rule.py`: 84 passed.
+
+## Old shapes, base (origin/v3 compute_envs.py) vs branch
+
+Corpus: every line and every string constant of every .py/.md/.sh in the worktree plus 17 hand-made shapes (170170 strings).
+base refuses 520, branch refuses 552. LOST (base refused, branch accepts): 0.
+GAINED: 32, all of them a `scheme://user:pw@host` URL or an `X-Goog-Signature=`/`X-Amz-Signature=` URL (the new test
+inputs, their own failure lines, docs lines quoting them, `https://u:p@h/`, `https://user:pw@github.com/x`,
+`http://127.0.0.1:%d@evil.example/user-info`, `http://u:p@127.0.0.1:1`). Counter-examples
+`https://h/a.fq.gz`, `git@github.com:org/repo.git`, `https://h/x?y=z@w`, `user@host:22`, `a@b.c` stay accepted.
