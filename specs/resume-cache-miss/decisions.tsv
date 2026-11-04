@@ -3,3 +3,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	build	nf_hash_diff 欄位名稱依型別／值猜測	Nextflow 不命名 entries；無真實 nano4 日誌可對	scripts/nf_hash_diff.py:label	測試綠，格式待操作員驗證
 2026-11-04	build	不改 launch.py 與既有測試	裁決 2；沒有 H 成立	git diff --stat	無
 2026-11-04	fix	nf_hash_diff 的 regex 結尾改用 \Z	regex_end_anchor_test 全套唯一紅	scripts/nf_hash_diff.py:28	該測試轉綠
+2026-11-04	fix	TESTING.md 第二層補完整指令：sbatch 送出 head 複本，sed 只改末行，-dump-hashes 放末尾	head 是 #SBATCH 批次腳本；-dump-hashes 可帶選用參數，放前面會吃掉 pipeline 名稱	docs/TESTING.md 第二層；launch.py:476-528	sed 以範例 head 行驗過

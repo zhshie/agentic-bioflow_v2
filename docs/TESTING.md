@@ -454,7 +454,24 @@ Why: on 2026-10-25 a resume with edits of `/work/u9613010/runs/runs/ampliseq_day
 
 **First layer, nothing is started and nothing is written to the run folder.** Each resume leaves its `.nextflow.log` in the r6 folder. Copy the log after each step, on the login node, with `cp` only, and read it with `grep`: `mkdir -p ~/r6-diag && cp /work/u9613010/runs/runs/ampliseq_day5_nano4_r6/.nextflow.log ~/r6-diag/resume-1.log` (then `resume-2.log`, `resume-3.log`). This starts no Nextflow and does not touch `.nextflow/cache`. Then `python3 scripts/nf_hash_diff.py ~/r6-diag/resume-1.log ~/r6-diag/resume-2.log`. It prints the first field that differs (exit 1), "無差異" (exit 0) or "格式不認得" (exit 2). `.nextflow.log` only holds the hash blocks if the run logged them; if the tool says 格式不認得, go to the second layer.
 
-**Second layer, a fourth resume by hand with `-dump-hashes`. This is not read-only.** The head scripts the platform writes do not carry `-dump-hashes`. Take the last line of the `head-<N>.sh` of one of the three resumes (it is `exec nextflow run ... -resume <session id> -name <new name> ...`), add `-dump-hashes` and start it in the r6 folder. It writes to `.nextflow/cache` and to `.nextflow.log`, so it needs the maintainer's own y, comes after the three platform resumes, and its session id is recorded as well. Use a new `-name` (for example `ampliseq_day5_nano4_r6-dump1`), run it once before the edit is made (the same line as resume 1) and once with the edit (the line of resume 2), copying `.nextflow.log` after each to `~/r6-diag/dump-before.log` and `~/r6-diag/dump-after.log`. Then `python3 scripts/nf_hash_diff.py ~/r6-diag/dump-before.log ~/r6-diag/dump-after.log`.
+**Second layer, a fourth and fifth resume by hand with `-dump-hashes`. This is not read-only.** The head scripts the platform writes do not carry `-dump-hashes`, so the operator makes two copies of them and submits each copy with `sbatch` from the login node, the way the platform submits a head (the head is a batch script with `#SBATCH` lines; do not run it with `bash` on the login node). Each submission writes to `.nextflow/cache` and to `.nextflow.log` of the r6 folder, so it needs the maintainer's own y, comes after the three platform resumes, and its session id is recorded as well. The copy keeps every line of the original `head-<N>.sh` (modules, `cd`, environment, the `-resume <session id>` and the `-params-file` / `-c` files of that resume); only the last line (`exec nextflow run ...`) changes: a new `-name`, `-with-tower ...` dropped (the platform knows no run of that name, and its database is not touched), and `-dump-hashes` added at the very end (an option placed before the pipeline name can swallow it). The two copies come from the head of resume 1 (no edit) and the head of resume 2 (the one-parameter edit). `ls head-*.sh` in the r6 folder shows the numbers the platform resumes were given: `<N1>` for resume 1, `<N2>` for resume 2 (for example 2 and 3). Then, on the login node:
+
+```
+cd /work/u9613010/runs/runs/ampliseq_day5_nano4_r6
+mkdir -p ~/r6-diag
+mk() { sed -e '/^exec nextflow run /{s/ -with-tower .*$//;s/ -name [^ ]*/ -name '"$2"'/;s/$/ -dump-hashes/}' "$1" > ~/r6-diag/"$2".sh; tail -n 1 ~/r6-diag/"$2".sh; }
+mk head-<N1>.sh ampliseq_day5_nano4_r6-dump1      # prints the last line: check it before going on
+sbatch ~/r6-diag/ampliseq_day5_nano4_r6-dump1.sh  # the maintainer says y first
+squeue -u "$USER"                                  # wait until the job is gone
+cp .nextflow.log ~/r6-diag/dump-before.log
+mk head-<N2>.sh ampliseq_day5_nano4_r6-dump2
+sbatch ~/r6-diag/ampliseq_day5_nano4_r6-dump2.sh  # the maintainer says y first
+squeue -u "$USER"
+cp .nextflow.log ~/r6-diag/dump-after.log
+python3 scripts/nf_hash_diff.py ~/r6-diag/dump-before.log ~/r6-diag/dump-after.log
+```
+
+The printed last line must look like `exec nextflow run ... -resume <session id> -name ampliseq_day5_nano4_r6-dump1 -params-file ... -c nextflow.config ... -dump-hashes` (the second copy carries the `-params-file params-<N2>.yaml` of resume 2, and its `-c extra-<N2>.config` if that resume had extra settings). If it has no `-resume`, or still has `-with-tower`, stop and tell the maintainer. The last command runs from a checkout of this repository; if there is none on nano4, copy the two logs to where the checkout is and run it there.
 
 **Reading the result.**
 
