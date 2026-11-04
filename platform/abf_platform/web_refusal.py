@@ -1,3 +1,4 @@
+# Nothing existing: web.py may not import jobs (TC-H16f) and actions/__init__.py is frozen for this slice, so this is the one read-only door to the refusal record.
 """Read-only door for the web pages to the refusal record of a launch (refusal-visibility).
 
 The web layer may not import `jobs` (tests/test_web_parity.py TC-H16f), and `actions/__init__.py` is not touched by this slice, so
