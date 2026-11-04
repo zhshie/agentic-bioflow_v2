@@ -155,6 +155,10 @@ NO_TOOL = {
     "register_site_pipeline": "the confirmed path (confirmed_by), not a tool: the settings page's second step",
     "remove_site_pipeline": "the confirmed path (confirmed_by), not a tool: the settings page's second step",
     "check_site_pipeline_change": "web settings page: step one of the two steps, reads only",
+    "list_pipeline_registrations": "web settings page (pipe-reg-settings-ui, not yet connected): the caller's own pipeline registrations, read only",
+    "list_registered_pipelines": "web launch page (pipe-reg-launch-filter, not yet connected): the caller's registered pipeline versions, read only",
+    "propose_pipeline_registration": "the confirmed path (confirmed_by), not a tool: the settings page's registration form (pipe-reg-settings-ui)",
+    "remove_pipeline_registration": "the confirmed path (confirmed_by), not a tool: the settings page's registration list (pipe-reg-settings-ui)",
 }
 
 

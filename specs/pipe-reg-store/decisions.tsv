@@ -1,0 +1,2 @@
+ts	phase	decision	why	evidence	result
+2026-11-05	RED	先寫測試與名單，確認 40 項因動作不存在而紅	測試先行	platform/tests/test_pipeline_registrations.py	40 failed 7 passed
