@@ -134,6 +134,10 @@ R. /code-review 第三次對 PR #318 的裁決（11-04，只收兩項，其餘�
 
 對抗審對：6 小時放棄上限只能在「至少問過一次卻沒答案」之後生效；從未被問過的失聯 run，有人第一次打開時要問一次（隔夜才看的 t1 NODE_FAIL 才顯示原因）。合約 TC-044 的 [no_fetch] 變體已由我改成「恰好排一筆，之後不再排」，[only_none] 不變。改 `jobs.ask_head_state`：放棄條件加上「已有至少一筆抓取列」。先寫 RED 再改。
 
+## 裁決 R5（11-04，developer-agent）
+
+程式已 GREEN（HEAD 986c6c35），工作樹我已清乾淨。剩：`git merge origin/v3`（會在 docs/PLATFORM.md、platform/abf_platform/actions/chat_tools.py 衝突，兩邊都要保留：v3 新增的內容＋本案的 QUERY_TOOLS／get_run 說明），解完跑全套、寫 GREEN、提交。不要用 rm/git clean；有暫存檔放 $TMPDIR。
+
 ## 專長守則（backend）
 
 ### executor
