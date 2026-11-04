@@ -45,3 +45,32 @@ Updated 1 path from the index
 
 Green with the baseline filled: `12 passed` (tests/test_no_duplicate_defs.py).
 Later tweak: a grown group now says 'the group grew: remove the new copy' instead of 'delete this line'.
+
+## Full suite (tested at HEAD c7faaa08; USER=root exported because the VM has no $USER, else agent_ctl_connection_id_test fails)
+NOT GREEN locally: 137/144 passed, 7 failed. None involves test_no_duplicate_defs.py (its 12 tests pass inside the platform shards).
+- platform_upgrade_test.sh TC-U28: asserts 'platform/ untouched' against the merge-base with origin/v3; it fails on any branch that adds a file under platform/ (names platform/tests/duplicate_defs_baseline.txt; T1, T5, D1, D3, D9 hit the same). It cannot fail once the branch is merged. Gate not edited.
+- platform_clock/shard_5/6/7/platform_test: test_station_e2e tc056/tc082 (_winapi, python 3.13), test_cli_snapshots help_top, test_pipeline_launch_station tc124, test_station_launch tc022, test_station_resume tc026 (java missing / root can write read-only cache): environment, same on D5/D7/D8.
+- wsl_bridge_test.sh: environment (no site / WSL).
+
+```
+FAIL       agent          not running - Platform will show no outputs (scripts/on_site.sh --script scripts/agent_ctl.sh start)
+FAIL       resources      tar: Child returned status 141
+FAIL       compute-env    ce is 'unreachable'>>
+missing rsync on MSYS is FAILed by name                    ok
+and it says plainly that Git Bash ships none               ok
+and gives an install route rather than nothing             ok
+
+-- (i) install_deps.sh: tw on MSYS is named plainly, not folded into 'unknown platform' --
+install_deps.sh --cli-only fails cleanly, not silently     ok
+it names the gap as unmeasured (R4), a real answer         ok
+and gives the Windows asset to fetch by hand               ok
+it does not fall back to the generic unknown-platform text ok
+shim does not run wsl.exe from the caller's own cwd        ok
+and lands in a directory that exists                       ok
+only settings.sh decides whether the bridge is in play     ok
+and nothing hardcodes the control-path default beside it   ok
+
+3 failed
+
+137/144 passed, 7 failed
+```
