@@ -309,7 +309,7 @@ def _pref_row(t, lang, key, on, pp_csrf):
     return '<li class="pref"><span>%s</span>%s%s</li>' % (esc(label), state, form)
 
 
-def _personal(t, lang, prefs=None, pp_csrf=None):
+def _own_prefs(t, lang, prefs=None, pp_csrf=None):
     prefs = prefs or {"step_mode": True, "dev_mode": False}
     return ('<section class="card sec"><h2>%s</h2><ul>%s%s</ul></section>'
             % (esc(t["set_me"]), _pref_row(t, lang, "step_mode", prefs["step_mode"], pp_csrf), _pref_row(t, lang, "dev_mode", prefs["dev_mode"], pp_csrf)))
@@ -322,7 +322,7 @@ def _keys(t):
 
 def _rest(t):
     out = ""
-    for head, entries in web_board.SETTINGS[4:]:      # operator panel, roles: as before, still to come (the personal section is _personal)
+    for head, entries in web_board.SETTINGS[4:]:      # operator panel, roles: as before, still to come (the personal section is _own_prefs)
         inner = "<ul>%s</ul>" % "".join("<li>%s</li>" % web_board._grey(t, e) for e in entries) if entries else "<p>%s</p>" % web_board._later(t)
         out += '<section class="card sec"><h2>%s</h2>%s</section>' % (esc(t[head]), inner)
     return out
@@ -359,7 +359,7 @@ def render_middle(lang, envs, pf_csrf=None, flash=None, given=None, inv=None, in
     t = words(lang)
     return ('<main class="main" data-pane="middle"><h1>%s</h1>%s%s%s%s%s%s%s</main>'
             % (esc(t["settings"]), _flash(t, flash, None), _setup(t, lang, envs), _compute(t, lang, envs, pf_csrf, flash, given, inv, inv_csrf),
-               _credentials(t, has_token), _keys(t), _personal(t, lang, prefs, pp_csrf), _rest(t)))
+               _credentials(t, has_token), _keys(t), _own_prefs(t, lang, prefs, pp_csrf), _rest(t)))
 
 
 def render(name, csrf, runs, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None, prefs=None, pp_csrf=None, has_token=False):

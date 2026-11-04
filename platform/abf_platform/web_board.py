@@ -15,7 +15,8 @@ import html
 import re
 import urllib.parse
 
-from . import web_devmode, web_finished
+from . import web_devmode
+from . import web_finished
 
 STAGES = ("launch", "running", "results", "downstream", "finished")
 PLACEHOLDER = {"launch": "012b", "downstream": "016"}      # the feature that will provide the stage
