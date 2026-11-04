@@ -21,3 +21,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	test	把 ADV-3 測試的 ended_at is None 前提改成 == last_message_at；舊 TC-035/036 註解改標 ADV-4/ADV-5	Q2 直接推翻該前提；合約 TC-037/038 內容與舊註解不同，照字面改標會貼錯標籤	test_head_nodefail.py:568	—
 2026-11-04	fix	7 天修剪：被較新答案（RUNNING/PENDING/COMPLETED 等）取回的壞結束列不再保留；6 小時從連續壞答案的第一筆起算	對抗審：修剪留下舊 NODE_FAIL 刪掉新 RUNNING 會讓 run 永遠 Failed；每次重問都重設事實年齡使 6 小時封頂永不發生	failures.py:kept_fact_sql; jobs.py:_bad_end_began; test_head_nodefail.py ADV-6,ADV-7	test_head_nodefail 82 全過
 2026-11-04	fix	裁決 R1：無事實的 lost run 靜默超過6小時（取最後訊息與送出時間較新者）就不再問排程器；R2：get_run 標註改 read_only_hint=false、說明加一句，chat_tools 加 QUERY_TOOLS 讓它仍可提供	裁決 R；MCP 標註釘死的既有測試只改 get_run 這一件事（見 ledger）	jobs.py ask_head_state; mcp_server.py _QUERY; test_head_nodefail.py TC-044..048	pass
+2026-11-04	test	get_run 唯讀標註同步再補兩支 v3 新增的測試（test_station_envs tc071、test_su_usd tc033）	全套發現；與 TC-049 同類，只改 get_run 這一項，其他工具仍須唯讀	tests/test_station_envs.py:382; tests/test_su_usd.py:230	兩檔全過

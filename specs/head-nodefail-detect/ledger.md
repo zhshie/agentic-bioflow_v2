@@ -17,3 +17,4 @@
 - [x] 裁決 R（11-04，PR #318 第三次 code-review）：R1 無事實時 6 小時放棄上限（jobs.ask_head_state，TC-044/045）；R2 get_run 的 MCP 標註 read_only_hint=false、說明加一句、chat_tools.QUERY_TOOLS 讓網頁聊天仍提供它（TC-046..048）。第一步 origin/v3 已是祖先，無需再 merge。
   - TC-049 既有 MCP 測試的同步（只改 get_run 不再算唯讀這一件事）：test_actions_layer.py（tce01、tca10 另比對 get_run 與舊版：說明為舊文加一句、schema 與其他標註相同）、test_chat_tools.py（offered_by_rule 與 tc025）、test_guidance.py tc501、test_keep_submissions.py tc094、test_launch_platform.py tc010、test_mcp.py tc024、test_mcp_canvas_read.py、test_mcp_run_file.py（唯讀 16→15）、test_mcp_server_doc.py（16→15）、mcp/test_mcp_contract_tools.py（get_run 說明凍結上限 683→804）、mcp/test_mcp_contract_writes.py（寫入工具清單排除 get_run）。
   - TC-050 backlog（C 級，本輪未動）：NODE_FAIL 重排風險、kept_fact_sql 效能、symlink 日誌、list_runs 多餘查詢、狀態表重複、區域 import。
+  - TC-049 補充（11-04）：test_station_envs.py tc071、test_su_usd.py tc033 同步（get_run 非唯讀，其他仍唯讀）。
