@@ -473,6 +473,9 @@ def _predecessor(state, run, verb, index_path, owner):
             raise Refusal("%s 還在跑，或還沒有回報任何事件，不能%s (still running or waiting)" % (run, word))
         if view["status"] == "succeeded":
             raise Refusal("%s 已成功，不需要%s (it succeeded)" % (run, word))
+        if view["status"] == "lost":      # the scheduler may have ended the head job before Nextflow wrote its end: then it is a failed run
+            from abf_platform import failures
+            view = failures.with_head_state(view, jobs.head_state(state, run))
         if view["status"] != "failed":
             raise Refusal("%s 還在跑，或已失去聯絡（%s），無法確定它已結束，不能%s；等 Nextflow 的紀錄顯示失敗之後再試 (not ended)"
                           % (run, view["status"], word))

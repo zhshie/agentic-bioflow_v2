@@ -1,0 +1,14 @@
+{
+  "created_at": "<N>",
+  "files": [
+    {
+      "path": "a_R1.fq.gz"
+    }
+  ],
+  "found": true,
+  "n_files": 1,
+  "name": "p",
+  "ok": true,
+  "samplesheet": "sample,fastq_1,fastq_2\ns1,a_R1.fq.gz,\n",
+  "version": "v1"
+}

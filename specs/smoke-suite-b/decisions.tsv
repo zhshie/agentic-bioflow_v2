@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-11-03	design	不建 conftest／pytest.ini，改用 smoke_support.py 模組與 -o markers=	裁決 0：寫入守衛擋這些檔	tests/smoke/smoke_support.py:23	採用
+2026-11-03	design	真探測逐函式加 @smoke，自證測試不加	同檔混放，自證測試不得被跳過（test-case.md 總則）	tests/smoke/test_smoke.py	採用
+2026-11-03	design	網址驗證放在 base_url() 內用 pytest.fail，不用 fixture	fixture 失敗會變 ERROR，要求是 FAILED	tests/smoke/smoke_support.py:base_url	採用
+2026-11-03	design	urllib 用 ProxyHandler({}) 且不跟轉址	本機假站台不該走環境代理；首頁要看到 303 本身	tests/smoke/smoke_support.py:_OPENER	採用
+2026-11-03	unit	RED 提交後實作 support 與 smoke.sh，tests/smoke 在 WSL	自證與靜態掃描皆綠	2b54cc78	32 passed 7 skipped

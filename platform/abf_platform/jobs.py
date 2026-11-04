@@ -24,7 +24,7 @@ import stat as stat_mod
 import time
 from pathlib import Path
 
-from . import cloud_store, common, compute_envs, records, releases, store
+from . import cloud_store, common, compute_envs, failures, records, releases, store
 
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
@@ -153,7 +153,9 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
 
 
 def _insert_job(con, row, kind, args, now, seconds, confirmation_id=None):
-    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ?", (now - PRUNE_AFTER_SECONDS,))
+    # a read-back that carries a bad end of the head job is kept: it is what keeps a Failed run Failed
+    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ? AND NOT (kind = 'fetch_run_records' AND %s)"
+                % failures.kept_fact_sql(), (now - PRUNE_AFTER_SECONDS,))
     cur = con.execute(
         "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) "
         "VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)",
@@ -378,25 +380,142 @@ def enqueue_pipeline_files(state_path, repo, revision, parts, *, compute_env=Non
     return transaction(state_path, work)
 
 
-def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, offline_after=None):
+def _enqueue_fetch_in(con, run_name, now, seconds, offline_after, with_slurm):
+    launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
+    if launch is None:
+        raise JobRefused("%r was not launched from this platform (不是平台自己送出的), so there is no folder to read"
+                         % str(run_name)[:80])
+    row = _target(con, launch["ce"], "fetch_run_records", now, offline_after)
+    if row["agent"] != launch["agent"]:
+        raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
+            run_name, launch["agent"], launch["ce"], row["agent"]))
+    args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
+    if with_slurm and launch["slurm_job_id"] is not None:      # only the head-state question: an older agent refuses a key it does not know
+        args["slurm_job_id"] = str(launch["slurm_job_id"])
+    return _insert_job(con, row, "fetch_run_records", args, now, seconds)
+
+
+def enqueue_fetch(state_path, run_name, clock=time.time, deadline_seconds=None, offline_after=None, with_slurm=False):
     """Ask the agent to read Nextflow's own records of one launch back. It only reads, so it needs no confirmation. The
-    run must be in the hand-off record: the platform never asks for a folder it did not launch into."""
+    run must be in the hand-off record: the platform never asks for a folder it did not launch into. The args are the three
+    keys of old; `with_slurm` (used only by ask_head_state) adds the head job's number."""
     now = clock()
     seconds = _seconds("fetch_run_records", deadline_seconds)
+    return transaction(state_path, lambda con: _enqueue_fetch_in(con, run_name, now, seconds, offline_after, with_slurm))
+
+
+HEAD_STATE_FRESH_SECONDS = 60
+BAD_END_REASK_SECONDS = 600           # ruling Q1: a bad end is not for ever (Slurm may requeue the job); ask again at most this often ...
+BAD_END_GIVE_UP_SECONDS = 6 * 3600    # ... and not at all once the fact is older than this
+
+
+def _fetches_of(con, launch):
+    """All the read-backs of this run (not of its compute environment's other runs) still kept, newest first. Not cut at a number:
+    a cut that counts plain read-backs would push an earlier fact out."""
+    mark = json.dumps(launch["run_name"])
+    cur = con.execute("SELECT * FROM jobs WHERE kind = 'fetch_run_records' AND compute_env = ? AND instr(args_json, ?) > 0 ORDER BY id DESC",
+                      (launch["ce"], mark))
+    out = []
+    for row in cur:
+        try:
+            if json.loads(row["args_json"]).get("run_name") == launch["run_name"]:
+                out.append(row)
+        except (ValueError, AttributeError):
+            continue
+    return out
+
+
+def _newest_fact_row(rows, launch):
+    """(fact, row) of the newest checked fact among the finished read-backs that asked Slurm about this launch's own Slurm number. A read-back
+    that has no Slurm answer (a plain fetch, or a site that could not ask: answer None) or a fact that does not fit is no new
+    fact and never covers an earlier one."""
+    for row in rows:
+        if row["state"] != "done":
+            continue
+        try:
+            fact = failures.head_fact_of(json.loads(row["result_json"]))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        if fact is not None and fact["job_id"] == str(launch["slurm_job_id"]):
+            return fact, row
+    return None, None
+
+
+def _newest_fact(rows, launch):
+    return _newest_fact_row(rows, launch)[0]
+
+
+def _bad_end_began(rows, launch):
+    """When the head job was first said to have ended badly, in the unbroken line of bad answers that ends with the newest one. The
+    six hours of ruling Q1 count from there, not from the latest repeat of the same answer (which would never let them pass). An
+    answer that says the head is alive again, or ended well, breaks the line."""
+    began = 0
+    for row in rows:
+        if row["state"] != "done":
+            continue
+        try:
+            fact = failures.head_fact_of(json.loads(row["result_json"]))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        if fact is None or fact["job_id"] != str(launch["slurm_job_id"]):
+            continue
+        if fact["state"] not in failures.ENDED_BAD:
+            break
+        began = row["finished_at"] or row["created_at"] or 0
+    return began
+
+
+def head_state(state_path, run_name):
+    """What the newest read-back of this run that really asked Slurm said of its Slurm head job: {job_id, state, source}, or
+    None. Only reads. The fact counts only if it names this launch's own Slurm number and a word of the table; nothing else is believed."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        launch = latest_launch(con, run_name)
+        if launch is None or launch["slurm_job_id"] is None:
+            return None
+        return _newest_fact(_fetches_of(con, launch), launch)
+    except (sqlite3.Error, IndexError, KeyError):
+        return None
+    finally:
+        con.close()
+
+
+def ask_head_state(state_path, run_name, clock=time.time):
+    """Queue one read-back of a lost run so that the answer is there next time, unless one is already waiting or any one (finished,
+    refused, failed or expired) is less than a minute old. The check and the insert are one write. Never raises and never waits; it
+    adds no new kind of job."""
+    if not isinstance(run_name, str) or not os.path.exists(str(state_path)):      # reading never creates a database
+        return False
+    now = clock()
+    seconds = _seconds("fetch_run_records", None)
 
     def work(con):
-        launch = latest_launch(con, run_name) if isinstance(run_name, str) else None
-        if launch is None:
-            raise JobRefused("%r was not launched from this platform (不是平台自己送出的), so there is no folder to read"
-                             % str(run_name)[:80])
-        row = _target(con, launch["ce"], "fetch_run_records", now, offline_after)
-        if row["agent"] != launch["agent"]:
-            raise JobRefused("run %s was launched through agent %s, not through the agent of %s (%s)" % (
-                run_name, launch["agent"], launch["ce"], row["agent"]))
-        args = {"ce": compute_envs.snapshot(row), "run_name": launch["run_name"], "run_folder": launch["run_folder"]}
-        return _insert_job(con, row, "fetch_run_records", args, now, seconds)
+        launch = latest_launch(con, run_name)
+        if launch is None or launch["slurm_job_id"] is None:
+            return False
+        rows = _fetches_of(con, launch)
+        known, known_row = _newest_fact_row(rows, launch)
+        wait = HEAD_STATE_FRESH_SECONDS
+        if known is not None and known["state"] == "COMPLETED":      # a head that ended well does not change
+            return False
+        if known is not None and known["state"] in failures.ENDED_BAD:      # ruling Q1: a bad end is asked again, slowly, and not for ever
+            if now - _bad_end_began(rows, launch) > BAD_END_GIVE_UP_SECONDS:
+                return False
+            wait = BAD_END_REASK_SECONDS
+        for row in rows:
+            if row["state"] in ("queued", "claimed") and row["deadline_at"] > now:
+                return False
+            if max(row["created_at"] or 0, row["finished_at"] or 0) > now - wait:
+                return False
+        _enqueue_fetch_in(con, run_name, now, seconds, None, True)
+        return True
 
-    return transaction(state_path, work)
+    try:
+        return transaction(state_path, work)
+    except (JobRefused, sqlite3.Error, IndexError, KeyError):
+        return False
 
 
 def enqueue_task_log(state_path, run_name, workdir, filename, clock=time.time, deadline_seconds=None, offline_after=None,
@@ -1187,6 +1306,7 @@ def clean_result(kind, result, stored=None):
     elif kind == "fetch_run_records":
         out["files"] = [{"name": f["name"], "size": f["size"], "truncated": f["truncated"]} for f in (stored or {}).get("files", [])]
         out["refused"] = [_short(x, 200) for x in (stored or {}).get("refused", [])][:50]
+        out.update(failures.head_fact_entry(result))
     else:
         for key in ("path",):
             if isinstance(result.get(key), str):

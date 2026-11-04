@@ -90,11 +90,22 @@ def list_runs(index_path, *, caller=None, platform_path=None):
         if row["status"] in ("failed", "lost"):     # the failed tasks live in the full view; the list row stays as it was
             full = status.get_run(index_path, row["id"], at)
             if full is not None:
+                full = failures.with_head_state(full, jobs.head_state(path, row["name"]))
+                row["status"] = full["status"]
+                row["ended_at"] = full.get("ended_at", row.get("ended_at"))
                 asked = jobs.cancel_requested_at(path, row["name"])
                 if asked is not None:
                     full["cancel_requested_at"] = common.epoch_iso_ms(asked)
                 row["failure"] = failures.summarize(full)
     return {"runs": rows}
+
+
+def _shown_status(platform_path, row):
+    """The status get_run shows for one row of the index: a lost run whose head job the scheduler ended badly is failed (reads only).
+    Every page that names a run's state goes through this, so one run has one state."""
+    if row["status"] != "lost":
+        return row["status"]
+    return failures.with_head_state(row, jobs.head_state(platform_path, row["name"]))["status"]
 
 
 RUN_NOT_FOUND_TEXT = "Run not found: %s (找不到這個 run)"
@@ -107,10 +118,16 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
         view = None
     if view is None:
         return {"found": False, "id": run_id, "message": RUN_NOT_FOUND_TEXT % run_id}
+    if view["status"] == "lost":     # the one place that asks the site: only for a run the caller owns, and the answer is there next time
+        path = platform_path_for(index_path, platform_path)
+        if caller is not None:      # a read with no person behind it asks the site for no one
+            jobs.ask_head_state(path, view["name"])
+        view = failures.with_head_state(view, jobs.head_state(path, view["name"]))
     asked = jobs.cancel_requested_at(platform_path_for(index_path, platform_path), view["name"])
     if asked is not None:        # a fact about a request that was sent, never a state of the run (the status stays Nextflow's word)
         view["cancel_requested_at"] = common.epoch_iso_ms(asked)
     view["failure"] = failures.summarize(view)
+    view.pop("_no_resume", None)
     view["su"] = _su_of_run(index_path, view, platform_path_for(index_path, platform_path))
     return view
 
@@ -182,7 +199,8 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
     site = rates.get("default_site") if isinstance(rates, dict) else None
     as_of = su.usd_rate(rates)[1] if su.usd_rate(rates)[0] is not None else None      # a dollar figure needs both the rate and its date
     cloud_rates = _cost.load_rates()
-    mine = [r for r in status.list_runs(index_path, status.now(), names=owned) if su._taipei_month(r.get("started_at")) == month]
+    mine = [dict(r, status=_shown_status(platform_path, r)) for r in status.list_runs(index_path, status.now(), names=owned)
+            if su._taipei_month(r.get("started_at")) == month]
     # only the runs sent to the national HPC count in SU: a cloud run is neither added nor allowed to turn the total into unknown
     total, reasons = 0.0, []
     for r in mine:
@@ -1683,6 +1701,7 @@ def forget_check(platform_path, index_path, run_name, *, caller=None):
         # failed, expired) may be forgotten. F4: so may one whose job went out (done) more than 24 hours ago and the index still does
         # not know; before that the index may only be late. F7: with no job row to read (pruned) the run is treated as never having reached the index.
         return "refused", FORGET_STARTING
+    seen = [dict(v, status=_shown_status(platform_path, v)) for v in seen]      # the state get_run shows, so forget and the run page agree
     if any(v["status"] == "running" for v in seen):
         return "refused", "這個 run 還在跑，不能刪除 (the run is still running; it cannot be deleted)"
     if any(v["status"] not in FORGETTABLE for v in seen):

@@ -1004,3 +1004,8 @@ For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrn
 2. The answer is "pending" with a page address. Open it: the screen says `Config profiles: test` and `Samplesheet: from the pipeline's test profile`, and head.sh has ` -profile test` after the site `-c` lines and before `-with-tower`. Say yes there.
 3. Wait until the run ends. It must reach SUCCEEDED; write the run name and its final status in the ledger.
 4. Also try `profiles=["nope"]`: nothing is sent and the answer lists the names the site has.
+
+### Head job ended by the scheduler (manual, on nano4)
+
+1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
+2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.

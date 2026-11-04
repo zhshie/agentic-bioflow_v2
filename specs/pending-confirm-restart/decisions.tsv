@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-11-03T17:55	test	先寫 13 個重啟測試，不動程式	裁決 3：未有紅測試不得改 abf_platform	platform/tests/test_pending_confirm_restart.py	首跑 10 綠 3 紅（皆為測試寫法問題）
+2026-11-03T18:00	test	TC-009 在假時鐘前進 599 秒時先讓代理 last_seen 跟上	否則 409「代理離線」，與重啟無關	test_pending_confirm_restart.py agent_seen_now	綠
+2026-11-03T18:02	test	TC-018 的路徑／SQL 檢查只套用在登入頁與錯誤頁	確認頁本來就顯示使用者自己的樣本表路徑	test_tc018	綠
+2026-11-03T18:05	decision	結論 v3 無 bug，不改程式	全部案例在未改程式下綠	ledger.md	只留回歸測試

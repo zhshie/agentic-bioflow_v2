@@ -19,6 +19,14 @@ python3 -m venv ~/abf-venv            # or: virtualenv -p python3 ~/abf-venv
 
 Without installing, `PYTHONPATH=platform python3 -m abf_platform ...` does the same as `abf-platform ...` everywhere below.
 
+## Command-line flags
+
+Three flags sit on the program itself, and go before the command: `abf-platform --json ce show NAME`, not `abf-platform ce show NAME --json`.
+
+- `--version` prints `abf-platform <version>` and exits. The version is the one in `.claude-plugin/plugin.json`; when that file cannot be read the command fails and says so. (`dataset register` and `dataset show` keep their own `--version`, the dataset's.)
+- `--json` prints one JSON object for the command, with the keys `ok`, `command`, `data` and `output` (`--version` has no `output`). When the command fails, stdout stays empty and stderr carries one object, `{"ok": false, "command": ..., "error": {"what": ..., "why": ..., "next": ...}}`: what happened, why, and what to do next. The exit code is the same as without the flag. `serve`, `web`, `mcp`, `user passwd` and the `launch`-family commands refuse `--json` with that same kind of error.
+- `--debug` adds lines that begin `debug: ` on stderr (the command, the names of the options given and never their values, the exit code and the time taken, and the traceback when something unexpected breaks). stdout and the exit code do not change.
+
 ## 1. Start the receiver
 
 ```bash
@@ -843,7 +851,7 @@ The building blocks of the pipeline canvas are the nf-core modules. A snapshot o
 - Source: `nf-core/modules` at commit `5ed90b42e78410e7411e9c6bdfeff33226d6c58e`, every `modules/nf-core/**/meta.yml`, old and new format, flattened to name, path, description, keywords, tools, inputs and outputs (`versions` channels left out). A meta.yml that cannot be read is listed under `errors`, never fatal.
 - Each input record carries a boolean `optional`: `true` only where the meta.yml marks that input `optional: true`, `false` when it says nothing. Output records have no `optional`.
 - Regenerate (maintainer only; needs PyYAML in a throwaway environment): `PYTHONPATH=platform python -m abf_platform.catalogue snapshot --modules <nf-core/modules checkout> --sha <sha> --out platform/abf_platform/data/nf-core-modules.json`. The same sha gives a byte-identical file.
-- A new snapshot is one tier A PR: the changed file, plus the new sha here and in the test.
+- A new snapshot is one tier C PR: the changed file, plus the new sha here and in the test.
 
 ## Composed pipelines
 
@@ -924,3 +932,8 @@ It builds a venv in `${XDG_CACHE_HOME:-$HOME/.cache}/abf-platform-venv`, downloa
 - Without `CI`, the end-to-end tests are skipped with one visible line, `E2E SKIPPED: <reason>`, and the summary counts the skipped tests. A checksum that does not match always stops the run.
 
 The agent's tests (`platform/tests/test_station_*.py`) run in the same command: they start a real platform process and a real agent process against a **fake site**, a temporary deployment whose PATH holds stand-ins for `sbatch`, `sinfo`, `java` and `nextflow` that only log their calls (with a stand-in `ssh` that must never be called). No real cluster and no Seqera service is involved; the real cluster is only exercised by hand (`docs/TESTING.md`).
+
+
+## Head job ended by the scheduler (head-nodefail-detect)
+
+If the Slurm head job is killed (NODE_FAIL, BOOT_FAIL, CANCELLED, TIMEOUT, OUT_OF_MEMORY, FAILED, DEADLINE, PREEMPTED, REVOKED) before Nextflow writes its end, the run would stay `lost`. The read-only `fetch_run_records` job now takes an optional `slurm_job_id`; when `.nextflow.log` has no `Execution complete -- Goodbye` line it asks `squeue -h -j <id> -o %T`, then `sacct -n -P -X -j <id> -o State`, and returns `scheduler = {job_id, state, source}` or null. `get_run` (not `list_runs`) of a `lost` run queues one such read-back (at most one per minute; a bad end fact is asked again at most once every 10 minutes while it is younger than 6 hours, and the newest real scheduler answer wins, so a later RUNNING or PENDING removes the failed overlay) and overlays the newest finished answer at query time: a bad end shows `failed` with the reason `Slurm head job <id> ended as <STATE> (<source>)`, so resume and relaunch are offered. `COMPLETED` without a record stays `lost`. Nothing is written to the runs index; there is no new job kind, state or migration. Nextflow records always win. Station answers are untrusted: only the words of the table, a digits-only job number, and only for this launch's own number are believed.
