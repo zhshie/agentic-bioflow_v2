@@ -118,6 +118,11 @@ GitHub issue 349 是 maintainer 的評估，逐字（中英對照原文）：
 - RV-05/RV-06 的「整個 platform/」＝只掃非測試的原始碼（新測試檔自己除外）。
 - 行號漂移以符號名為準。CLAUDE.md 的「For the executor and verifier」節 v3 本來就有；先前 worktree 誤從 main 開，已重建在 origin/v3 上。
 
+## 裁決 R（11-05，developer-agent）
+1. `test_no_schema_change` 舊基準已過期，我已改成 origin/v3（commit a4c02be5）；不要再因它 BLOCKED。
+2. 核准：新增 `web_refusal.py`（TC-H16f 逼出的最小改動）、`test_web_settings_ce_mobile.py` 的 STRINGS 雜湊更新、CHANGELOG 條目順序調整。
+3. 修完 test_tc073 後請再完整跑一次全套，再交閱卷。四張截圖由閱卷端處理。
+
 ## 專長守則（backend）
 
 ### executor
