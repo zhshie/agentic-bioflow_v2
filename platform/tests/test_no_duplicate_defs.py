@@ -79,7 +79,9 @@ def test_no_new_duplicate_defs_and_baseline_only_shrinks():
         shrunk = []
         for b in stale:
             now = [c for c in current if c[0] == b[0] and set(c[1]) <= set(b[1])]
-            shrunk.append(f"{_fmt(b)}   -> " + (" | ".join(_fmt(c) for c in now) if now else "delete this line"))
+            grew = any(c[0] == b[0] and set(c[1]) > set(b[1]) for c in current)
+            fix = " | ".join(_fmt(c) for c in now) if now else ("the group grew: remove the new copy" if grew else "delete this line")
+            shrunk.append(f"{_fmt(b)}   -> {fix}")
         msg.append("baseline lines that no longer match (the baseline may only shrink; edit as shown):\n  " + "\n  ".join(shrunk))
     assert not msg, "\n".join(msg)
 

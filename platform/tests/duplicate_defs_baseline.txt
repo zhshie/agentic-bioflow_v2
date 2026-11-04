@@ -2,3 +2,11 @@
 # Format: <name> <file> <file> ...   (files sorted, repo-relative).
 # This list may only SHRINK: test_no_duplicate_defs.py fails on a group that is not covered here, and on a line
 # here that no longer matches a current group exactly (edit it down to the file set the test prints, or delete it).
+Refusal platform/abf_launch/build.py platform/abf_station/rules.py
+_no platform/abf_platform/actions/datasets.py platform/abf_platform/actions/pipelines.py
+_run platform/abf_station/aws_preflight.py platform/abf_station/azure_preflight.py platform/abf_station/gcb_preflight.py platform/abf_station/k8s_preflight.py
+_shown platform/abf_platform/cloud_cost.py platform/abf_platform/compute_envs.py
+credentials_path platform/abf_station/aws_preflight.py platform/abf_station/azure_preflight.py platform/abf_station/gcb_preflight.py platform/abf_station/k8s_preflight.py
+load_rates platform/abf_platform/cloud_cost.py platform/abf_platform/su.py
+path_problem platform/abf_platform/compute_envs.py platform/abf_station/rules.py
+say platform/abf_station/agent.py platform/abf_station/cli.py

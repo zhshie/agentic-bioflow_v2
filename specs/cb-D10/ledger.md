@@ -19,3 +19,29 @@ tests/test_no_duplicate_defs.py:84: AssertionError
 FAILED tests/test_no_duplicate_defs.py::test_no_new_duplicate_defs_and_baseline_only_shrinks
 1 failed, 11 passed in 3.50s
 ```
+
+## Mutation proofs (never committed; production files restored with git checkout)
+```
+=== MUTANT 2: a 5th copy of credentials_path (growth of a baselined group)
+E       AssertionError: new duplicate defs (share the function instead of copying it, or, if the name is a convention, whitelist it with a reason):
+E           credentials_path platform/abf_launch/__init__.py platform/abf_station/aws_preflight.py platform/abf_station/azure_preflight.py platform/abf_station/gcb_preflight.py platform/abf_station/k8s_preflight.py
+E         baseline lines that no longer match (the baseline may only shrink; edit as shown):
+E           credentials_path platform/abf_station/aws_preflight.py platform/abf_station/azure_preflight.py platform/abf_station/gcb_preflight.py platform/abf_station/k8s_preflight.py   -> delete this line
+E       assert not ['new duplicate defs (share the function instead of copying it, or, if the name is a convention, whitelist it with a r.../azure_preflight.py platform/abf_station/gcb_preflight.py platform/abf_station/k8s_preflight.py   -> delete this line']
+1 failed, 11 passed in 3.83s
+Updated 1 path from the index
+=== MUTANT 3: one baselined copy edited (group shrinks to 3 files, baseline line stale)
+ platform/abf_station/k8s_preflight.py      | 2 +-
+ platform/tests/duplicate_defs_baseline.txt | 8 ++++++++
+ 2 files changed, 9 insertions(+), 1 deletion(-)
+E       AssertionError: baseline lines that no longer match (the baseline may only shrink; edit as shown):
+E           credentials_path platform/abf_station/aws_preflight.py platform/abf_station/azure_preflight.py platform/abf_station/gcb_preflight.py platform/abf_station/k8s_preflight.py   -> credentials_path platform/abf_station/aws_preflight.py platform/abf_station/azure_preflight.py platform/abf_station/gcb_preflight.py
+E       assert not ['baseline lines that no longer match (the baseline may only shrink; edit as shown):\n  credentials_path platform/abf_...h platform/abf_station/aws_preflight.py platform/abf_station/azure_preflight.py platform/abf_station/gcb_preflight.py']
+1 failed, 11 passed in 3.77s
+Updated 1 path from the index
+=== restored
+ M platform/tests/duplicate_defs_baseline.txt
+```
+
+Green with the baseline filled: `12 passed` (tests/test_no_duplicate_defs.py).
+Later tweak: a grown group now says 'the group grew: remove the new copy' instead of 'delete this line'.
