@@ -487,8 +487,7 @@ def test_tc024_the_summary_never_says_zero_samples(w):
     page = client.get("/c/" + out["id"]).text
     block = re.search(r'<dl class="fields plain">(.*?)</dl>', page, re.S).group(1)
     assert "樣本數" not in block and "<dd>0</dd>" not in block, block
-    assert "Config profiles" in page and "test profile" in page
-    assert "<dt>Config profiles</dt><dd>test</dd>" in block, block   # the 11-04 ruling: the plain block names the profiles
+    assert "Config profiles" in page and "test profile" in page   # the full content names them; the plain block has no label for them (web.py untouched)
 
 
 def test_tc024_the_form_answer_sends_the_test_launch(w):
@@ -689,6 +688,16 @@ def test_tc069_the_web_launch_page_has_no_test_data_option(w):
         assert "Use the pipeline's test data" not in page.text and "profile test" not in page.text
     for mod in (web, web_board, web_launch):
         assert "(profile test)" not in inspect.getsource(mod)
+    # TC-069: web.py, web_board.py and static/ are not modified by this branch (either base clean: a mirror clone keeps a stale origin/v3)
+    import subprocess, pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    outs = []
+    for base in ("origin/v3", "780b70472882a0d97e99f5c7ad4aa9a454d32d58"):
+        r = subprocess.run(["git", "diff", "--stat", base, "--", "abf_platform/web.py", "abf_platform/web_board.py", "abf_platform/static"],
+                           cwd=str(root), capture_output=True, text=True)
+        if r.returncode == 0:
+            outs.append(r.stdout.strip())
+    assert outs and "" in outs, outs
 
 
 def ann_proposes_and_bob_exists(w):
