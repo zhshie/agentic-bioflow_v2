@@ -123,6 +123,9 @@ GitHub issue 349 是 maintainer 的評估，逐字（中英對照原文）：
 2. 核准：新增 `web_refusal.py`（TC-H16f 逼出的最小改動）、`test_web_settings_ce_mobile.py` 的 STRINGS 雜湊更新、CHANGELOG 條目順序調整。
 3. 修完 test_tc073 後請再完整跑一次全套，再交閱卷。四張截圖由閱卷端處理。
 
+## 裁決 R2（2026-11-05，developer-agent）
+TC-032（test_no_schema_change）本機 603/604 的唯一紅是環境假紅：測試比對的 origin/v3 在 WSL 鏡像是舊參照，你實際對真正 origin/v3 的 store.py 差異為 0，已證明。CI 是權威（同類 PR #359、#360 CI 綠）。不改測試、不要再同步鏡像、不要再 BLOCK：把 executor-status 記為 GREEN（註明 TC-032 本機環境紅）、直接交閱卷；四張截圖交閱卷端。
+
 ## 專長守則（backend）
 
 ### executor
