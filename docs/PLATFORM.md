@@ -19,6 +19,14 @@ python3 -m venv ~/abf-venv            # or: virtualenv -p python3 ~/abf-venv
 
 Without installing, `PYTHONPATH=platform python3 -m abf_platform ...` does the same as `abf-platform ...` everywhere below.
 
+## Command-line flags
+
+Three flags sit on the program itself, and go before the command: `abf-platform --json ce show NAME`, not `abf-platform ce show NAME --json`.
+
+- `--version` prints `abf-platform <version>` and exits. The version is the one in `.claude-plugin/plugin.json`; when that file cannot be read the command fails and says so. (`dataset register` and `dataset show` keep their own `--version`, the dataset's.)
+- `--json` prints one JSON object for the command, with the keys `ok`, `command`, `data` and `output` (`--version` has no `output`). When the command fails, stdout stays empty and stderr carries one object, `{"ok": false, "command": ..., "error": {"what": ..., "why": ..., "next": ...}}`: what happened, why, and what to do next. The exit code is the same as without the flag. `serve`, `web`, `mcp`, `user passwd` and the `launch`-family commands refuse `--json` with that same kind of error.
+- `--debug` adds lines that begin `debug: ` on stderr (the command, the names of the options given and never their values, the exit code and the time taken, and the traceback when something unexpected breaks). stdout and the exit code do not change.
+
 ## 1. Start the receiver
 
 ```bash
