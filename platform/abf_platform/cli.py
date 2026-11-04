@@ -677,7 +677,7 @@ def cmd_runs_assign(args):
         return 1
     if what == "owned":
         _err("rejected: run %s already belongs to %s; to change the owner add --force (這個 run 已經有擁有者，要改請加 --force)" % (      # 116b-owner
-            args.run_name, names.get(old, "user #%s" % old)), why='這個 run 已經有擁有者', next='要改擁有者請加 --force')
+            args.run_name, names.get(old, "user #%s" % old)), why='這個 run 已經有擁有者', next='要改擁有者，請看 runs assign --help 裡改擁有者的選項')
         return 1
     if what == "same":
         _say("run %s already belongs to %s; nothing to change (已經是他的)" % (args.run_name, args.user))

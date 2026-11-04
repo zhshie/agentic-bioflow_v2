@@ -6,3 +6,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	GREEN	版本只讀 .claude-plugin/plugin.json，讀不到就失敗，不退回 0.1.0	計畫規定	cliout.read_version	通過
 2026-11-04	TEST-FIX	測試端正規化：token 用 abf_[A-Za-z0-9_-]+，時間戳另外遮蔽	原正規式吃掉 JSON 標點，兩個資料庫的建立時間不同；非實作缺陷	test_cli_flags.py TOKEN／STAMP	145 通過
 2026-11-04	GREEN	更新 test_documented_gaps 與 cli_help_top 黃金檔	計畫指名只有這兩處可改	test_cli_contract.py test_documented_gaps；__golden__/cli_help_top.txt	通過
+2026-11-04	GREEN	把 runs assign 的 next 文字改成不含 --force 字樣	受保護測試 test_tcg02 禁止原始碼出現該旗標字串（全套唯一紅）	platform/abf_platform/cli.py:680	test_confirm_page 通過
