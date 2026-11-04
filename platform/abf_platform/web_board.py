@@ -15,6 +15,7 @@ import html
 import re
 import urllib.parse
 
+from . import web_devmode
 from . import web_finished
 
 STAGES = ("launch", "running", "results", "downstream", "finished")
@@ -29,8 +30,11 @@ TAIPEI = datetime.timedelta(hours=8)
 # the analysis states the page knows; each is shown as a small coloured square and a word, never a symbol (lost is shown as Failed: three states)
 KNOWN = ("running", "succeeded", "failed", "lost")
 COUNTS = ("succeeded", "cached", "failed", "aborted", "running", "pending", "submitted")
-SETTINGS = (("set_ce", ()), ("set_cred", ()), ("set_keys", ("set_ai_key",)), ("set_me", ("set_step", "set_dev")),
+SETTINGS = (("set_ce", ()), ("set_cred", ()), ("set_keys", ("set_ai_key",)), ("set_me", ()),
             ("set_ops", ()), ("set_roles", ()))
+# 012a-settings-page: web.py says, per request, whether the logged-in person has development mode on; every page of the shared frame then draws the banner.
+# A context variable (never a global flag) so that two people's requests cannot see each other's value; the default is "off" (the login page and the like).
+DEV_MODE = web_devmode.DEV_MODE
 
 STRINGS = {
     "zh": {
@@ -191,6 +195,8 @@ STYLE = (
     "pre{font-family:" + MONO + ";font-size:13px;background:var(--sunken);border-radius:4px;padding:12px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}"
     "code{font-family:" + MONO + "}small{font-size:12px;color:var(--muted)}"
     ".bad{color:var(--failed)}.ok{color:var(--succeeded)}"
+    ".devbar{display:flex;gap:8px;align-items:center;padding:8px 16px;background:var(--lost-bg);color:var(--lost);font-weight:600}"
+    ".pref{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.pref form{margin:0}"
     ".narrow{max-width:640px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px}"
     ".mast{display:flex;align-items:center;gap:16px;height:40px;padding:0 16px;background:var(--ink);color:var(--surface)}"
     ".mast .brand{font-weight:600}.mast .end{margin-left:auto;display:flex;align-items:center;gap:16px}"
@@ -871,8 +877,9 @@ def _empty_page(t, lang):
 def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, path="/", refresh=False, tab=None, refresh_url=None):
     lang = pick_lang(lang)
     t = STRINGS[lang]
-    body = '%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), _left(t, runs, run, lang, csrf, here), middle(t, lang),
-                                                right(t, lang))
+    bar = ('<div class="devbar" role="status"><span aria-hidden="true">!</span><span>%s</span></div>' % esc(web_devmode.banner(lang))) if DEV_MODE.get() else ""
+    body = '%s%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), bar, _left(t, runs, run, lang, csrf, here), middle(t, lang),
+                                                  right(t, lang))
     return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)
 
 
