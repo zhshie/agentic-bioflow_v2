@@ -745,3 +745,39 @@ def test_tc045_a_run_lost_for_five_hours_is_still_asked_once(rig):
     get(rig, rid)
     assert len(fetch_jobs(rig)) == 1
     assert json.loads(fetch_jobs(rig)[0]["args_json"])["slurm_job_id"] == str(SLURM)
+
+
+# ---- ruling R2: get_run is no longer marked read-only (it may queue one read of the site) ------------------------------------------
+
+def _mcp_tools(rig):
+    import asyncio
+    from abf_platform.mcp_server import build_server
+    return {t.name: t for t in asyncio.run(build_server(str(rig.index), str(rig.state)).list_tools())}
+
+
+def test_tc046_get_run_is_marked_not_read_only_and_nothing_else_changed(rig):
+    # TC-046 (R2)
+    tools = _mcp_tools(rig)
+    a = tools["get_run"].annotations
+    assert a.read_only_hint is False and a.idempotent_hint is True and a.destructive_hint is False and a.open_world_hint is False
+    for name in ("list_runs", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log", "run_outputs"):
+        assert tools[name].annotations.read_only_hint is True, name
+    for name in ("cancel", "forget", "launch", "relaunch", "resume"):
+        assert tools[name].annotations.read_only_hint is False, name
+    assert tools["cancel"].annotations.destructive_hint is True
+
+
+def test_tc047_get_run_description_says_a_lost_run_triggers_one_site_query(rig):
+    # TC-047 (R2)
+    d = _mcp_tools(rig)["get_run"].description
+    assert re.search(r"lost", d) and re.search(r"read-only", d) and re.search(r"site", d) and re.search(r"quer", d)
+    assert "failure_reason" in d and "failed tasks" in d and "cancel_requested_at" in d
+
+
+def test_tc048_get_run_stays_a_query_that_needs_no_yes(rig):
+    # TC-048 (R2)
+    import asyncio
+    from abf_platform.actions import chat_tools
+    assert "get_run" not in chat_tools.REQUEST_TOOLS and chat_tools.REQUEST_TOOLS == {"launch", "cancel", "resume", "relaunch", "forget"}
+    names = {s["name"] for s in asyncio.run(chat_tools.tool_specs(str(rig.index), str(rig.state)))}
+    assert "get_run" in names
