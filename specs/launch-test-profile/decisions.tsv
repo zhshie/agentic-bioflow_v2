@@ -7,3 +7,4 @@ ts	phase	decision	why	evidence	result
 2026-11-03	build	既有測試釘住 launch 的參數名單與 request_launch 簽名，加入 profiles（計畫允許為新參數加案例）	新參數必然改變名單；只加 "profiles" 一項，其餘斷言未動	platform/tests/test_dataset_launch.py, test_station_launch.py, test_pipeline_launch.py	通過
 2026-11-03	build	靜態掃描擋下 brings_input( 與 handlers 的 while：改名 _brings_data（保留別名 brings_input）、while 改 for	test_station_static 的 input\( 與「迴圈只在 agent.py」是憲法掃描，不改測試改程式	platform/abf_station/launch.py:475, handlers.py:_config_profiles	通過
 2026-11-03	blocker	全套的 platform_upgrade_test.sh TC-U28 要求 platform/ 相對 origin/v3 無改動這是另一片的範圍守衛，任何動 platform/ 的分支必紅，不能弱化tests/platform_upgrade_test.sh:232-234環境既有紅，回報
+2026-11-04	fix-round	補 TC-068/069/072/073/074/076/077/078 的測試，並把 test_tc006_the_site_config_c_stays 的 or 斷言改成兩個 -c 都必須在	閱卷指出這些 TC 沒有會失敗的測試；這些行為已實作，新測試是對既有行為加守衛所以一加入就綠（無 RED）	platform/tests/test_launch_profiles.py test_tc068 至 test_tc078	93 passed

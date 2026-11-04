@@ -54,8 +54,8 @@ def test_tc006_the_site_config_c_stays():
     from test_launch_bundle import site_ce
     ce = site_ce()
     line = exec_line(render(ce=ce, samplesheet=None, profiles=["test"], params={}))
-    assert 'NFCORE_SITE_CONFIG' in line or "-c nextflow.config" in line
-    assert line.index("-profile test") > line.index("-c nextflow.config")
+    assert '-c "$NFCORE_SITE_CONFIG"' in line and "-c nextflow.config" in line
+    assert line.index('-c "$NFCORE_SITE_CONFIG"') < line.index("-profile test") and line.index("-profile test") > line.index("-c nextflow.config")
 
 
 @pytest.mark.parametrize("name", ["test_full", "test_hybrid", "test_zzz"])
@@ -578,3 +578,125 @@ def test_tc043_the_old_relaunch_path_renders_the_same_bytes(rig):
     assert "profiles" not in b and " -profile" not in b["files"]["head.sh"] and "samplesheet.csv" in b["files"]
     assert "Config profiles" not in rig.w.confirmations()[-1]["screen_text"]
 
+
+
+# ======================================================================= added in the fix round ====================================================
+
+def sbatch_calls(script):
+    """Real calls to sbatch (a line that runs it), not the #SBATCH directive lines."""
+    return [ln for ln in script.splitlines() if re.search(r"\bsbatch\b", ln) and not ln.startswith("#")]
+
+
+def test_tc077_umask_stays_before_the_only_sbatch_with_profiles():
+    # TC-077: the head script of a test-profile launch (the local way and the site's way): umask 077 comes first, one nextflow run
+    from test_launch_bundle import site_ce
+    for over in ({}, {"ce": site_ce()}):
+        h = render(samplesheet=None, profiles=["test"], params={}, **over)["files"]["head.sh"]
+        lines = h.splitlines()
+        assert lines.count("umask 077") == 1
+        calls = sbatch_calls(h)
+        assert len(calls) <= 1, calls
+        if calls:
+            assert lines.index("umask 077") < lines.index(calls[0])
+        assert lines.index("umask 077") < [i for i, ln in enumerate(lines) if ln.startswith("exec nextflow")][0]
+        assert h.count("nextflow run") == 1
+
+
+def test_tc078_a_site_pipeline_with_profiles_gets_no_r_and_nothing_else_changes():
+    # TC-078: PITFALLS 52/53: a local-path (site home) pipeline must not get -r because of -profile; everything but -profile is as before
+    from test_launch_bundle import site_ce
+    ce = site_ce()
+    plain = render(ce=ce, profiles=[])["files"]["head.sh"]
+    with_p = render(ce=ce, profiles=["test"])["files"]["head.sh"]
+    assert " -r " not in with_p and '"$NFCORE_AMPLISEQ_HOME"' in with_p
+    assert with_p.replace(" -profile test", "") == plain
+    assert with_p.splitlines()[:-1] == plain.splitlines()[:-1]          # every line before the exec line: modules, umask, image cache
+
+
+def test_tc068_resume_and_relaunch_tools_have_no_profiles(w):
+    # TC-068
+    tools, _ = w.mcp([])
+    by = {t.name: t for t in tools}
+    for name in ("resume", "relaunch"):
+        assert "profiles" not in json.dumps(by[name].input_schema), name
+    assert "profiles" in by["launch"].input_schema["properties"]
+
+
+def test_tc069_the_web_launch_page_has_no_test_data_option(w):
+    # TC-069: this slice is MCP and below; the web page (a later slice, web-launch-test-profile) is not touched
+    import inspect
+    from abf_platform import web, web_board, web_launch
+    client = w.web()
+    assert w.login(client, "ann").status_code in (200, 303)
+    for url in ("/launch", "/launch?pipeline=nf-core/ampliseq&revision=2.18.0"):
+        page = client.get(url)
+        assert page.status_code == 200
+        assert "Use the pipeline's test data" not in page.text and "profile test" not in page.text
+    for mod in (web, web_board, web_launch):
+        assert "(profile test)" not in inspect.getsource(mod)
+
+
+def ann_proposes_and_bob_exists(w):
+    bob = w.user("bob")
+    out = ask(w, w.ann, ["test"])
+    assert out["ok"] is True and out["state"] == "pending"
+    return bob, out["id"]
+
+
+def test_tc073_another_person_cannot_read_a_test_profile_request(w):
+    # TC-073: the request has no samplesheet (confirm.py's new branch); bob's own login sees nothing of it
+    bob, rid = ann_proposes_and_bob_exists(w)
+    c = w.web()
+    assert w.login(c, "bob").status_code in (200, 303)
+    page = c.get("/c/" + rid)
+    assert "非您的申請" in page.text and 'name="csrf"' not in page.text
+    for leak in ("nf-core/ampliseq", "run-one", "Config profiles", "test profile", "outdir"):
+        assert leak not in page.text, leak
+
+
+def test_tc074_another_person_cannot_confirm_a_test_profile_request(w):
+    # TC-074
+    from human_harness import csrf_of
+    bob, rid = ann_proposes_and_bob_exists(w)
+    c = w.web()
+    assert w.login(c, "bob").status_code in (200, 303)       # (the first web login makes the signing key, so the snapshot is taken after it)
+    before = (tables(w), [dict(r) for r in w.confirmations()])
+    for data in ({}, {"csrf": "x"}):
+        assert c.post("/c/" + rid, data=data).status_code == 403
+    assert w.jobs() == [] and tables(w) == before[0]
+    assert [dict(r) for r in w.confirmations()] == before[1]
+    assert [r["state"] for r in w.confirmations() if r["id"] == rid] == ["pending"]
+    a = w.web()                                   # the owner can still press, and exactly one job is queued
+    assert w.login(a, "ann").status_code in (200, 303)
+    assert a.post("/c/" + rid, data={"csrf": csrf_of(a.get("/c/" + rid).text)}).status_code == 200
+    assert len(w.jobs("launch_nextflow")) == 1
+
+
+def test_tc072_a_proposal_calls_no_write_or_send_function(w, monkeypatch):
+    # TC-072: one launch call without any answer; the functions that queue a job or approve are counted and must be zero
+    from abf_platform import actions, confirm, jobs
+    calls = []
+    for mod, name in ((actions, "launch"), (jobs, "enqueue_launch"), (confirm, "approve")):
+        monkeypatch.setattr(mod, name, lambda *a, _n=name, **k: calls.append(_n))
+    out = ask(w, w.ann, ["test"])
+    assert out["sent"] is False and out["state"] == "pending"
+    assert calls == [] and w.jobs() == [] and w.sql("SELECT COUNT(*) FROM launches")[0][0] == 0
+
+
+def test_tc076_no_secret_reaches_the_params_file_the_refusals_or_the_log(w, monkeypatch, caplog):
+    # TC-076: canaries in the process environment; none is in params.yaml, a refusal, a screen, the log, or any file under the data folder
+    from pathlib import Path
+    canaries = {"NXF_TOWER_TOKEN": "CANARY_tower_a1", "API_TOKEN": "CANARY_api_b2", "AWS_SECRET_ACCESS_KEY": "CANARY_aws_c3", "GITHUB_TOKEN": "CANARY_gh_d4"}
+    for k, v in canaries.items():
+        monkeypatch.setenv(k, v)
+    caplog.set_level(0)
+    out = ask(w, w.ann, ["test"])
+    b, screen = pending(w, out)
+    refusals = [ask(w, w.ann, ["nope"], run="run-two"), ask(w, w.ann, [], run="run-three")]
+    assert all(r["ok"] is False for r in refusals)
+    texts = [b["files"]["params.yaml"], screen, json.dumps(out), json.dumps(refusals), caplog.text]
+    root = Path(w.ip.state_db).parent
+    texts += [p.read_bytes().decode("latin-1") for p in root.rglob("*") if p.is_file() and not p.name.endswith(("-wal", "-shm"))]
+    for v in canaries.values():
+        assert not [i for i, t in enumerate(texts) if v in t], v
+    assert set(re.findall(r"^([A-Za-z_]+):", b["files"]["params.yaml"], re.M)) <= {"outdir", "input"}
