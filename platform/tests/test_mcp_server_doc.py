@@ -37,7 +37,7 @@ def test_registered_tools_are_the_known_twenty_one():
     # TC-012
     tools = _tools()
     assert {n for n, _ in tools} == EXPECTED
-    assert len(tools) == 21
+    assert len(tools) == 22
     assert sum(1 for _, a in tools if a == "_READ_ONLY") == 16
 
 
