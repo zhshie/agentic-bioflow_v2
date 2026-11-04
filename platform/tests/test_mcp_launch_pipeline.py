@@ -282,7 +282,8 @@ def test_no_web_route_for_it(d, w):
 
 def test_no_schema_change():
     # TC-032
-    out = subprocess.run(["git", "diff", "--stat", "e428661b", "--", "migrations", "abf_platform/store.py", "abf_platform/schema.sql"],
+    # pin moved from the stale commit e428661b (v3 changed store.py since) to origin/v3
+    out = subprocess.run(["git", "diff", "--stat", "origin/v3", "--", "migrations", "abf_platform/store.py", "abf_platform/schema.sql"],
                          cwd=str(HERE.parent), capture_output=True, text=True).stdout
     assert out.strip() == ""
 
