@@ -9,3 +9,5 @@
 - Pinned tests whose assertions were extended for the new kind (count/list of kinds, slices, scans): test_byte_channel_a, test_byte_channel_b, test_nfcore_catalogue, test_station_clean, test_station_pipeline_files, test_pipelines_validation (scan allows "lint"), test_handlers_header, test_k8s_launch (gate tables and kinds digest skip lint_pipeline like read_run_file; schema digest strips the new CHECK entry so the base hash holds).
 - Deviation: lint.py calls `site.run_fixed` through module-level `RUN`; it raises TimeoutError (not subprocess.TimeoutExpired) because `subprocess` may not appear outside site.py; any other exception is also reported as an error.
 - Full-suite fix round: kind list/slice pins also in test_cleanup_confirm, test_cleanup_store, test_pipeline_files_queue, test_resume_scope (append lint_pipeline; no assertion weakened).
+
+- Full-suite fix round 2: kind-list/CHECK pins in test_launch_platform, test_station_platform (two), test_cloud_cost (append lint_pipeline); test_web_nano4_path TC-043 digest strips the new CHECK entry like test_k8s_launch. No assertion weakened.
