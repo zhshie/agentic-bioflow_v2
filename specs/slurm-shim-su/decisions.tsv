@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-11-04	impl	假腳本狀態檔用 rows_/alive_/fail_* 命名	避免與 head-nodefail 分支的 state/sacct_<id> 約定相撞	platform/tests/fake_slurm.py	shim 測試 20/20
+2026-11-04	impl	Elapsed 轉毫秒函式只放測試內，只取 JobID 純數字的主列	計畫禁止新估算器；.batch/.extern 不重複計	platform/tests/test_su_job_states.py::test_batch_and_extern_rows_are_not_extra_tasks	SU 測試 17/17

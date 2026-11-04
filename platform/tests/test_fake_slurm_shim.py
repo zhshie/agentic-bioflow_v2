@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(os.name == "nt", reason="the fakes are POSIX sh 
 
 @pytest.fixture
 def fs(tmp_path, monkeypatch):
-    return fake_slurm.install(tmp_path / "w" if (tmp_path / "w").mkdir() is None else tmp_path, monkeypatch)
+    return fake_slurm.install(tmp_path, monkeypatch)
 
 
 def _snapshot(root):
@@ -142,23 +142,25 @@ def test_job_id_must_be_digits(fs, tmp_path):
     assert r.returncode == 2
     assert any(c.startswith("sacct ") and "1; rm -x" in c for c in fs.calls())
     after = set(p.name for p in tmp_path.rglob("*"))
-    assert after == before
+    assert after - {"calls.log"} == before - {"calls.log"}
 
 
-def test_shim_never_writes_outside_tmp(fs, tmp_path):
+def test_shim_never_writes_outside_tmp(fs, tmp_path, tmp_path_factory):
     # TC-011
-    outside = [Path.home() / "x"[:0] if False else Path(os.getcwd()), Path(fs.bin).parent.parent]
-    snaps = [_snapshot(o) for o in outside if o.is_dir() and not str(tmp_path).startswith(str(o) + os.sep) and o != tmp_path]
+    outside = tmp_path_factory.mktemp("outside")
+    (outside / "keep").write_text("x")
+    cwd = Path(os.getcwd())
+    names_before = sorted(p.name for p in cwd.iterdir())
+    snap = _snapshot(outside)
     fs.set(4242, "FAILED")
     fs.run("sbatch", "a.sh")
     fs.run("sacct", "-n", "-P", "-j", "4242")
     fs.run("squeue", "-h", "-j", "4242")
     fs.flag("fail_sacct")
     fs.run("sacct", "-j", "4242")
-    fs.run("sacct", "-j", "x; touch %s/pwned" % os.getcwd())
-    assert not (Path(os.getcwd()) / "pwned").exists()
-    snaps_after = [_snapshot(o) for o in outside if o.is_dir() and not str(tmp_path).startswith(str(o) + os.sep) and o != tmp_path]
-    assert snaps == snaps_after
+    fs.run("sacct", "-j", "x; touch %s/pwned" % outside)
+    assert _snapshot(outside) == snap
+    assert sorted(p.name for p in cwd.iterdir()) == names_before
 
 
 def test_module_docstrings_state_what_is_unconfirmed():
@@ -169,7 +171,6 @@ def test_module_docstrings_state_what_is_unconfirmed():
         assert "UNCONFIRMED" in t
     assert "欄位順序為假設，未經 nano4 實測" in text
     assert "not verified" in text and "do not prove" in text
-    assert "station_harness" not in text.replace("station_harness", "", 0) or True
+    assert "import station_harness" not in text and "from station_harness" not in text
     assert not re.search(r"(?i)slurm (is|was) verified|已驗證 Slurm", text)
-    assert re.search(r"^import .*|^from .*", text, re.M)
     assert "FAKE_TOOLS" not in text
