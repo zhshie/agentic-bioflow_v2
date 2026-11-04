@@ -23,7 +23,8 @@ REFUSED = {"serve", "web", "mcp", "user passwd"} | set(LAUNCH)
 JSON_DATA = {"ce show", "dataset show"}
 CASES = [p for p in MATRIX if MATRIX[p]["happy"] and p not in REFUSED]
 RUNTIME_CASES = [(p.values[0], p.values[1], p.id) for p in RUNTIME]
-TOKEN = re.compile(r"abf_\S+")
+TOKEN = re.compile(r"abf_[A-Za-z0-9_-]+")
+STAMP = re.compile(r"\d{9,}(?:\.\d+)?|\d{4}-\d\d-\d\dT[\d:.]+Z")     # creation times differ between two databases
 
 
 def plugin_version():
@@ -54,7 +55,9 @@ def run_case(home, monkeypatch, capsys, path, kind, flags, tag):
     steps, argv = MATRIX[path][kind]
     prepare(steps, capsys)
     rc, out, err = call(list(flags) + fill(argv, capsys), capsys)
-    return rc, TOKEN.sub("abf_T", out.replace(str(d), "<DB>")), TOKEN.sub("abf_T", err.replace(str(d), "<DB>"))
+    def hide(text):
+        return STAMP.sub("0", TOKEN.sub("abf_T", text.replace(str(d), "<DB>")))
+    return rc, hide(out), hide(err)
 
 
 # ---- --version ------------------------------------------------------------------------------------------------

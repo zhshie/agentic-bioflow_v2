@@ -9,18 +9,25 @@ import sqlite3
 import sys
 import time
 
-from . import agents, common, compute_envs, jobs, rebuild as rebuild_mod, records, store, welcome
+from . import agents, cliout, common, compute_envs, jobs, rebuild as rebuild_mod, records, store, welcome
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 _AGENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 
 
 def _say(text):
-    print(text, flush=True)
+    cliout.say(text)
 
 
-def _err(text):
-    print(text, file=sys.stderr, flush=True)
+def _err(text, why=None, next=None):
+    """A refusal: the plain mode prints `text` and nothing else; --json tells it as what (text), why and next."""
+    cliout.err(text, why, next)
+
+
+def _say_json(obj):
+    text = json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False)
+    cliout.set_data(json.loads(text))        # --json: the object itself is the `data`
+    _say(text)
 
 
 def _risk_line(what, host, port):
@@ -57,23 +64,23 @@ def cmd_web(args):
         from urllib.parse import urlparse
         u = urlparse(public)
         if u.scheme not in ("http", "https") or not u.hostname:
-            _err("rejected: --public-url must look like https://host (--public-url 要是 https://主機 的形式)")
+            _err("rejected: --public-url must look like https://host (--public-url 要是 https://主機 的形式)", why='--public-url 的格式不對', next='改成像 https://主機 的網址再執行一次')
             return 1
         if u.scheme == "http" and u.hostname not in LOOPBACK:
             _err("rejected: --public-url %s is plain http; the login cookie would travel in clear text. Use an https:// address "
-                 "(a TLS proxy in front of this page) (--public-url 必須是 https)" % public)
+                 "(a TLS proxy in front of this page) (--public-url 必須是 https)" % public, why='http 是明文傳輸，登入 cookie 會以明文走在網路上', next='改用 https:// 開頭的網址（在前面放 TLS 代理）')
             return 1
     if args.host not in LOOPBACK:
         _err("rejected: the confirmation page binds loopback only (127.0.0.1, ::1 or localhost), not %s, whatever --public-url says. It "
              "serves plain http and the login cookie must not cross a network in clear text: put a TLS proxy (for example Tailscale "
              "Funnel) on this machine in front of it and give the proxy's address as --public-url https://<address people open> "
-             "(確認頁只綁本機位址；要給別人用，請在本機前面放 TLS 代理，並用 --public-url https://… 告訴大家網址)" % args.host)
+             "(確認頁只綁本機位址；要給別人用，請在本機前面放 TLS 代理，並用 --public-url https://… 告訴大家網址)" % args.host, why='確認頁用明文 http，登入 cookie 不能在網路上明文傳送，所以只綁本機位址', next='--host 用 127.0.0.1；要給別人用，就在本機前面放 TLS 代理，並用 --public-url 告知網址')
         return 1
     base = public or "http://%s:%s" % (args.host, args.port)
     try:
         app = web.create_app(index, tokens, state, public_url=public or None, base_url=base)
     except ValueError as e:
-        _err("rejected: %s" % e)
+        _err("rejected: %s" % e, why='確認頁的設定沒有通過檢查', next='照上面的原因修正後，再執行一次')
         return 1
     store.set_meta(state, "web_base_url", base)    # the MCP server names this address in its answers
     _say("abf-platform confirmation page on http://%s:%s, named to people as %s (tokens %s, platform %s)" % (
@@ -107,23 +114,23 @@ def _agent_owner(name):
 
 def cmd_agent_token_new(args):
     if not _AGENT_NAME.match(args.name):
-        _err("rejected: an agent name is letters, digits, _ . - (1 to 64 characters)")
+        _err("rejected: an agent name is letters, digits, _ . - (1 to 64 characters)", why='代理名字只能用英數字與 _ . -，長度 1 到 64 個字', next='換一個符合規則的名字')
         return 1
     tokens = store.default_tokens_path()
     uid = None
     if args.user is not None:
         uid = store.user_id_of(tokens, args.user)
         if uid is None:
-            _err("rejected: no such user: %s (沒有這個使用者); add one with: abf-platform user add" % args.user)
+            _err("rejected: no such user: %s (沒有這個使用者); add one with: abf-platform user add" % args.user, why='資料庫裡沒有這個使用者', next='先用 abf-platform user add 新增這個使用者，或檢查名字有沒有打錯')
             return 1
     if uid is None and store.has_users(tokens):
-        _err("rejected: say whose agent this is with --user NAME (請用 --user 名字 指定這個代理是誰的)")
+        _err("rejected: say whose agent this is with --user NAME (請用 --user 名字 指定這個代理是誰的)", why='平台上已經有使用者，每個代理都要屬於某一位', next='加上 --user 名字')
         return 1
     if uid is not None:
         owner = _agent_owner(args.name)
         if owner is not None and owner != uid:
             _err("rejected: this agent belongs to another user, so a token for it cannot be made for this one; "
-                 "use --user with the user it belongs to (這個代理屬於另一位使用者)")
+                 "use --user with the user it belongs to (這個代理屬於另一位使用者)", why='這個代理名字已經屬於另一位使用者', next='用 --user 指定它所屬的那位使用者，或換一個代理名字')
             return 1
     token = store.create_token(tokens, kind="agent", agent_name=args.name, user_id=uid)
     _say("New agent token for %s%s (it is shown once and cannot be shown again; only its hash is kept):" % (
@@ -139,12 +146,12 @@ def cmd_user_add(args):
         try:
             cap = store.parse_cloud_cap(args.cloud_cap_usd)       # judged before the account is made, so a bad number leaves no account
         except ValueError as e:
-            _err("rejected: %s; no account was made (沒有建立帳號)" % e)
+            _err("rejected: %s; no account was made (沒有建立帳號)" % e, why='上限要是 0 到 1,000,000 之間的美元數字', next='改成合法的數字再執行一次；帳號還沒有建立')
             return 1
     try:
         uid = store.create_user(store.default_tokens_path(), args.name, args.lab)
     except ValueError:
-        _err("rejected: a user named %s already exists (這個名字已存在)" % args.name)
+        _err("rejected: a user named %s already exists (這個名字已存在)" % args.name, why='資料庫裡已經有同名的使用者', next='換一個名字；或對現有的使用者直接用 pat new 發 token')
         return 1
     if cap is not None:
         store.set_cloud_cap(store.default_tokens_path(), uid, cap)
@@ -159,11 +166,11 @@ def cmd_user_cloud_cap(args):
     try:
         cap = store.parse_cloud_cap(args.usd)
     except ValueError as e:
-        _err("rejected: %s; the cap was not changed (上限沒有改)" % e)
+        _err("rejected: %s; the cap was not changed (上限沒有改)" % e, why='上限要是 0 到 1,000,000 之間的美元數字', next='改成合法的數字再執行一次；原本的上限沒有動')
         return 1
     uid = store.user_id_of(tokens, args.name)
     if uid is None:
-        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name)
+        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name, why='資料庫裡沒有這個使用者', next='先用 abf-platform user add 新增這個使用者，或檢查名字有沒有打錯')
         return 1
     store.set_cloud_cap(tokens, uid, cap)
     _say("monthly cloud cap of %s is now US$%.2f (每月雲端費用上限)" % (args.name, cap))
@@ -176,11 +183,11 @@ def cmd_user_welcome(args):
     url = common.public_url(args.platform_url)
     if url is None:
         _err("rejected: the platform address must be https://host (http only for localhost or 127.0.0.1); nothing was printed "
-             "(網址要 https://主機，或 http 只限本機)")
+             "(網址要 https://主機，或 http 只限本機)", why='歡迎信裡要放的平台網址格式不對', next='給 https://主機 的網址（http 只限本機）')
         return 1
     user = store.user_by_name(tokens, args.name)
     if user is None:
-        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name)
+        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name, why='資料庫裡沒有這個使用者', next='先用 abf-platform user add 新增這個使用者，或檢查名字有沒有打錯')
         return 1
     text = welcome.welcome_text(user["name"], user["lab"], store.cloud_cap(tokens, user["user_id"]), url, args.operator)
     if not args.out:
@@ -189,10 +196,10 @@ def cmd_user_welcome(args):
     try:
         fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError:
-        _err("rejected: %s already exists, so it was not overwritten; choose another name or delete it (檔案已存在，沒有覆蓋)" % args.out)
+        _err("rejected: %s already exists, so it was not overwritten; choose another name or delete it (檔案已存在，沒有覆蓋)" % args.out, why='為了不蓋掉舊檔，已經存在的檔案不會被覆寫', next='換一個 --out 檔名，或先自己刪掉舊檔')
         return 1
     except OSError:
-        _err("rejected: cannot create %s; check that the folder exists and you may write there (無法建立檔案)" % args.out)
+        _err("rejected: cannot create %s; check that the folder exists and you may write there (無法建立檔案)" % args.out, why='資料夾不存在，或你沒有寫入的權限', next='確認資料夾存在而且你可以寫入')
         return 1
     with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
         f.write(text + "\n")
@@ -210,20 +217,20 @@ def cmd_user_passwd(args):
     temporary = getattr(args, "temporary", False)
     why = terminal.terminal_problem()
     if why and temporary:
-        _err("rejected: 臨時密碼只能顯示在真正的終端機上，這裡不行（%s）(a temporary password is shown only at a real terminal, never to a pipe or a script)" % why)
+        _err("rejected: 臨時密碼只能顯示在真正的終端機上，這裡不行（%s）(a temporary password is shown only at a real terminal, never to a pipe or a script)" % why, why='臨時密碼只能顯示在真正的終端機，不能送給管線或腳本', next='在真正的終端機裡直接執行這個指令')
         return 1
     if why:
-        _err("rejected: 密碼只能在真正的終端機上由本人輸入，這裡不行（%s）(the password is typed at a real terminal, nothing else can give it)" % why)
+        _err("rejected: 密碼只能在真正的終端機上由本人輸入，這裡不行（%s）(the password is typed at a real terminal, nothing else can give it)" % why, why='密碼只能在真正的終端機由本人輸入', next='在真正的終端機裡直接執行這個指令')
         return 1
     tokens = store.default_tokens_path()
     if store.user_id_of(tokens, args.name) is None:
-        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name)
+        _err("rejected: 沒有這個使用者 (no such user): %s; add one with: abf-platform user add" % args.name, why='資料庫裡沒有這個使用者', next='先用 abf-platform user add 新增這個使用者，或檢查名字有沒有打錯')
         return 1
     if temporary:
         try:
             issued = store.issue_temporary_password(tokens, args.name)
         except ValueError as e:
-            _err("rejected: %s" % e)
+            _err("rejected: %s" % e, why='系統拒絕發出臨時密碼', next='照上面的原因修正後，再執行一次')
             return 1
         hours = int(store.TEMP_PASSWORD_SECONDS // 3600)
         _say("temporary web password of %s (一次性臨時密碼，只顯示這一次):" % args.name)
@@ -236,15 +243,15 @@ def cmd_user_passwd(args):
         first = getpass.getpass("New web password for %s: " % args.name)
         second = getpass.getpass("Type it again: ")
     except (EOFError, KeyboardInterrupt):
-        _err("\nrejected: nothing was entered, nothing was changed (沒有輸入，什麼都沒改)")
+        _err("\nrejected: nothing was entered, nothing was changed (沒有輸入，什麼都沒改)", why='沒有輸入任何密碼', next='重新執行，並輸入兩次密碼')
         return 1
     if first != second:
-        _err("rejected: the two entries differ, nothing was changed (兩次輸入不一致，什麼都沒改)")
+        _err("rejected: the two entries differ, nothing was changed (兩次輸入不一致，什麼都沒改)", why='兩次輸入的密碼不一樣', next='重新執行，兩次輸入相同的密碼')
         return 1
     try:
         store.set_web_password(tokens, args.name, first)
     except ValueError as e:
-        _err("rejected: %s" % e)
+        _err("rejected: %s" % e, why='系統拒絕這個密碼', next='換一個符合規則的密碼再執行一次')
         return 1
     _say("web password of %s is set; every browser login of that user has ended (網頁密碼已設定，舊的登入全部結束)" % args.name)
     return 0
@@ -254,7 +261,7 @@ def cmd_pat_new(args):
     tokens = store.default_tokens_path()
     uid = store.user_id_of(tokens, args.user)
     if uid is None:
-        _err("rejected: no such user: %s (沒有這個使用者); add one with: abf-platform user add" % args.user)
+        _err("rejected: no such user: %s (沒有這個使用者); add one with: abf-platform user add" % args.user, why='資料庫裡沒有這個使用者', next='先用 abf-platform user add 新增這個使用者，或檢查名字有沒有打錯')
         return 1
     token = store.create_token(tokens, kind="pat", user_id=uid, label=args.label)
     _say("New personal access token for %s (it is shown once and cannot be shown again; only its hash is kept):" % args.user)
@@ -279,14 +286,14 @@ def cmd_pat_revoke(args):
     if n:
         _say("revoked token %s; it is refused from its next request" % args.id)
         return 0
-    _err("rejected: no live personal access token with id %s" % args.id)
+    _err("rejected: no live personal access token with id %s" % args.id, why='沒有這個編號的有效 token（編號打錯，或已經撤銷）', next='用 abf-platform pat list 看編號')
     return 1
 
 
 def cmd_oauth_revoke(args):
     tokens = store.default_tokens_path()
     if store.user_id_of(tokens, args.user) is None:
-        _err("no user named %s (沒有這個使用者)" % args.user)
+        _err("no user named %s (沒有這個使用者)" % args.user, why='資料庫裡沒有這個使用者', next='先用 abf-platform user add 新增這個使用者，或檢查名字有沒有打錯')
         return 1
     n = store.revoke_oauth_tokens(tokens, args.user)
     _say("revoked %d OAuth token(s) of %s; their personal access tokens are untouched (已撤銷 %d 個 OAuth 權杖)" % (n, args.user, n))
@@ -306,12 +313,12 @@ def cmd_agent_token_list(args):
 
 def cmd_agent_token_revoke(args):
     if (args.name is None) == (args.id is None):
-        _err("rejected: give either an agent name or --id N, not both and not neither (請給代理名字或 --id，二選一)")
+        _err("rejected: give either an agent name or --id N, not both and not neither (請給代理名字或 --id，二選一)", why='撤銷時要指定是哪一個，代理名字和 --id 必須剛好給一個', next='給代理名字，或給 --id N，擇一')
         return 1
     if args.id is not None:
         got = store.revoke_agent_token(store.default_tokens_path(), args.id)
         if got is None:
-            _err("rejected: no live agent token with id %s (沒有這個有效的代理 token); list them with: abf-platform agent-token list" % args.id)
+            _err("rejected: no live agent token with id %s (沒有這個有效的代理 token); list them with: abf-platform agent-token list" % args.id, why='沒有這個編號的有效代理 token（編號打錯，或已經撤銷）', next='用 abf-platform agent-token list 看編號')
             return 1
         _say("revoked agent token %s (agent %s); it is refused from its next request, other tokens of this agent are untouched"
              % (args.id, got["agent_name"]))
@@ -431,7 +438,7 @@ def cmd_ce_create(args):
             _default_agent(fields)
         ce = compute_envs.create(state, fields)
     except compute_envs.CEError as e:
-        _err("rejected: %s" % e)
+        _err("rejected: %s" % e, why='運算環境的設定沒有通過檢查', next='照上面的說明修正欄位後，再執行一次')
         return 1
     note = _queue_first_preflight(state, ce)
     _say("compute environment %s created (status %s)" % (ce["name"], ce["status"]))
@@ -444,7 +451,7 @@ def cmd_ce_update(args):
     try:
         ce = compute_envs.update(state, args.name, _fields_from_args(args, partial=True))
     except compute_envs.CEError as e:
-        _err("rejected: %s" % e)
+        _err("rejected: %s" % e, why='運算環境的設定沒有通過檢查', next='照上面的說明修正欄位後，再執行一次')
         return 1
     _say("compute environment %s updated" % ce["name"])
     if ce["platform"] in compute_envs.CHECKABLE and ce["status"] != compute_envs.DISABLED:
@@ -464,9 +471,9 @@ def cmd_ce_list(args):
 def cmd_ce_show(args):
     ce = compute_envs.get(store.default_platform_path(), args.name)
     if ce is None:
-        _err("compute environment %s not found (找不到)" % args.name)
+        _err("compute environment %s not found (找不到)" % args.name, why='資料庫裡沒有這個名字的運算環境', next='用 abf-platform ce list 看現有的名字')
         return 1
-    _say(json.dumps(ce, indent=2, sort_keys=True, ensure_ascii=False))
+    _say_json(ce)
     return 0
 
 
@@ -475,7 +482,7 @@ def _simple(fn):
         try:
             ce = fn(store.default_platform_path(), args.name)
         except compute_envs.CEError as e:
-            _err("rejected: %s" % e)
+            _err("rejected: %s" % e, why='這個運算環境的操作沒有通過檢查', next='照上面的原因修正後，再執行一次')
             return 1
         _say("%s is now %s%s" % (ce["name"], ce["status"], " and primary" if ce["primary"] else ""))
         return 0
@@ -491,18 +498,18 @@ def cmd_ce_preflight(args):
                                 "credentialsId": ce["credentialsId"], "agent": ce["agent"], "config": ce["config"]})
         except compute_envs.CEError as e:
             if "請刪除後重建" in str(e):      # an old record: updating cannot fix it
-                _err("rejected: %s" % e)
+                _err("rejected: %s" % e, why='這筆運算環境是舊版留下的紀錄，更新沒辦法修好它', next='刪除後重新建立')
             else:
-                _err("rejected: %s. Fix it with `abf-platform ce update %s ...` first (請先用 ce update 補齊)" % (e, args.name))
+                _err("rejected: %s. Fix it with `abf-platform ce update %s ...` first (請先用 ce update 補齊)" % (e, args.name), why='這筆紀錄沒有通過現在的檢查規則', next='先用 abf-platform ce update 補齊欄位，再做 preflight')
             return 1
     try:
         job_id = jobs.enqueue_preflight(state, args.name)
     except jobs.JobRefused as e:
-        _err("refused: %s" % e)
+        _err("refused: %s" % e, why='系統拒絕排入這項檢查', next='照上面的原因修正後，再執行一次')
         return 1
     out = asyncio.run(jobs.wait_for_result(state, job_id))
     if out["state"] == "expired" or out["result"] is None:
-        _err("refused: %s" % out["message"])
+        _err("refused: %s" % out["message"], why='沒有收到代理的回覆', next='確認該代理正在運行後，再執行一次')
         return 1
     for c in out["result"].get("checks", []):
         _say("  %s: %s - %s" % (c["name"], c["status"], c["detail"]))
@@ -528,7 +535,7 @@ def cmd_mcp(args):
             u = urlparse(public)
             if not u.hostname or u.path not in ("", "/") or not (u.scheme == "https" or (u.scheme == "http" and u.hostname in LOOPBACK)):
                 _err("rejected: --public-url must be https://host (or http://127.0.0.1:port on this machine), with no path "
-                     "(--public-url 要是 https://主機 的形式)")
+                     "(--public-url 要是 https://主機 的形式)", why='--public-url 的格式不對', next='改成 https://主機（不含路徑）的網址再執行一次')
                 return 1
         mcp_server.run_http(index, args.host, args.port, public_url=public or None)
     else:
@@ -542,13 +549,13 @@ def cmd_runs_offer_cleanup(args):
     done by actions.offer_cleanups; this prints what it answers."""
     from . import actions
     if bool(args.run_names) == bool(args.all):
-        _err("rejected: give run names or --all, one of the two (請給 run 名稱，或加 --all，兩者擇一); nothing was changed")
+        _err("rejected: give run names or --all, one of the two (請給 run 名稱，或加 --all，兩者擇一); nothing was changed", why='要處理哪些 run 沒有指定清楚', next='給 run 名稱，或加 --all，兩者擇一')
         return 1
     user_id = None
     if args.user:
         user = store.user_by_name(store.default_tokens_path(), args.user)
         if user is None:
-            _err("rejected: no such user: %s (沒有這個使用者); nothing was changed" % args.user)
+            _err("rejected: no such user: %s (沒有這個使用者); nothing was changed" % args.user, why='資料庫裡沒有這個使用者', next='先用 abf-platform user add 新增這個使用者，或檢查名字有沒有打錯')
             return 1
         user_id = user["user_id"]
     preview = args.list or not args.apply
@@ -576,9 +583,9 @@ def cmd_runs_offer_cleanup(args):
 def _dataset_caller(args):
     """(Caller or None, exit code or None) for a dataset command: the account rule of `abf-platform launch` (--user once users exist)."""
     from abf_launch import cli as launch_cli
-    caller, why = launch_cli._account(args.user)
-    if why:
-        _err(why)
+    caller, problem = launch_cli._account(args.user)
+    if problem:
+        _err(problem, why='帳號規則沒有通過', next='加上 --user 名字，或照上面的說明處理')
         return None, 1
     return caller, None
 
@@ -607,14 +614,14 @@ def cmd_dataset_register(args):
     caller, code = _dataset_caller(args)
     if code:
         return code
-    text, why = _read_sheet_text(args.samplesheet)
-    if why:
-        _err(why)
+    text, problem = _read_sheet_text(args.samplesheet)
+    if problem:
+        _err(problem, why='樣本表檔案不能用', next='檢查 --samplesheet 的路徑與檔案內容')
         return 1
     out = datasets.register_dataset(store.default_platform_path(), name=args.name, version=args.version, samplesheet=text,
                                     files=[{"path": p} for p in args.file], caller=caller, destination=args.destination)
     if not out.get("ok"):
-        _err(out["message"])
+        _err(out["message"], why='資料集沒有通過登記檢查', next='照上面的說明修正後，再執行一次')
         return 1
     _say("已登記資料集 %s 版本 %s（%d 個檔案）(registered)" % (args.name, args.version, len(args.file)))
     return 0
@@ -637,9 +644,9 @@ def cmd_dataset_show(args):
         return code
     got = datasets.get_dataset(store.default_platform_path(), args.name, args.version, caller=caller)
     if not got.get("found"):
-        _err(got["message"])
+        _err(got["message"], why='平台裡沒有這個名字（或這個版本）的資料集', next='用 abf-platform dataset list 看現有的資料集')
         return 1
-    _say(json.dumps(got, indent=2, sort_keys=True, ensure_ascii=False))
+    _say_json(got)
     return 0
 
 
@@ -647,7 +654,7 @@ def cmd_runs_assign(args):
     """Give a run that nobody owns to a user (116b). Terminal only: it writes launches.user_id of the newest row of the run and nothing else."""
     user = store.user_by_name(store.default_tokens_path(), args.user)
     if user is None:
-        _err("rejected: no such user: %s (沒有這個使用者); nothing was changed" % args.user)
+        _err("rejected: no such user: %s (沒有這個使用者); nothing was changed" % args.user, why='資料庫裡沒有這個使用者', next='先用 abf-platform user add 新增這個使用者，或檢查名字有沒有打錯')
         return 1
     state = store.default_platform_path(store.default_index_path())
     names = store.user_names(store.default_tokens_path())
@@ -666,11 +673,11 @@ def cmd_runs_assign(args):
 
     what, old = jobs.transaction(state, work)
     if what == "no_run":
-        _err("rejected: no launch of a run named %s (沒有這個 run); nothing was changed" % args.run_name)
+        _err("rejected: no launch of a run named %s (沒有這個 run); nothing was changed" % args.run_name, why='發射紀錄裡沒有這個名字的 run', next='確認 run 的名稱有沒有打錯')
         return 1
     if what == "owned":
         _err("rejected: run %s already belongs to %s; to change the owner add --force (這個 run 已經有擁有者，要改請加 --force)" % (      # 116b-owner
-            args.run_name, names.get(old, "user #%s" % old)))
+            args.run_name, names.get(old, "user #%s" % old)), why='這個 run 已經有擁有者', next='要改擁有者請加 --force')
         return 1
     if what == "same":
         _say("run %s already belongs to %s; nothing to change (已經是他的)" % (args.run_name, args.user))
@@ -688,7 +695,7 @@ def cmd_rebuild(args):
     # the logs that `fetch-records` brought here are one more place to read, each in the shape of a launch folder
     folders = list(args.folders) + records.roots(store.default_platform_path(index).parent / "records")
     if not folders:
-        _err("rejected: no launch folder given, and no records fetched yet (`abf-platform fetch-records <run>`)")
+        _err("rejected: no launch folder given, and no records fetched yet (`abf-platform fetch-records <run>`)", why='沒有指定資料夾，也還沒有抓回來的紀錄', next='給一個或多個資料夾，或先執行 abf-platform fetch-records <run>')
         return 2
     result = rebuild_mod.rebuild(folders, index, out=_say)
     _say("Rebuilt %d run(s) from %d launch folder(s); skipped %d folder(s)." % (
@@ -734,9 +741,29 @@ def _add_ce_fields(p):
     p.add_argument("--config-json", help="settings as JSON text, or @file; the flags above win over it")
 
 
+class _Parser(argparse.ArgumentParser):
+    """Under --json a wrong command line is told as one what/why/next object on stderr (exit 2), like any other refusal."""
+
+    def error(self, message):
+        if cliout.json_mode():
+            path = self.prog.split(" ", 1)[1] if " " in self.prog else ""
+            cliout.emit_failure(path, message, "命令列參數不符合這個指令的格式",
+                                "用 abf-platform %s--help 看正確用法" % (path + " " if path else ""))
+            self.exit(2)
+        super().error(message)
+
+
 def build_parser():
-    p = argparse.ArgumentParser(prog="abf-platform", description=__doc__)
-    sub = p.add_subparsers(dest="command", required=True)
+    p = _Parser(prog="abf-platform", description=__doc__)
+    # The flags sit before the command (a leaf has none of them; `dataset register|show` keep their own --version, the dataset's).
+    # Their dests differ from every leaf dest, because a leaf's namespace is copied over the root's.
+    p.add_argument("--version", dest="product_version", action="store_true",
+                   help="print the product version (from .claude-plugin/plugin.json) and exit")
+    p.add_argument("--json", dest="json_mode", action="store_true",
+                   help="print one JSON object per command (stable keys; a failure is {error: {what, why, next}} on stderr)")
+    p.add_argument("--debug", dest="debug_mode", action="store_true",
+                   help="add diagnostic lines (each starts with 'debug: ') on stderr; stdout does not change")
+    sub = p.add_subparsers(dest="command")      # not required by argparse, so that --version stands alone; main asks for it
 
     s = sub.add_parser("serve", help="run the receiver for Nextflow's trace messages and the agents' requests")
     s.add_argument("--host", default="127.0.0.1", help="address to listen on (default: 127.0.0.1, this machine only)")
@@ -904,8 +931,92 @@ def adopt_orphans():
     store.assign_orphans(store.default_platform_path(index), store.default_tokens_path(index))
 
 
-def main(argv=None):
-    args = build_parser().parse_args(argv)
+def cmd_version(args):
+    version = cliout.read_version()
+    if version is None:
+        _err("rejected: 找不到產品版本 (the product version was not found)",
+             why="版本記在 .claude-plugin/plugin.json，這份安裝裡沒有它",
+             next="從 repository 的 checkout 執行，或設 PYTHONPATH=platform")
+        return 1
+    cliout.set_data({"version": version})
+    _say("abf-platform %s" % version)
+    return 0
+
+
+def _command_path(args):
+    if args.product_version:
+        return "version"
+    return " ".join([args.command] + [v for k, v in sorted(vars(args).items()) if k.endswith("_command") and v])
+
+
+def _option_names(parser):
+    names = set()
+    for a in parser._actions:
+        names.update(a.option_strings)
+        if isinstance(getattr(a, "choices", None), dict):
+            for child in a.choices.values():
+                names |= _option_names(child)
+    return names
+
+
+JSON_REFUSED = {
+    "serve": "它會一直執行，不會「結束」，沒辦法只印一個物件",
+    "web": "它會一直執行，不會「結束」，沒辦法只印一個物件",
+    "mcp": "它會一直執行，不會「結束」，沒辦法只印一個物件",
+    "user passwd": "密碼只能顯示、輸入在真正的終端機，而 --json 的輸出會被管線接走",
+}
+
+
+def _json_refusal(args, path):
+    """(what, why, next) when this command has no business under --json, else None."""
+    if path in JSON_REFUSED:
+        return "這個指令不能用 --json", JSON_REFUSED[path], "不加 --json，直接在真正的終端機裡執行"
+    if getattr(args.func, "__module__", "").startswith("abf_launch"):
+        return ("這個指令還不支援 --json", "它的輸出由 abf_launch 自己的出口產生，尚未接上 JSON 外殼",
+                "不加 --json 執行，或等後續版本")
+    return None
+
+
+def _run(args, path):
+    if args.product_version:
+        return cmd_version(args)
+    if cliout.json_mode():
+        refusal = _json_refusal(args, path)
+        if refusal:
+            _err(refusal[0], why=refusal[1], next=refusal[2])
+            return 1
     if args.command in ADOPTING:
         adopt_orphans()
     return args.func(args)
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    cliout.reset(json_mode=cliout.leading_flag(argv, "--json"))
+    try:
+        parser = build_parser()
+        args = parser.parse_args(argv)
+        if not args.product_version and args.command is None:
+            parser.error("the following arguments are required: command")
+        cliout.reset(json_mode=args.json_mode, debug=args.debug_mode)
+        path = _command_path(args)
+        started = time.monotonic()
+        known = _option_names(parser)
+        given = []
+        for tok in argv:
+            name = tok.split("=", 1)[0]
+            if tok.startswith("--") and name in known and name not in given:
+                given.append(name)
+        cliout.debug("command %s" % path)
+        if given:
+            cliout.debug("options %s" % " ".join(given))      # the names only, never a value
+        try:
+            rc = _run(args, path)
+        except Exception:
+            cliout.debug_exception()
+            raise
+        cliout.finish(path, rc, with_output=not args.product_version)
+        cliout.debug("exit %s in %d ms" % (rc, (time.monotonic() - started) * 1000))
+        return rc
+    finally:
+        cliout.reset()
