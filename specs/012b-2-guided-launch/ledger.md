@@ -21,3 +21,8 @@
 
 ## 偏離
 - TC-308／TC-512 的 zh 原句「樣本表超過 1 MiB，無法預覽。」改為「樣本表大於 1 MiB，無法預覽。」：既有 test_web_wording_sweep 禁用「超」字，且該測試不得改。需要核可者決定是否調整禁用詞表。
+
+## 全套測試後追加的既有斷言改動
+- test_k8s_launch.py：動作數 51 -> 52 與名稱雜湊（新增 preview_samplesheet）。
+- test_web_settings_ce_mobile.py：web_board.STRINGS 雜湊（新增 g_pv_* 字串）。
+- test_aws_ce 一次失敗為偶發，單跑通過。

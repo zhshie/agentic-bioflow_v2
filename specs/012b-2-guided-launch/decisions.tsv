@@ -5,3 +5,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	流程	實作先於測試寫成，之後補測試；未依 RED 再 GREEN 順序	前段上下文中斷，實作已先落地	test_web_guided_launch_preview.py	如實記錄，測試對最終實作全數通過
 2026-11-04	設計	schema_input 為 none 時既有的「✗ 。」行屬原行為，測試只檢查預覽區	避免改動範圍外的既有行為	test_web_guided_launch_preview.py test_schema_loading_error_and_missing	通過
 2026-11-04	用字	太大一句 zh 由「超過」改為「大於」，並補 zh 的 g_pv_total1	既有 test_web_wording_sweep 禁用「超」字且中英字串表鍵須一致；計畫原句與之衝突（TC-308 原文用「超過」）	platform/abf_platform/web_board.py g_pv_big	三個既有測試回綠；偏離 TC-308 的字面，須回報
+2026-11-04T19:00	全套	更新兩個釘住雜湊的既有測試（動作數 51->52、web_board.STRINGS 雜湊）	新增 preview_samplesheet 與 g_pv_* 字串必然改變釘住值，沿用既有慣例加註解	test_k8s_launch.py::test_the_user_visible_actions_are_those_of_the_base; test_web_settings_ce_mobile.py::test_ce08_no_new_strings	待重跑

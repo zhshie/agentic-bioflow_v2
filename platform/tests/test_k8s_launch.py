@@ -1434,7 +1434,7 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert len(got) == 29 and digest(repr(got)) == "a6bd4a913b846a948a12f0d02e68818d2e2881f4e8b26c0b04db33cf5235667f"      # resume-edit-web adds GET /act/{verb}/edit (28 before)
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
-    assert len(names) == 51 and digest(repr(names)) == "c855b9bead94ba8b4e583a804e8d2e1783cfab91e8b38194169356a6fca43ef5"      # mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
+    assert len(names) == 52 and digest(repr(names)) == "ed4b00e030ba0694db1ef902722c42d5ee5a4359f91ee33495f1f9811057b3fd"      # 012b-2 adds preview_samplesheet; mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
     assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
 
 
