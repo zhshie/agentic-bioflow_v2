@@ -5,7 +5,7 @@ tier: C
 kinds: backend
 risk: L
 lane: L45-head-nodefail-detect
-branch: fix/head-nodefail-detect
+branch: fix/head-nodefail-giveup
 base: v3
 source: 桌機 session 7j5l5bj 10-31 在 nano4 實測：t1（平台 job 78、Slurm 654018）head job 整個消失，站台 log 只寫 "job 78: done"，平台沒有任何失敗訊號；見 memory/handoff/2026-11-01-2104.md 待辦第 2 點
 ---
