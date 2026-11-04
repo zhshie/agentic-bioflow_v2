@@ -125,6 +125,10 @@ MCP 的 `launch` 多一個選填 `profiles`（字串清單）。給了 `test`，
 2. test_no_schema_change：v3 的 CI 在 #289、#355 合併後是綠的（run 41821927314），不是既有紅；你的紅是 base 太舊。先 `git fetch origin && git merge origin/v3` 再跑；仍紅就寫 BLOCKED 附 git diff e428661b origin/v3 -- platform/abf_platform/store.py 的輸出。
 3. test_azure_ce 單跑綠＝不穩定，不算你的紅；shard_2 逾時請單獨重跑該 shard。
 
+## 裁決 D（11-04，developer-agent）
+
+test_no_schema_change 的釘點我已改成 origin/v3 並 commit（舊釘點 e428661b 在 CI 的淺複製裡不存在所以一直假綠）。已合 v3、該測試綠。你直接跑全套（shard_2 逾時就單獨重跑），GREEN 後交閱卷；不要再為這條 BLOCKED。
+
 ## 專長守則（backend）
 
 ### executor
