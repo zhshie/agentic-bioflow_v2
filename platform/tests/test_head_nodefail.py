@@ -479,8 +479,8 @@ def test_tc033_no_caller_queues_nothing_for_anyone(rig):
 
 # ---- adversary fixes (round 2 of ruling P): the fact outlives the prune and the cut of twenty ------------------------------------
 
-def test_tc035_a_failed_run_stays_failed_after_the_job_prune(rig):
-    # TC-035 (P2): the NODE_FAIL read-back older than the prune age is not deleted; the run does not go back to lost
+def test_adv4_a_failed_run_stays_failed_after_the_job_prune(rig):
+    # ADV-4 (P2; was numbered TC-035, which the contract gave to the merge): the NODE_FAIL read-back older than the prune age is not deleted; the run does not go back to lost
     rid = lost_run(rig)
     add_fetch(rig, "x", fact("NODE_FAIL"), age=8 * 86400)
     lost_run(rig, "y", slurm=777)
@@ -491,8 +491,8 @@ def test_tc035_a_failed_run_stays_failed_after_the_job_prune(rig):
     assert out.get("sent"), out.get("message")
 
 
-def test_tc035_old_read_backs_without_an_end_are_still_pruned(rig):
-    # TC-035: only a bad-end fact is kept; a plain or alive answer of that age is deleted as before
+def test_adv4_old_read_backs_without_an_end_are_still_pruned(rig):
+    # ADV-4: only a bad-end fact is kept; a plain or alive answer of that age is deleted as before
     lost_run(rig)
     add_fetch(rig, "x", None, age=8 * 86400, with_key=False)
     add_fetch(rig, "x", fact("RUNNING", "squeue"), age=8 * 86400)
@@ -501,8 +501,8 @@ def test_tc035_old_read_backs_without_an_end_are_still_pruned(rig):
     assert [r for r in fetch_jobs(rig) if '"x"' in r["args_json"]] == []
 
 
-def test_tc036_twenty_newer_plain_fetches_do_not_push_the_fact_out(rig):
-    # TC-036 (P1): the cut of twenty counts only answers that asked the scheduler
+def test_adv5_twenty_newer_plain_fetches_do_not_push_the_fact_out(rig):
+    # ADV-5 (P1; was numbered TC-036): the cut of twenty counts only answers that asked the scheduler
     rid = lost_run(rig)
     add_fetch(rig, "x", fact("NODE_FAIL"), age=5000)
     for i in range(25):
@@ -567,3 +567,78 @@ def test_adv3_the_failure_notice_of_a_failed_overlay_keeps_a_time(rig):
     v = get(rig, rid)
     assert v["status"] == "failed" and v.get("ended_at") is None
     assert when(v) == plain != "\u2014"
+
+
+# ---- ruling Q: a bad end is not for ever; the Ended column of a run shown failed ---------------------------------------------
+
+@pytest.mark.parametrize("alive", ["RUNNING", "PENDING"])
+def test_tc037_the_newest_real_answer_wins_over_an_earlier_bad_end(rig, alive):
+    # TC-037 (Q1): NODE_FAIL first, then RUNNING/PENDING (Slurm requeued it): back to lost, as a run with no fact at all
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=900)
+    add_fetch(rig, "x", fact(alive, "squeue"), age=300)
+    plain = lost_run(rig, "y", slurm=777)
+    v = get(rig, rid)
+    base = get(rig, plain)
+    assert v["status"] == "lost" and v["failure"]["failure_reason"] is None
+    assert "resume" not in v["failure"]["actions"] and v["failure"]["actions"] == base["failure"]["actions"]
+    row = listed(rig, "x")[0]
+    assert row["status"] == "lost" and row["failure"]["failure_reason"] is None
+    # the other order shows Failed
+    lost_run(rig, "z", slurm=888)
+    add_fetch(rig, "z", fact(alive, "squeue", job_id="888"), age=900, slurm=888)
+    add_fetch(rig, "z", fact("NODE_FAIL", job_id="888"), age=300, slurm=888)
+    assert get(rig, "id-z")["status"] == "failed"
+
+
+def test_tc042_a_taken_back_bad_end_takes_back_the_resume_gate_too(rig):
+    # TC-042 (Q1)
+    lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=900)
+    add_fetch(rig, "x", fact("RUNNING", "squeue"), age=300)
+    assert "還在跑" in rig.resume("x", person=FakePerson(True))["message"]
+
+
+def test_tc040_a_bad_end_older_than_ten_minutes_is_asked_once_more(rig):
+    # TC-040 (Q1)
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=11 * 60)
+    n = len(fetch_jobs(rig))
+    assert get(rig, rid)["status"] == "failed"
+    assert len(fetch_jobs(rig)) == n + 1
+    assert json.loads(fetch_jobs(rig)[-1]["args_json"])["slurm_job_id"] == str(SLURM)
+    assert get(rig, rid)["status"] == "failed"      # the new answer has not come yet: still failed
+    assert len(fetch_jobs(rig)) == n + 1
+
+
+def test_tc041_a_bad_end_older_than_six_hours_is_not_asked_again(rig):
+    # TC-041 (Q1)
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"), age=6 * 3600 + 60)
+    n = len(fetch_jobs(rig))
+    assert get(rig, rid)["status"] == "failed"
+    assert get(rig, rid)["status"] == "failed"
+    assert len(fetch_jobs(rig)) == n
+
+
+def test_tc038_a_run_shown_failed_has_an_end_time_like_the_failure_notice(rig):
+    # TC-038 (Q2): no ended_at in the index; every Ended place shows the last message time, never a dash
+    from abf_platform import web_board
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"))
+    v = get(rig, rid)
+    assert v["status"] == "failed" and v["ended_at"] and v["ended_at"] == v["last_message_at"]
+    row = listed(rig, "x")[0]
+    assert row["status"] == "failed" and row["ended_at"] == v["ended_at"]
+    assert web_board._time(row["ended_at"]) != "\u2014"
+
+
+def test_tc039_the_duration_of_a_run_shown_failed_does_not_grow(rig):
+    # TC-039 (Q2)
+    from abf_platform import web_board
+    t = web_board.STRINGS["zh"]
+    rid = lost_run(rig)
+    add_fetch(rig, "x", fact("NODE_FAIL"))
+    v = get(rig, rid)
+    now = time.time()
+    assert web_board._duration(t, v, now) == web_board._duration(t, v, now + 3600) != "\u2014"
