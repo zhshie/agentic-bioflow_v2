@@ -10,3 +10,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	green-fix	更新 6 個釘住測試的預期（欄位、路由、NO_TOOL、store 用法、CSS 雜湊）	新增功能本來就會改這些清單，TC-041 允許雜湊重算	platform/tests/test_web_actions.py	通過
 2026-11-04T18:19:23	fix	第二輪釘住測試更新：CSS/路由/欄位/頁面摘要；_personal 改名 _own_prefs	既有測試釘住這些面，新增功能必然改動，數值取自失敗輸出，未放寬斷言	test_clean_page,test_k8s_launch,test_web_nano4_path	相關檔全綠
 2026-11-04T19:00	fix	PAGE_WRITE_NAMES 加 set_my_setting，並讓拒絕測試涵蓋它（旗標不變）	TC-049 規定由 test_srp_k01_* 證明它不是 MCP 工具且無頻道即拒絕	platform/tests/test_actions_layer.py:707	61 通過
+2026-11-04T00:00	修正輪	補強 check_settings_mobile.py：先點開關開啟開發模式，再量橫向捲動、兩個開關按鈕高度對其他按鈕最小高度、橫幅與兩列是否存在	驗證者指出 TC-046 的腳本原本只量 scrollWidth，且從未開啟開發模式	scripts/dev/check_settings_mobile.py；實跑 4 組（1440/390 x zh/en）皆 rows 2 banner 1 switch 38 >= other min 38，scrollWidth==clientWidth	通過
