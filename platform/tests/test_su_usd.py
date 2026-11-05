@@ -2,6 +2,7 @@
 """su-usd: SU x the NT$ price of one SU / the rate in the config = about US$, shown beside the SU on the cost page and the run page.
 Test cases TC-001 ... TC-091 are named in the comments (specs/su-usd/test-case.md)."""
 import json
+import time
 import re
 import socket
 import sqlite3
@@ -413,7 +414,7 @@ def test_tc061_tc062_empty_and_unreadable(w, monkeypatch):
     assert r.status_code == 200 and "— 本月尚無分析" in plain(pane(r.text, "middle")) and table_rows(r.text) == []
     assert "約 US$" not in r.text.split("</style>")[1]
     from abf_platform import actions, web_cost
-    monkeypatch.setattr(actions, "my_usage", lambda *a, **k: web_cost.empty_usage(k.get("month") or "2026-10"))
+    monkeypatch.setattr(actions, "my_usage", lambda *a, **k: web_cost.empty_usage(k.get("month") or web_cost.current_month(time.time())))
     r = get(w, "ann")
     assert r.status_code == 200 and "— 本月尚無分析" in plain(pane(r.text, "middle"))
 

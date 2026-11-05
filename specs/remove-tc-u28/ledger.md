@@ -1,0 +1,2 @@
+- [x] Removed the TC-U28 block (5 lines) from tests/platform_upgrade_test.sh. git grep TC-U28 in tests/ and docs/ now finds nothing (older specs/ mentions are history, left as is).
+- Evidence: bash -n ok; platform_upgrade_test.sh run in WSL Ubuntu: all passed, no TC-U28 line, other TC lines unchanged. No other test names or counts platform_upgrade_test.
