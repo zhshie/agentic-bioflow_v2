@@ -154,7 +154,10 @@ def _target(con, ce_name, kind, now, offline_after, caller_user_id=None):
 
 def _insert_job(con, row, kind, args, now, seconds, confirmation_id=None):
     # a read-back that carries a bad end of the head job is kept: it is what keeps a Failed run Failed
-    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ? AND NOT (kind = 'fetch_run_records' AND %s)"
+    # the newest done pre-use check of each environment that carries the Config profile names is kept too: a launch is checked against it
+    con.execute("DELETE FROM jobs WHERE finished_at IS NOT NULL AND finished_at < ? AND NOT (kind = 'fetch_run_records' AND %s) "
+                "AND NOT (kind = 'preflight' AND state = 'done' AND instr(result_json, '\"site_profiles\"') > 0 AND id = (SELECT MAX(j2.id) FROM jobs j2 "
+                "WHERE j2.compute_env = jobs.compute_env AND j2.kind = 'preflight' AND j2.state = 'done' AND instr(j2.result_json, '\"site_profiles\"') > 0))"
                 % failures.kept_fact_sql(), (now - PRUNE_AFTER_SECONDS,))
     cur = con.execute(
         "INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) "
@@ -1211,6 +1214,22 @@ def _clean_inventory(raw):
     return out
 
 
+_PROF_KEY = re.compile(r"[A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,64} [^\s]{1,60}\Z")
+_PROF_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z")
+
+
+def _clean_site_profiles(raw):
+    """{"<pipeline> <revision>": [profile names]} in exactly that shape, or None when it is not a mapping. A key or a name that does not
+    pass is dropped, not the whole mapping."""
+    if not isinstance(raw, dict):
+        return None
+    out = {}
+    for key, names in list(raw.items())[:_INV_LIMIT]:
+        if isinstance(key, str) and _PROF_KEY.match(key) and isinstance(names, list):
+            out[key] = [n for n in names[:100] if isinstance(n, str) and _PROF_NAME.match(n)]
+    return out
+
+
 def clean_result(kind, result, stored=None):
     """Only what the platform expects, with every text bounded; an agent cannot make the platform store more."""
     if not isinstance(result, dict):
@@ -1231,6 +1250,9 @@ def clean_result(kind, result, stored=None):
         inventory = _clean_inventory(result.get("site_inventory"))
         if inventory is not None:      # a separate field: never one of the checks, never part of the verdict
             out["site_inventory"] = inventory
+        profiles = _clean_site_profiles(result.get("site_profiles"))
+        if profiles is not None:      # also separate from the checks: the names a launch's Config profiles are judged against
+            out["site_profiles"] = profiles
     elif kind == "pipeline_files":
         if isinstance(result.get("repo"), str):
             out["repo"] = _short(result["repo"], 140)
