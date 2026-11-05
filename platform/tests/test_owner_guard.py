@@ -128,6 +128,8 @@ TOOL_ACTION = {"launch": "request_launch", "cancel": "request_cancel", "forget":
 
 # actions with a `caller` that no tool is named after, each with the reason
 NO_TOOL = {
+    "get_my_settings": "web settings page (012a): the person's own two switches, read only",
+    "set_my_setting": "web settings page (012a): the person's own two switches",
     "approve": "the person's yes on the web confirmation page",
     "caller_area": "helper: the caller's upload folder",
     "clean_requests": "web page: clean-work requests",
@@ -147,6 +149,7 @@ NO_TOOL = {
     "list_samplesheets": "web launch page",
     "nfcore_catalogue": "web launch page",
     "pipeline_files": "web launch page",
+    "preview_samplesheet": "web launch page: the first rows of the caller's own samplesheet",
     "read_confined_samplesheet": "helper of the launch page",
     "start_upload_batch": "web upload page: the press of Upload is the yes (web-upload-page)",
     "upload_batch_status": "web upload page: the progress of one batch (web-upload-page)",
