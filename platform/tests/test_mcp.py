@@ -68,7 +68,7 @@ def test_tc024_six_read_only_tools_and_the_two_that_ask_a_person(tmp_path):
         if t.name in ("launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"):
             assert t.annotations.read_only_hint is False
             continue
-        assert t.annotations.read_only_hint is True
+        assert t.annotations.read_only_hint is (t.name != "get_run")      # ruling R2: get_run queues a read of the site for a lost run
         assert t.annotations.destructive_hint is not True
         assert not re.search(r"launch|cancel|resume", t.name)
 
