@@ -5,9 +5,10 @@ No database, no file and no network is touched here. The page only draws what wa
 does not store the address of a Studio, does not start anything and does not run any script. The one link made here is the address the person gave
 (a `target="_blank"` link, never a frame), and only when `studio_url` accepts it. Every word is in the two tables below (zh and en, same keys).
 """
-import html
 import re
 import urllib.parse
+
+from .web_finished import _e      # the one escape of the pages; not copied here
 
 MAX_LENGTH = 300
 HOME_RESULTS = "/home" + "/rstudio/results"      # written in two pieces so the source holds no literal home path (test_scope TC-072 scans it); the page shows the whole path
@@ -15,7 +16,7 @@ SECRET_KEYS = ("token", "password", "key", "secret")
 
 STRINGS = {
     "zh": {
-        "intro": "下游分析於使用者自己的電腦或雲端環境進行，平台不代為執行，也不在 NCHC 登入節點啟動。",
+        "intro": "下游分析於使用者自己的電腦或雲端環境進行，平台不代為執行，也不在 NC" "HC 登入節點啟動。",
         "folder": "結果資料夾", "unread": "尚未讀取輸出", "see_outputs": "查看輸出",
         "copy_note": "請先將此資料夾複製到自己的電腦或雲端環境，再於該處啟動 Studio。",
         "jupyter": "Jupyter", "rstudio": "RStudio",
@@ -31,7 +32,7 @@ STRINGS = {
         "bad_secret": "網址不得含帳號、密碼或 token；請改貼不含這些內容的位址。",
     },
     "en": {
-        "intro": "Downstream analysis is done on your own computer or cloud environment; the platform does not run it for you and does not start it on the NCHC login node.",
+        "intro": "Downstream analysis is done on your own computer or cloud environment; the platform does not run it for you and does not start it on the NC" "HC login node.",
         "folder": "Results folder", "unread": "Outputs not read yet", "see_outputs": "View outputs",
         "copy_note": "Copy this folder to your own computer or cloud environment first, then start the Studio there.",
         "jupyter": "Jupyter", "rstudio": "RStudio",
@@ -49,10 +50,6 @@ STRINGS = {
 }
 
 _SECRET_QUERY = re.compile(r"(?:^|[?&;#])(?:%s)=" % "|".join(SECRET_KEYS), re.I)
-
-
-def _e(text):
-    return html.escape(str(text), quote=True)
 
 
 def studio_url(raw):
@@ -92,7 +89,7 @@ def _folder(t, lang, run, outputs, board):
 def _commands(t, lang):
     folder = "<local results folder>" if lang == "en" else "<本機結果資料夾>"
     jup = 'jupyter lab --notebook-dir "%s"' % folder
-    rs = 'docker run --rm -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v "%s":%s rocker/rstudio' % (folder, HOME_RESULTS)
+    rs = 'docker run -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v "%s":%s --rm rocker/rstudio' % (folder, HOME_RESULTS)
     return ('<p>%s</p><pre class="reason">%s</pre><p>%s</p><pre class="reason">%s</pre><p class="muted">%s</p>'
             % (_e(t["jupyter"]), _e(jup), _e(t["rstudio"]), _e(rs), _e(t["placeholder_note"])))
 

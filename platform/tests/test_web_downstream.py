@@ -89,7 +89,7 @@ def test_downstream_succeeded_shows_section_not_placeholder(w):
     assert "csrf" not in form.lower()
     assert 'role="alert"' not in zh and "target=" not in zh
     assert 'jupyter lab --notebook-dir &quot;&lt;本機結果資料夾&gt;&quot;' in zh
-    assert 'docker run --rm -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v &quot;&lt;本機結果資料夾&gt;&quot;:' + "/home" + '/rstudio/results rocker/rstudio' in zh
+    assert 'docker run -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v &quot;&lt;本機結果資料夾&gt;&quot;:' + "/home" + '/rstudio/results --rm rocker/rstudio' in zh
     assert "0.0.0.0" not in zh and "-p 8787:8787" not in zh
     assert not re.search(r"<iframe|<img|<script|建議分析|終端機|啟動</button>|停止", card)
     # TC-005: the folder cannot be read yet

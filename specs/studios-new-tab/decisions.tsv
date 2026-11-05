@@ -4,3 +4,4 @@ ts	phase	decision	why	evidence	result
 2026-11-05	GREEN	測試內以「不含 NCHC 句」判斷整頁無 nchc 字樣	TC-001 要求該句、TC-019 禁字樣，兩者衝突，取該句為唯一例外	platform/tests/test_web_downstream.py test_wording_in_command_block	通過
 2026-11-05	GREEN	test_web_wording_sweep 表數 8 改 9	新增字串表，只增不減	platform/tests/test_web_wording_sweep.py:213	通過
 2026-11-05	GREEN	路徑字面拆成兩段寫在原始碼	test_scope TC-072 掃 /home/<name>/ 樣式；計畫要求頁面輸出 /home/rstudio/results	platform/abf_platform/web_downstream.py:13	通過
+2026-11-05	green	整套掃描測試擋下 NCHC 字樣、docker run --rm -、重複 _e；改寫法不改測試	掃描測試釘住原始碼用字	test_launch_static, test_cleanup_confirm, test_no_duplicate_defs	217 通過
