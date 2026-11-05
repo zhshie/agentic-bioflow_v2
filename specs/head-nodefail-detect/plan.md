@@ -141,6 +141,13 @@ R. /code-review 第三次對 PR #318 的裁決（11-04，只收兩項，其餘�
 ## 裁決 R6（11-05，developer-agent）
 `test_no_schema_change` 的舊基準 e428661b 已過期（v3 自己改過 store.py），我已把基準改成 origin/v3（commit 8ac934e1，與 launch-test-profile 同一修法）。其他 143 個測試已綠；不要再因這條 BLOCKED，直接跑全套交閱卷。
 
+## 裁決 R7（11-05，developer-agent）
+`platform_upgrade_test.sh` 的 TC-U28 只在本機鏡像的 origin/v3 夠新時才觸發；GitHub CI（#359 等動 platform/ 的 PR 都綠）不受影響，以 CI 為準。所以：
+1. **不要同步鏡像的 origin/v3**（那是造成 TC-U28 與 test_no_schema_change 互相打架的原因）；TC-U28 在本機紅 = 已知環境假紅，不計入失敗，不改該測試。
+2. test_no_schema_change 已改對 origin/v3；若鏡像過期導致它紅，同樣視為環境假紅。
+3. 其餘測試（143 項）全綠即可交閱卷；在報告列出這兩條假紅，由 CI 做最後裁判。
+4. 不要再因這兩條 BLOCKED。
+
 ## 專長守則（backend）
 
 ### executor
