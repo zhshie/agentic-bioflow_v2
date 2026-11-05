@@ -382,7 +382,10 @@ A record made before this type was checked (status `unsupported`, with the old k
 | `process.queue` | the environment's `jobQueue` |
 | `aws.region` | the environment's `region` |
 | `workDir` | `<workDir>/runs/<run>/work` |
+| `process.resourceLabels` | `abf-user=<帳號名>` and `abf-run=<run 名>` (the spec; the code does not write it yet, same idea as the Google row above) |
 | `process.resourceLimits` | `[cpus: N, memory: M.GB]`, only the keys that are set (`maxvCpus`, `maxMemoryGB`); this is a **per-task** cap, one task asks for at most that much, it is not a limit on the total vCPU of the queue. If the user's own `nextflowConfig` has a one-line `resourceLimits`, the platform merges it key by key (the smaller of the two wins for cpus and memory, a key only the user set is kept, `disk` and `time` stay as written); a `resourceLimits` it cannot read safely is refused before the launch. |
+
+**Resource labels (spec, not yet written by the code).** 帳號名會出現在雲端帳單上（隱私）；不放帳號名就無法按人分帳。標籤是否由 Batch 帶到底下的 EC2 實例：**待實測**。標籤貼上後，要在 AWS 啟用為 cost allocation tag，才能在帳單依標籤分帳（教學見 `docs/CLOUD.md` 的「雲端預算」一節）。
 
 The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: whether Batch uses Spot is decided by the job queue, and the screen says so. No key, profile or role is written into any file.
 
@@ -507,7 +510,10 @@ An Azure Batch environment takes the same file upload as the other two cloud typ
 | `azure.storage.accountName` | the environment's `storageAccountName` |
 | `azure.batch.allowPoolCreation` | `false`, always: the platform never lets Nextflow create a pool |
 | `azure.batch.autoPoolMode` | `false`, always |
+| tag `abf-user=<帳號名>` | the spec; the code does not write it yet. Only a tag that does not change with each run is used |
 | `process.resourceLimits` | `[cpus: N, memory: M.GB]`, only the keys that are set (`maxvCpus`, `maxMemoryGB`); this is a **per-task** cap, one task asks for at most that much, it is not a limit on the total of the pool . If the environment's `nextflowConfig` also has a one-line `resourceLimits`, the platform merges key by key: the smaller of the two wins for cpus and memory, a key only the user set is kept, `disk` and `time` stay as written; a `resourceLimits` the platform cannot read safely (several lines, a block, a variable, an unknown key) is refused before the launch. |
+
+**Resource labels (spec, not yet written by the code).** 帳號名會出現在雲端帳單上（隱私）；不放帳號名就無法按人分帳。只放不隨每次 run 改變的標籤；run 名的標籤先不放，待實測確認不會每次開新 pool 再加。標籤是否帶到實際運算資源：**待實測**（本平台用既有 pool，`azure.batch.allowPoolCreation` 為 false，標籤可能根本不套用）。教學見 `docs/CLOUD.md` 的「雲端預算」一節。
 
 The results go to `<workDir>/runs/<run>/results`. `spot` is a note only: low-priority nodes are decided when the pool is created, and the screen says so. No key is written into any file; the first line of the Azure config file says they come from environment variables.
 
@@ -769,11 +775,13 @@ Three actions read public files through an agent and never wait for it (the guid
 
 ## The cost page
 
+本節描述現行頁面；版面將依 DESIGN.md 第 11 項改版（費用頁計畫）。
+
 `GET /usage` (`?lang=en`, `?month=YYYY-MM`; the screen "Cost" of `DESIGN.md`) shows what the logged-in person used in one month (Asia/Taipei; this month by default; a month that is not `YYYY-MM` shows this month with a plain notice). The page and the MCP tool `my_usage` call the same action, `actions.my_usage`, and show only the caller's own runs. Where each number comes from:
 
 - **NCHC SU (card):** `su.month_total` over the runs the caller launched that started in the month, with the rates file's `default_site`. If any one run's SU cannot be worked out the card shows a dash and the first reason, never a partial sum.
 - **Cloud used (card):** `cloud_cost.month_used`: the Google Batch runs of the caller that started in the month, each priced from its task rows and `data/cloud_rates.json`. A run that cannot be priced is left out and counted ("n more analyses could not be priced"). Always US dollars, never converted.
-- **Cloud cap (card):** the cap the administrator set for the person (`abf-platform user cloud-cap`); no cap shows "Not set". The page cannot change it.
+- **Cloud card (每月費用提醒額度):** Cloud 卡片顯示本人自設的每月費用提醒額度（美元），未設顯示「未設定」並可在此頁設定；本頁顯示與設定的是同一個值。規格已定；程式尚未改（見 cost-reminder-quota 計畫）。在那之前，終端機指令仍是唯一寫入口，未設額度仍擋雲端送出。（程式尚未改前，頁面仍只讀。）
 - **Cloud remaining (card):** cap minus used, never below 0; a dash when there is no cap. At 0 the card carries the existing failed-state class plus the symbol and words "Action needed".
 - **One line per analysis (at most 50, newest first):** where it ran (the compute environment of its newest launch: NCHC or Cloud, a dash when that is not known), the usage (SU for an NCHC run, US dollars for a cloud run, a dash when it cannot be worked out or the run has not ended) and the status: Running (running or lost) or Estimate · bill pending. There is no "Reconciled" status because the platform has no bill to compare with.
 
@@ -886,7 +894,7 @@ One row per kind of data. Every period below is a constant in `platform/abf_plat
 | Job rows: the queue between the platform and the agent, with a copy of what was queued | `platform.db` (`jobs`) | 7 days after the job ends. |
 | Newest release of a pipeline | `release-tags.json` (next to `platform.db`) | 24 hours |
 | Tokens, users and OAuth: sha256 of access tokens, scrypt hashes of web passwords, the connectors that registered and their logins | `tokens.db` (`tokens`, `users`, `oauth_clients`, `oauth_requests`, `oauth_codes`) | A run token 14 days; an OAuth access token 1 hour and a refresh token 30 days; a connector not used for 30 days is forgotten. Personal access tokens and users: no automatic deletion. |
-| The monthly cloud cap in US dollars of each person, set only by the administrator on the terminal (`abf-platform user add --cloud-cap-usd`, `abf-platform user cloud-cap`) | `tokens.db` (`cloud_caps`) | no automatic deletion; no door except the terminal changes or shows it. |
+| 本人的每月費用提醒額度（美元），由本人在網頁設定；現行由管理者於終端機（`abf-platform user add --cloud-cap-usd`、`abf-platform user cloud-cap`）寫入，將由使用者網頁取代（實作在 cost-reminder-quota 計畫） | `tokens.db` (`cloud_caps`) | 無自動刪除；只有本人能改。規格已定；程式尚未改（見 cost-reminder-quota 計畫）。在那之前，終端機指令仍是唯一寫入口，未設額度仍擋雲端送出。 |
 | Web sessions: sha256 of a browser login's id | `tokens.db` (`web_sessions`) | 12 hours; expired rows are cleared at the next login. |
 | Cookie signing key | `web_signing.key` | no automatic deletion. |
 | Uploads: samplesheets uploaded for runs | `uploads` folder, one folder per user | no automatic deletion. |
