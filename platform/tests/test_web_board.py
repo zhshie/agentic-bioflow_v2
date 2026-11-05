@@ -208,8 +208,8 @@ def test_tcs11_s12_s13_layout_css(w):
     # TC-S11, TC-S12, TC-S13
     w.user("ann")
     css = style_of(login(w, "ann").get("/").text).replace(" ", "")
-    assert "grid-template-columns:272pxminmax(0,1fr)320px" in css
-    assert re.search(r"@media\(max-width:1200px\)\{[^@]*grid-template-columns:232pxminmax\(0,1fr\)288px", css)
+    assert "grid-template-columns:272pxminmax(0,1fr)360px" in css
+    assert re.search(r"@media\(max-width:1200px\)\{[^@]*grid-template-columns:232pxminmax\(0,1fr\)300px", css)
     m = re.search(r"@media\(max-width:900px\)\{(.*?)\}\}", css + "}}", re.S).group(1)
     assert re.search(r"\.wb\{[^}]*grid-template-columns:1fr", m)
     assert re.search(r"\.main\{[^}]*order:-2", m) and re.search(r"\.rail\{[^}]*order:-1", m)

@@ -223,7 +223,8 @@ def test_ruling14_future_or_missing_month_is_an_empty_table(w):
         r = get(w, "ann", "/usage?month=" + m)
         assert r.status_code == 200, m
         assert table_rows(r.text) == [], m
-    assert "本月尚無分析" in plain(pane(get(w, "ann", "/usage?month=2099-01").text, "middle"))
+    mid = plain(pane(get(w, "ann", "/usage?month=2099-01").text, "middle"))
+    assert "2099-01 尚無分析" in mid and "本月" not in mid        # web-bugs-b: the empty sentence and the card titles name the month
     assert usage(w, ann, month="2099-01")["runs"] == []
     # "2026-13" is not the form YYYY-MM (TC-046/TC-095): the standard notice and this month, still no error
     bad = get(w, "ann", "/usage?month=2026-13")

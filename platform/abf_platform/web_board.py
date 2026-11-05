@@ -78,6 +78,7 @@ STRINGS = {
         "tab_tasks": "任務", "tab_logs": "日誌", "tab_info": "執行資訊", "tab_config": "設定檔", "tab_metrics": "指標",
         "th_name": "名稱", "th_exit": "結束代碼", "th_message": "錯誤訊息（第一行）", "th_workdir": "工作目錄",
         "i_id": "編號", "i_name": "名稱", "i_status": "狀態", "i_cancel": "要求取消",
+        "i_pipeline": "管線", "i_revision": "版本", "i_site": "運算環境", "i_updated": "最後更新",
         "tab_outputs": "輸出", "card_done": "完成步驟", "ph_report": "報告", "ph_multiqc": "MultiQC 報告", "ph_metrics": "指標",
         "ph_download": "全部下載", "o_loading": "讀取中", "o_auto": "每 15 秒自動更新", "o_failed": "無法讀取", "o_none": "無輸出資料夾紀錄",
         "o_empty": "此資料夾為空", "o_read_at": "讀取於", "o_relist": "重新讀取", "th_type": "類型", "th_size": "大小", "th_mod": "修改時間",
@@ -140,6 +141,7 @@ STRINGS = {
         "tab_tasks": "Tasks", "tab_logs": "Logs", "tab_info": "Run info", "tab_config": "Configuration", "tab_metrics": "Metrics",
         "th_name": "Name", "th_exit": "Exit code", "th_message": "Error message (first line)", "th_workdir": "Work directory",
         "i_id": "ID", "i_name": "Name", "i_status": "Status", "i_cancel": "Cancel requested",
+        "i_pipeline": "Pipeline", "i_revision": "Revision", "i_site": "Compute environment", "i_updated": "Last update",
         "tab_outputs": "Outputs", "card_done": "Steps done", "ph_report": "Report", "ph_multiqc": "MultiQC report", "ph_metrics": "Metrics",
         "ph_download": "Download all", "o_loading": "Reading", "o_auto": "Updates every 15 seconds", "o_failed": "Could not read",
         "o_none": "No output folder on record", "o_empty": "This folder is empty", "o_read_at": "Read at", "o_relist": "Read again",
@@ -199,8 +201,8 @@ STYLE = (
     ".mast a{color:var(--surface);padding:0 8px}.mast a:focus-visible{outline-color:var(--surface)}"
     ".costs{display:flex;gap:12px}.cost{font-size:12px}"
     ".switch{display:flex}.switch a+a{border-left:1px solid var(--surface)}.switch a.here{font-weight:600;text-decoration:underline}"
-    ".wb{display:grid;grid-template-columns:272px minmax(0,1fr) 320px;min-height:calc(100vh - 40px)}.wb>*{min-width:0}"
-    "@media (max-width:1200px){.wb{grid-template-columns:232px minmax(0,1fr) 288px}}"
+    ".wb{display:grid;grid-template-columns:272px minmax(0,1fr) 360px;min-height:calc(100vh - 40px)}.wb>*{min-width:0}"
+    "@media (max-width:1200px){.wb{grid-template-columns:232px minmax(0,1fr) 300px}}"
     ".side{background:var(--raised);border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:12px}"
     ".nav,.tools,.rows,.foot{display:flex;flex-direction:column;gap:4px}"
     ".foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}"
@@ -216,7 +218,7 @@ STYLE = (
     ".state-failed{--c:var(--failed);--bg:var(--failed-bg)}.state-unknown{--c:var(--muted);--bg:var(--sunken)}"
     ".sym{color:var(--c)}"
     ".main{padding:24px;display:flex;flex-direction:column;gap:16px;overflow-wrap:anywhere}"
-    ".head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}"
+    ".head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.head .meta{flex-basis:100%;margin:0;color:var(--muted)}"
     ".badge{display:inline-flex;gap:4px;padding:0 8px;border-radius:999px;font-size:12px;line-height:20px;font-weight:600;"
     "white-space:nowrap;color:var(--c);background:var(--bg)}"
     ".steps{display:flex;gap:8px;list-style:none;margin:0;padding:0}.steps li{flex:1;min-width:0}"
@@ -261,7 +263,7 @@ STYLE = (
     ".tbl{width:100%;table-layout:fixed;border-collapse:collapse}"
     ".tbl th,.tbl td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);vertical-align:top;min-width:0;overflow-wrap:anywhere}"
     ".soon{background:var(--sunken);color:var(--muted);border-radius:6px;padding:16px;min-width:0}"
-    ".otbl code{overflow-wrap:anywhere}.ostat{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
+    ".otbl code{overflow-wrap:normal;word-break:keep-all}.ostat{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
     ".gsteps{display:flex;flex-direction:column;gap:12px}"
     ".gstep{background:var(--raised);border:1px solid var(--line);border-radius:6px;min-width:0}"
     ".gstep>summary{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px;min-height:44px;cursor:pointer}"
@@ -287,7 +289,9 @@ STYLE = (
     ".tbl.ce td{display:flow-root;border-bottom:0;padding:4px 0 4px 6rem}"
     ".tbl.ce td::before{content:attr(data-label);float:left;width:5.5rem;margin-left:-6rem;color:var(--muted);font-size:12px}}"
     "@media (max-width:900px){.wb{grid-template-columns:1fr}.main{order:-2}.rail{order:-1}.costs{display:none}"
-    ".counts{grid-template-columns:repeat(4,1fr)}}"
+    ".counts{grid-template-columns:repeat(4,1fr)}"
+    ".switch a,.pager a,.views a,.rtabs a,.tbl a,.otbl a,.ostat a,.rail a{display:inline-flex;align-items:center;min-height:24px;min-width:24px}"
+    ".otbl{display:block;overflow-x:auto;table-layout:auto}}"
 )
 
 
@@ -745,6 +749,17 @@ def _tasks_bar(t, run):
     return '<section class="card">%s%s<dl class="counts">%s</dl></section>' % (_progress(run), facts, cells)
 
 
+def _last_update(run):
+    """The newest sign of life of a run: its last message, else its end, else its start; a dash when none is there."""
+    return _time(run.get("last_message_at") or run.get("ended_at") or run.get("started_at"))
+
+
+def _meta_line(run):
+    """The title row's facts: pipeline and revision, site, started, last update; a dash for each that is not known."""
+    pr = " ".join(x for x in (run.get("pipeline"), run.get("revision")) if x) or "—"
+    return esc(" · ".join((pr, run.get("compute_env") or "—", _time(run.get("started_at")), _last_update(run))))
+
+
 def tab_body(t, lang, run, tab):
     """The content of one tab of the running stage page. Logs, Configuration and Metrics are grey panels until their actions exist."""
     if tab == "tasks":
@@ -763,7 +778,9 @@ def tab_body(t, lang, run, tab):
     if tab == "info":
         status = run["status"]
         rows = [(t["i_id"], run["id"]), (t["i_name"], run["name"]), (t["i_status"], _Html(_chip(t, status))),
-                (t["started"], _time(run.get("started_at"))), (t["ended"], _time(run.get("ended_at")))]
+                (t["started"], _time(run.get("started_at"))), (t["ended"], _time(run.get("ended_at"))),
+                (t["i_pipeline"], run.get("pipeline") or "—"), (t["i_revision"], run.get("revision") or "—"),
+                (t["i_site"], run.get("compute_env") or "—"), (t["i_updated"], _last_update(run))]
         if run.get("cancel_requested_at"):
             rows.append((t["i_cancel"], _time(run["cancel_requested_at"])))
         full = '<pre class="reason">%s</pre>' % esc(run["failure_reason"]) if run.get("failure_reason") else ""     # the whole text lives here, not on the Tasks tab
@@ -815,9 +832,9 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
         inner = _stage_card(t, selected, current, lang, outputs, finished, user_name)
     note = '<p class="bad" role="alert">%s</p>' % esc(flash) if flash else ""
     views = '<nav class="views"><a href="%s" aria-current="page">%s</a>%s</nav>' % (_url(lang, selected["id"]), esc(t["main_window"]), _grey(t, "terminal"))
-    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s</div>%s%s'
+    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s<p class="meta">%s</p></div>%s%s'
             '<ol class="steps" data-current="%s">%s</ol>%s<p class="pager">%s%s</p></main>'
-            % (esc(selected["name"]), badge, menu, views, note, current, "".join(cells), inner, prev_, next_))
+            % (esc(selected["name"]), badge, menu, _meta_line(selected), views, note, current, "".join(cells), inner, prev_, next_))
 
 
 def _settings_page(t):

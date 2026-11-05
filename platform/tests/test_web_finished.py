@@ -109,7 +109,7 @@ def test_fs02_other_states_not_reached(w, monkeypatch):
         t2 = c.get("/?run=%s&stage=running" % rid).text
         cell = re.search(r'<li[^>]*data-step="finished"[^>]*>(.*?)</li>', mid(t2), re.S)
         assert "is-later" in cell.group(0) and "<a" not in cell.group(1) and "完成" in cell.group(1), st
-    assert calls == []
+    assert "outputs" not in calls      # web-bugs-b TC-025: the title row now reads launch_prefill on every state, so only the listing is still barred
 
 
 def test_fs03_provenance_kept(w):
@@ -208,7 +208,7 @@ def test_fs07_finished_page_never_queues_a_listing(w, monkeypatch):
     c.get("/?run=%s&stage=launch" % rid)
     c.get("/?run=%s&stage=running" % rid)
     c.get("/?run=%s&stage=results" % rid)
-    assert len(pre) == n
+    assert len(pre) == n + 3      # web-bugs-b: the title row reads launch_prefill once per request; the finished stage adds no second read on other stages
     src = (Path(__file__).resolve().parent.parent / "abf_platform" / "web_finished.py").read_text(encoding="utf-8")
     assert not re.search(r"^\s*(import|from)\s+(socket|ssl|http|urllib|requests|subprocess|paramiko)", src, re.M)
 
