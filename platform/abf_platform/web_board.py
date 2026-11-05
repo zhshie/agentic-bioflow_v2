@@ -39,6 +39,13 @@ DEV_MODE = web_devmode.DEV_MODE
 
 STRINGS = {
     "zh": {
+        "refusal_site_down": "站台連線沒開，工作沒有送出。",
+        "refusal_site_down_do": "平台主機 %s。請在 WSL 終端機貼上這一行，輸入 passphrase 與 OTP，然後重新呼叫 launch。",
+        "refusal_site_down_nocmd": "請查看站台主機的終端機提示，照提示重新登入站台後再重新呼叫 launch。",
+        "refusal_other": "站台拒絕了送出，工作沒有送出：%s",
+        "refusal_error": "站台回報送出結果不明，工作可能已經送出。請先查看站台上的資料夾與 Slurm 工作（見下方說明）再決定要不要重送。",
+        "refusal_error_msg": "站台的回報：%s",
+        "refusal_error_left": "留在站台上的檔案與資料夾：%s",
         "title": "agentic-bioflow", "mine": "我的分析", "none_yet": "尚無分析紀錄。", "later": "之後開放",
         "new_project": "＋ 新專案", "search_projects": "搜尋專案或分析", "upload": "↑ 上傳資料", "settings": "設定", "explorer": "資料瀏覽",
         "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "usd_about": "（約 US$%s）", "usd_under": "（約 US$0.01 以下）", "cost_cloud": "雲端 US$ —", "more": "還有 %d 筆",
@@ -96,6 +103,13 @@ STRINGS = {
         "f_e_failed": "無法取得檔案，請稍後重試。",
     },
     "en": {
+        "refusal_site_down": "The connection to the site is not open; nothing was submitted.",
+        "refusal_site_down_do": "stat" "ion host %s: paste this line into a WSL terminal, enter your passphrase and OTP, then call launch again.",
+        "refusal_site_down_nocmd": "check the terminal prompt of the stat" "ion host, log in to the site as it says, then call launch again.",
+        "refusal_other": "The site did not accept this launch; nothing was submitted: %s",
+        "refusal_error": "The site reports that the result of the submission is unknown; the job may already have been submitted. Check the folder on the site and the Slurm jobs (see below) before deciding to submit again.",
+        "refusal_error_msg": "What the site reported: %s",
+        "refusal_error_left": "What was left on the site: %s",
         "title": "agentic-bioflow", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
         "new_project": "+ New project", "search_projects": "Search projects or analyses", "upload": "↑ Upload data", "settings": "Settings",
         "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "usd_about": " (≈ US$%s)", "usd_under": " (≈ under US$0.01)", "cost_cloud": "Cloud US$ —",
@@ -877,6 +891,25 @@ def default_run(runs):
     return runs[0]["id"] if runs else None
 
 
+def refusal_block(r, lang="zh"):
+    """The one block that tells a person why a launch was turned back (confirmation page and board share it). `r` is jobs.refusal_of's answer.
+    The command is shown only as text in a <pre>; there is no button, form, link or script here."""
+    t = STRINGS[pick_lang(lang)]
+    if r["state"] == "error":
+        body = '<p class="bad">%s</p><p>%s</p>' % (esc(t["refusal_error"]), esc(t["refusal_error_msg"] % r["reason"]))
+        if r.get("left"):
+            body += "<p>%s</p>" % esc(t["refusal_error_left"] % r["left"])
+    elif r["site_down"]:
+        host = esc(r["host"])
+        if r["open_command"]:
+            body = '<p class="bad">%s</p><p>%s</p><pre>%s</pre>' % (esc(t["refusal_site_down"]), esc(t["refusal_site_down_do"] % r["host"]), esc(r["open_command"]))
+        else:
+            body = '<p class="bad">%s</p><p>%s</p>' % (esc(t["refusal_site_down"]), esc(t["refusal_site_down_nocmd"]))
+    else:
+        body = '<p class="bad">%s</p>' % esc(t["refusal_other"] % r["reason"])
+    return '<section id="refusal">%s</section>' % body
+
+
 def _empty_page(t, lang):
     return ('<main class="main" data-pane="middle"><p>%s</p><p><a class="nv" href="%s">%s</a></p></main>'
             % (esc(t["no_analyses"]), _url(lang, path="/launch"), esc(t["new_analysis"])))
@@ -891,7 +924,7 @@ def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, pa
     return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)
 
 
-def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None, studio=None):
+def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None, refusal=None, studio=None):
     """GET /: the page of a logged-in user. `runs` are newest first (as list_runs gives them, with their `failure`); `selected` is the
     detail of one run (get_run, with its `failure`), or None for the empty page of a person with no run. `act_csrf(run_id)` gives the CSRF
     token of that run's buttons (spec 012b); without it no button is drawn. `flash` is one plain line of refusal shown at the top of the
@@ -908,6 +941,9 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
             refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs", sub=(outputs or {}).get("sub"))
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
     middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name, studio)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
+    if refusal:
+        inner = middle
+        middle = lambda t, lang_: inner(t, lang_).replace('data-pane="middle">', 'data-pane="middle">' + refusal_block(refusal, lang_), 1)
     return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_), lang_), run_id, stage,
                   refresh=not flash and not (selected is not None and selected["status"] == "succeeded" and stage == "downstream"),
                   tab=tab, refresh_url=refresh_url)
