@@ -145,9 +145,9 @@ def test_2b_still_uses_the_shared_list():
 # ---- US1 / US2: the Chinese string tables -------------------------------------------------------------------------------------------
 
 def tables():
-    from abf_platform import web, web_board, web_cost, web_finished, web_settings, web_upload
+    from abf_platform import web, web_board, web_cost, web_downstream, web_finished, web_settings, web_upload
     return {"web_board.STRINGS": web_board.STRINGS, "web_board.RESUME_EDIT": web_board.RESUME_EDIT, "web_board.GUIDED": web_board.GUIDED, "web_settings.STRINGS": web_settings.STRINGS,
-            "web_cost.STRINGS": web_cost.STRINGS, "web_finished.STRINGS": web_finished.STRINGS, "web_upload.STRINGS": web_upload.STRINGS,
+            "web_cost.STRINGS": web_cost.STRINGS, "web_downstream.STRINGS": web_downstream.STRINGS, "web_finished.STRINGS": web_finished.STRINGS, "web_upload.STRINGS": web_upload.STRINGS,
             "web._PLAIN": web._PLAIN}
 
 

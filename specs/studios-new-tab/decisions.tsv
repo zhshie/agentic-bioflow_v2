@@ -1,0 +1,2 @@
+ts	phase	decision	why	evidence	result
+2026-11-05	RED	先提交測試與字串表模組（未接線）	計畫要求先紅後綠	tests/test_web_downstream.py	待跑
