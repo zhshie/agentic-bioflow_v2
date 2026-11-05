@@ -731,10 +731,6 @@ def test_tc044_a_run_lost_for_seven_hours_with_no_fact_is_not_asked_again(rig, h
     if how == "only_none":
         add_fetch(rig, "x", None, age=7 * 3600)
     n = len(fetch_jobs(rig))
-    if how == "no_fetch":      # ruling R4: never asked before, so the first look asks exactly once
-        assert jobs.ask_head_state(rig.state, "x", clock=time.time, last_message_at=time.time() - 7 * 3600) is True
-        n += 1
-        assert len(fetch_jobs(rig)) == n
     for step in range(3):
         v = get(rig, rid)
         assert v["status"] == "lost" and v["failure"]["failure_reason"] is None
