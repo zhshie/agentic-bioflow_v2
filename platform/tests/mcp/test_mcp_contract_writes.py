@@ -24,7 +24,8 @@ def tools_of(index):
 
 def test_write_tools_derived_from_annotations_equal_explicit_list(plat):
     # TC-009
-    derived = sorted(t["name"] for t in tools_of(plat.index) if not t["readOnly"])
+    derived = sorted(t["name"] for t in tools_of(plat.index) if not t["readOnly"] and t["name"] != "get_run")      # ruling R2: get_run is a query, not a write
+    assert "get_run" not in WRITE_TOOLS and [t for t in tools_of(plat.index) if t["name"] == "get_run"][0]["readOnly"] is False
     assert derived == WRITE_TOOLS, "write tools (readOnlyHint false) differ from the tested list: %s" % derived
 
 
