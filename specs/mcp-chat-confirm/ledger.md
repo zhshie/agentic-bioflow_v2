@@ -9,8 +9,8 @@
 - PITFALLS 再 grep（`confirm|channel|constitution` @ HEAD docs/PITFALLS.md）：36 筆，全是 shell hooks（confirm_cleanup／confirm_walkthrough／confirm_launch）、jq 缺失、舊 constitution 對帳；與 MCP 確認／CHAT 通道無關，無相符項，與 plan 一致。
 
 ## 進度
-- [ ] RED：platform/tests/test_chat_confirm.py
-- [ ] GREEN：confirm.py、actions/__init__.py、mcp_server.py、guidance.py、chat_tools.py、elicit.py 註解
-- [ ] 既有測試更新（規則 A～D）與 snapshot
-- [ ] 憲法 7.0.0、三支 shell 測試、docs、skills、CHANGELOG
-- [ ] 全套測試
+- [x] RED：platform/tests/test_chat_confirm.py
+- [x] GREEN：confirm.py、actions/__init__.py、mcp_server.py、guidance.py、chat_tools.py、elicit.py 註解
+- [x] 既有測試更新（規則 A～D）與 snapshot
+- [x] 憲法 7.0.0、三支 shell 測試、docs、skills、CHANGELOG
+- [x] 全套測試
