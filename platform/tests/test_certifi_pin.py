@@ -1,3 +1,4 @@
+# Nothing existing: pip-audit only scans the pins, and no other test reads the certifi line or the empty ignore list; this guard is ours.
 """certifi must be pinned at or above the PYSEC-2026-4320 fix; the audit ignore list stays empty."""
 import re
 from pathlib import Path
