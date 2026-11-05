@@ -21,3 +21,4 @@
   - 修正輪（11-04，驗卷者）：TC-048 補 (a) MCP in-memory Client 呼叫 get_run（lost run）：立即回傳、寫入點記錄器零次、佇列最多多一個 fetch_run_records；TC-049 補 docs/PLATFORM.md 第 6、436 行（十六→十五個唯讀，get_run 移出清單並說明為何非唯讀）。維護者待確認：get_run 說明長度上限 683→804 放寬、外部用戶端對非唯讀工具的許可詢問、第 936 行段落尚未寫 6 小時放棄規則。
   - 裁決 R4（11-04）：ask_head_state 的 6 小時放棄上限只在已有抓取列但仍無事實時生效；從未被問過的 run 問一次（TC-044 no_fetch）。
   - 合併 origin/v3（11-04，裁決 R5）：衝突已解（PLATFORM.md、chat_tools.py、4 支測試皆保留兩邊：launch_pipeline＋get_run 非唯讀，22 個工具／15 唯讀）；tc048 期望集合加入 launch_pipeline。
+  - 全套（11-05，裁決 R7）：143/144；唯一紅為 platform_upgrade_test.sh TC-U28（本機鏡像 origin/v3 夠新才觸發的已知環境假紅，以 CI 為準）。
