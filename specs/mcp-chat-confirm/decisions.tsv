@@ -7,3 +7,4 @@ ts	phase	decision	why	evidence	result
 2026-11-05T13:40	測試	全套紅兩處：test_oauth_mcp tcf07 與 skill_runs TC-012 允許集合加 CHAT 參數	plan 規則 A 與 TC-012 行	platform/tests/test_oauth_mcp.py:331	改後單檔綠
 2026-11-05T14:30	合併	把 origin/v3 合進分支，PLATFORM.md 衝突取上游文字再接回 CHAT 句	test_no_schema_change 以 origin/v3 為基準，分支落後就紅	docs/PLATFORM.md:436	合併完成
 2026-11-05T14:35	測試	launch 工具描述縮到 600 字以內且不含 confirm 字樣；CHANGELOG 新條目放第二條	test_launch_profiles tc058 與 tc073 釘住	platform/abf_platform/mcp_server.py:190	單檔綠
+2026-11-05T15:10	測試	test_no_schema_change 紅是環境問題：鏡像的 origin/v3 實為主庫本地 v3 分支(30f8853b，落後)，基底也紅；不動它	git rev-parse v3 = 30f8853b，被 v3-open worktree 檢出	platform/tests/test_mcp_launch_pipeline.py:283	未解，回報

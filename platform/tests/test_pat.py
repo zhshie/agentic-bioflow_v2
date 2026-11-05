@@ -15,7 +15,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from helpers import (Clock, Platform, PLATFORM_DIR, db_bytes, free_port, mcp_call, mcp_http_call, pkg_env, run_cli,
+from helpers import (CHAT_ARGS, Clock, Platform, PLATFORM_DIR, db_bytes, free_port, mcp_call, mcp_http_call, pkg_env, run_cli,
                      start_cli, stop_proc, tool_json, wait_port)
 from test_actions_layer import READ_NAMES, WRITE_NAMES, imported_names, platform_submodules, action_refs
 from test_launch_platform import bundle, own_all, setup, sql
@@ -281,7 +281,7 @@ def test_tca11_no_tool_route_or_action_creates_or_revokes_users_or_pats(tmp_path
     canvas = ["find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]    # canvas-mcp-read
     assert sorted(t.name for t in tools) == sorted(READ_NAMES + canvas + WRITE_NAMES)    # 009c: plus launch and cancel
     for t in tools:
-        text = t.name + " " + " ".join(t.input_schema.get("properties", {}))
+        text = t.name + " " + " ".join(set(t.input_schema.get("properties", {})) - CHAT_ARGS)    # the CHAT arguments are the one exception (mcp-chat-confirm)
         assert not re.search(r"(^|[\s_])(user|pat|token)s?($|[\s_])", text)
     plat = Platform(tmp_path / "p", clock=Clock())
     assert not [p for p in (getattr(r, "path", "") for r in plat.app.routes) if re.search(r"user$|pat|admin", p)]
