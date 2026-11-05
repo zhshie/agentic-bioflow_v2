@@ -442,6 +442,58 @@ This one is read, not run. Open `specs/116b-owner-gaps/ledger.md` next to `git d
 6. **The pull request** says "not yet accepted on NCHC" until 3 and 4 are done.
 7. **The runs skill on a test platform (manual).** On a test platform with one failed run and one running run, ask the AI about each, following the new `skills/runs/SKILL.md`. Pass: it reads them with `list_runs` and `get_run`, reads a failed task's log with `read_task_log` (the task folder comes from the `workdir` that `get_run` gives), and never runs `tw`; it says plainly "v3 尚未提供" for what v3 lacks (such as the params a run was started with) instead of guessing; and every cancel, resume or relaunch only sends a request and waits for the person's yes before anything starts.
 
+## 續跑快取診斷（nano4）(resume-cache-miss): the operator runs it by hand, the maintainer says y each time
+
+Why: on 2026-10-25 a resume with edits of `/work/u9613010/runs/runs/ampliseq_day5_nano4_r6` re-ran 71 of 72 tasks, even a FASTQC whose inputs did not change. `platform/tests/test_resume_cache_stability.py` shows offline that the platform's files differ from the first launch only where the edit is (H1 to H5 in `specs/resume-cache-miss/ledger.md`), so the cause is looked for on nano4. The operator does this with the skill `nano4-acceptance`; the code of this task never starts anything on nano4.
+
+**Rules for every step.** Every resume below asks the maintainer, and the maintainer himself says y; the operator cannot answer for him. After each one record: the new run name, its session id (`.nextflow/history` in the folder, or `get_run`), and from `get_run` the number of CACHED tasks and the total (for example 70/72). Use the same folder for all of them: `/work/u9613010/runs/runs/ampliseq_day5_nano4_r6`.
+
+1. **Resume 1, no edit.** `abf-platform resume ampliseq_day5_nano4_r6`, then y. Expected: nearly all CACHED. If this step alone re-runs most tasks, the cause is the session, the work folder or file timestamps (the site or Nextflow), and has nothing to do with edits.
+2. **Resume 2, one parameter only.** `abf-platform resume ampliseq_day5_nano4_r6 --param <a parameter that only a downstream process uses>=<new value>`, then y. Pick a parameter used downstream: changing one that an upstream process reads makes the processes after it run again, and that is normal. Expected: only the tasks that use it run again.
+3. **Resume 3, extra config only.** `abf-platform resume ampliseq_day5_nano4_r6 --config-file <a file with the single line process.memory = '16 GB'>`, then y. Expected: all CACHED (memory is not part of the task hash).
+
+**First layer, nothing is started and nothing is written to the run folder.** Each resume leaves its `.nextflow.log` in the r6 folder. Copy the log after each step, on the login node, with `cp` only, and read it with `grep`: `mkdir -p ~/r6-diag && cp /work/u9613010/runs/runs/ampliseq_day5_nano4_r6/.nextflow.log ~/r6-diag/resume-1.log` (then `resume-2.log`, `resume-3.log`). This starts no Nextflow and does not touch `.nextflow/cache`. Then `python3 scripts/nf_hash_diff.py ~/r6-diag/resume-1.log ~/r6-diag/resume-2.log`. It prints the first field that differs (exit 1), "無差異" (exit 0) or "格式不認得" (exit 2). `.nextflow.log` only holds the hash blocks if the run logged them; if the tool says 格式不認得, go to the second layer.
+
+**Second layer, a fourth and fifth resume by hand with `-dump-hashes`. This is not read-only.** The head scripts the platform writes do not carry `-dump-hashes`, so the operator makes two copies of them and submits each copy with `sbatch` from the login node, the way the platform submits a head (the head is a batch script with `#SBATCH` lines; do not run it with `bash` on the login node). Each submission writes to `.nextflow/cache` and to `.nextflow.log` of the r6 folder, so it needs the maintainer's own y, comes after the three platform resumes, and its session id is recorded as well. The copy keeps every line of the original `head-<N>.sh` (modules, `cd`, environment, the `-resume <session id>` and the `-params-file` / `-c` files of that resume); only the last line (`exec nextflow run ...`) changes: a new `-name`, `-with-tower ...` dropped (the platform knows no run of that name, and its database is not touched), and `-dump-hashes` added at the very end (an option placed before the pipeline name can swallow it). The two copies come from the head of resume 1 (no edit) and the head of resume 2 (the one-parameter edit). `ls head-*.sh` in the r6 folder shows the numbers the platform resumes were given: `<N1>` for resume 1, `<N2>` for resume 2 (for example 2 and 3). Then, on the login node:
+
+```
+cd /work/u9613010/runs/runs/ampliseq_day5_nano4_r6
+mkdir -p ~/r6-diag
+mk() { sed -e '/^exec nextflow run /{s/ -with-tower .*$//;s/ -name [^ ]*/ -name '"$2"'/;s/$/ -dump-hashes/}' "$1" > ~/r6-diag/"$2".sh; tail -n 1 ~/r6-diag/"$2".sh; }
+mk head-<N1>.sh ampliseq_day5_nano4_r6-dump1      # prints the last line: check it before going on
+sbatch ~/r6-diag/ampliseq_day5_nano4_r6-dump1.sh  # the maintainer says y first
+squeue -u "$USER"                                  # wait until the job is gone
+cp .nextflow.log ~/r6-diag/dump-before.log
+mk head-<N2>.sh ampliseq_day5_nano4_r6-dump2
+sbatch ~/r6-diag/ampliseq_day5_nano4_r6-dump2.sh  # the maintainer says y first
+squeue -u "$USER"
+cp .nextflow.log ~/r6-diag/dump-after.log
+python3 scripts/nf_hash_diff.py ~/r6-diag/dump-before.log ~/r6-diag/dump-after.log
+```
+
+The printed last line must look like `exec nextflow run ... -resume <session id> -name ampliseq_day5_nano4_r6-dump1 -params-file ... -c nextflow.config ... -dump-hashes` (the second copy carries the `-params-file params-<N2>.yaml` of resume 2, and its `-c extra-<N2>.config` if that resume had extra settings). If it has no `-resume`, or still has `-with-tower`, stop and tell the maintainer. The last command runs from a checkout of this repository; if there is none on nano4, copy the two logs to where the checkout is and run it there.
+
+**Reading the result.**
+
+| What you see | Points to | Do |
+|---|---|---|
+| Resume 1 (no edit) already re-runs most tasks | The site or Nextflow: session, work folder, file timestamps. Not the edit, not the platform | Do not guess a fix. Report to the maintainer; a later task decides |
+| Resume 1 all CACHED, resume 2 re-runs more than the tasks that use the parameter | The parameter is read upstream, or Nextflow; check the hash diff | Run the second layer; see the next table |
+| Resume 3 (extra config only) re-runs tasks | Something in the extra config enters the hash (`container`, `env`, `ext.args`) or the platform wrote it | Read `extra-<N>.config`; offline tests say the platform adds only a comment line |
+| All three CACHED | The 2026-10-25 case did not repeat; note the date and the edit that was made then | Report; ask what edit it was |
+
+First differing field in `nf_hash_diff.py`:
+
+| Field | Points to |
+|---|---|
+| input (path, size or mtime; the tool says "值相同但雜湊不同" for size or mtime) | The site: input files changed, were copied again or live on a file system that changes mtime |
+| container | The site: the image name or path changed (offline site, image cache) |
+| script | The pipeline or the parameters: a different script text |
+| env, other | The environment of the head job or `ext.args`; compare the `export` lines of the two head scripts |
+| session | The resume did not use the same session id |
+
+**The reviewer checks (read, not run).** (1) `git diff --stat origin/v3...HEAD` lists only `platform/tests/test_resume_cache_stability.py`, `docs/TESTING.md` (this section only), `scripts/nf_hash_diff.py`, `specs/resume-cache-miss/` files and, if it was touched, `platform/tests/resume_harness.py` with added cases only. (2) `platform/abf_station/launch.py` (including `OVERWRITE_BLOCK` and `relaunch`), `web.py`, `mcp_server.py`, `static/`, `platform/abf_platform/jobs.py` and `docs/PITFALLS.md` are unchanged, and there is no `store.py` or migration change. (3) `scripts/nf_hash_diff.py` imports only the standard library and has no network, ssh, sbatch or nextflow call. (4) The ledger table has H1 to H5, each with a test name that exists in the test file, and no existing assertion was deleted or loosened. (5) The made-up logs in the tests are in the shape described at the top of `scripts/nf_hash_diff.py`, whose source is named there; nothing in the files is a token or a password.
+
 ## Browser chat backend (014a): the reviewer checks three things
 
 The automated tests are `platform/tests/test_chat_tools.py` and `platform/tests/test_model_key_refusal.py`. Three test cases cannot be checked by a test and are done by hand, from the root of the branch.
@@ -985,3 +1037,37 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 2. Log in again, wait 30 seconds, call `run_outputs(run_id)`: it says `loading`; ask again after a few seconds: it is `ready` with the list (the web Outputs tab does the same when opened again).
 3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
 4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
+
+### Head job ended by the scheduler (manual, on nano4)
+
+1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
+2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.
+
+<<<<<<< HEAD
+## Guided launch step 4, samplesheet preview and column roles (012b-2-guided-launch): the maintainer checks
+
+`platform/tests/test_web_guided_launch_preview.py` covers the wording and the shapes; what only a person can see is below. Use an account with an uploaded samplesheet and an environment that is `available`.
+
+1. **The preview.** Open `/launch`, pick a pipeline and press the samplesheet's button. Check: step 4 shows the heading 樣本表預覽, a table with the file's first five rows, the line 共 N 列, and 僅顯示前 5 列 when the file is longer; the column-role table marks each column `✓ 必填`, `✓ 選填` or `— 管線無此欄`, and the paired count appears when both `fastq_1` and `fastq_2` are columns of the pipeline.
+2. **A missing required column.** Choose a samplesheet that lacks a column the pipeline requires. Check: the role table shows `✗ 缺少必填欄` in red with the symbol and the words, and the send button still works.
+3. **A file that cannot be read.** Choose a samplesheet that is over 1 MiB, or delete the file after choosing it. Check: step 4 gives one sentence of the reason with `✗`, and the send button still works.
+=======
+## nano4 test profile 驗收 (launch-test-profile): the maintainer checks
+
+Run on nano4 after the platform with this change is installed. A launch may now carry `profiles=["test"]`; with a `test`, `test_full` or `test_*` profile no samplesheet is needed, and the pipeline runs on its own test data. The person still says yes on the confirmation page.
+
+### (a) After the upgrade: let the platform read the profile names
+
+1. Open the Environments page, choose nano4 and run the pre-use check again. The profile names are read only by that check.
+2. Confirm the answer holds `site_profiles`: for each installed pipeline a list of names that includes `test` (look at the check's detail, or ask the platform for the environment's last check). If a pipeline has no list, the platform will refuse its `profiles` with "請先到環境頁對這個環境跑一次檢查"; run the check again.
+3. Record in `specs/launch-test-profile/ledger.md` what you saw.
+
+### (b) One test run for each of the eight pipelines
+
+For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrnaseq`, `nf-core/atacseq`, `nf-core/crisprseq`, `nf-core/nanoseq`, `nf-core/proteinfold` (use the installed revision), with the skill `nano4-acceptance`:
+
+1. In an MCP client call `launch` with `pipeline`, `revision`, a new `run_name`, `ce_name` of nano4, `params={}` and `profiles=["test"]`. Give no samplesheet.
+2. The answer is "pending" with a page address. Open it: the screen says `Config profiles: test` and `Samplesheet: from the pipeline's test profile`, and head.sh has ` -profile test` after the site `-c` lines and before `-with-tower`. Say yes there.
+3. Wait until the run ends. It must reach SUCCEEDED; write the run name and its final status in the ledger.
+4. Also try `profiles=["nope"]`: nothing is sent and the answer lists the names the site has.
+>>>>>>> origin/v3

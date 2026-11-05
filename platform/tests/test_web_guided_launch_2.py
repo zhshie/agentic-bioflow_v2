@@ -395,7 +395,9 @@ def test_g05_loading_failed_and_preview(rig, fk):
     fk.files = good_files(schema_input={"status": "bad_json", "message": "樣本表欄位檔不是合法的 JSON (not valid JSON)"})
     four = step(get(c).text, 4)
     assert "✗ 樣本表欄位檔不是合法的 JSON。" in plain_text(four) and "scols" not in four
-    assert "預覽與欄位角色（尚未開放）" in plain_text(four)
+    assert "選定樣本表後顯示預覽。" in plain_text(four)      # 012b-2: was 預覽與欄位角色（尚未開放）; no samplesheet is chosen in the address
+    four = step(get(c, samplesheet="samples.csv").text, 4)
+    assert "樣本表預覽" in plain_text(four) and "欄位角色" not in plain_text(four)
 
 
 # ---- US5: step 5 groups ---------------------------------------------------------------------------------------------------------------
