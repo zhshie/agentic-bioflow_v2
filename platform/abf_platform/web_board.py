@@ -15,10 +15,12 @@ import html
 import re
 import urllib.parse
 
+from . import web_devmode
+from . import web_downstream
 from . import web_finished
 
 STAGES = ("launch", "running", "results", "downstream", "finished")
-PLACEHOLDER = {"launch": "012b", "downstream": "016"}      # the feature that will provide the stage
+PLACEHOLDER = ("launch", "downstream")      # stages whose page is still to come: a grey "coming later" line
 LIST_CAP = 100
 REASON_CAP = 80
 REFRESH_SECONDS = 15
@@ -29,11 +31,21 @@ TAIPEI = datetime.timedelta(hours=8)
 # the analysis states the page knows; each is shown as a small coloured square and a word, never a symbol (lost is shown as Failed: three states)
 KNOWN = ("running", "succeeded", "failed", "lost")
 COUNTS = ("succeeded", "cached", "failed", "aborted", "running", "pending", "submitted")
-SETTINGS = (("set_ce", ()), ("set_cred", ()), ("set_keys", ("set_ai_key",)), ("set_me", ("set_step", "set_dev")),
+SETTINGS = (("set_ce", ()), ("set_cred", ()), ("set_keys", ("set_ai_key",)), ("set_me", ()),
             ("set_ops", ()), ("set_roles", ()))
+# 012a-settings-page: web.py says, per request, whether the logged-in person has development mode on; every page of the shared frame then draws the banner.
+# A context variable (never a global flag) so that two people's requests cannot see each other's value; the default is "off" (the login page and the like).
+DEV_MODE = web_devmode.DEV_MODE
 
 STRINGS = {
     "zh": {
+        "refusal_site_down": "站台連線沒開，工作沒有送出。",
+        "refusal_site_down_do": "平台主機 %s。請在 WSL 終端機貼上這一行，輸入 passphrase 與 OTP，然後重新呼叫 launch。",
+        "refusal_site_down_nocmd": "請查看站台主機的終端機提示，照提示重新登入站台後再重新呼叫 launch。",
+        "refusal_other": "站台拒絕了送出，工作沒有送出：%s",
+        "refusal_error": "站台回報送出結果不明，工作可能已經送出。請先查看站台上的資料夾與 Slurm 工作（見下方說明）再決定要不要重送。",
+        "refusal_error_msg": "站台的回報：%s",
+        "refusal_error_left": "留在站台上的檔案與資料夾：%s",
         "title": "agentic-bioflow", "mine": "我的分析", "none_yet": "尚無分析紀錄。", "later": "之後開放",
         "new_project": "＋ 新專案", "search_projects": "搜尋專案或分析", "upload": "↑ 上傳資料", "settings": "設定", "explorer": "資料瀏覽",
         "dashboard": "儀表板", "logout": "登出", "cost_su": "SU —", "usd_about": "（約 US$%s）", "usd_under": "（約 US$0.01 以下）", "cost_cloud": "雲端 US$ —", "more": "還有 %d 筆",
@@ -59,6 +71,8 @@ STRINGS = {
         "card_step": "目前步驟", "card_stopped_at": "停在", "menu_more": "更多", "stage_running_failed": "執行", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
         "dur_hm": "%d 小時 %d 分", "dur_m": "%d 分", "dur_short": "不到 1 分",
         "no_notices": "目前無通知", "no_failed_tasks": "無失敗任務",
+        "failed_unlisted": "失敗計數 %d，但沒有可列出的失敗任務明細；這些失敗可能已被忽略或重試成功。",
+        "failed_partial": "上表列出 %d 個失敗任務，但失敗計數 %d；其餘可能已被忽略或重試成功。",
         "launch_title": "啟動分析", "launch_intro": "填寫完成後按「送出」，將先前往確認頁；於確認頁按「送出」才會排入佇列。",
         "l_pipeline": "管線（nf-core 名稱）", "l_revision": "版本", "l_run_name": "分析名稱", "l_samplesheet": "樣本表（從已上傳的檔案中選擇）",
         "l_ce": "運算環境", "l_params": "其他參數（選填）", "l_submit": "送出（前往確認頁）",
@@ -72,6 +86,7 @@ STRINGS = {
         "tab_tasks": "任務", "tab_logs": "日誌", "tab_info": "執行資訊", "tab_config": "設定檔", "tab_metrics": "指標",
         "th_name": "名稱", "th_exit": "結束代碼", "th_message": "錯誤訊息（第一行）", "th_workdir": "工作目錄",
         "i_id": "編號", "i_name": "名稱", "i_status": "狀態", "i_cancel": "要求取消",
+        "i_pipeline": "管線", "i_revision": "版本", "i_site": "運算環境", "i_updated": "最後更新",
         "tab_outputs": "輸出", "card_done": "完成步驟", "ph_report": "報告", "ph_multiqc": "MultiQC 報告", "ph_metrics": "指標",
         "ph_download": "全部下載", "o_loading": "讀取中", "o_auto": "每 15 秒自動更新", "o_failed": "無法讀取", "o_none": "無輸出資料夾紀錄",
         "o_empty": "此資料夾為空", "o_read_at": "讀取於", "o_relist": "重新讀取", "th_type": "類型", "th_size": "大小", "th_mod": "修改時間",
@@ -88,6 +103,13 @@ STRINGS = {
         "f_e_failed": "無法取得檔案，請稍後重試。",
     },
     "en": {
+        "refusal_site_down": "The connection to the site is not open; nothing was submitted.",
+        "refusal_site_down_do": "stat" "ion host %s: paste this line into a WSL terminal, enter your passphrase and OTP, then call launch again.",
+        "refusal_site_down_nocmd": "check the terminal prompt of the stat" "ion host, log in to the site as it says, then call launch again.",
+        "refusal_other": "The site did not accept this launch; nothing was submitted: %s",
+        "refusal_error": "The site reports that the result of the submission is unknown; the job may already have been submitted. Check the folder on the site and the Slurm jobs (see below) before deciding to submit again.",
+        "refusal_error_msg": "What the site reported: %s",
+        "refusal_error_left": "What was left on the site: %s",
         "title": "agentic-bioflow", "mine": "My runs", "none_yet": "No runs yet.", "later": "Coming later",
         "new_project": "+ New project", "search_projects": "Search projects or analyses", "upload": "↑ Upload data", "settings": "Settings",
         "explorer": "Data explorer", "dashboard": "Dashboard", "logout": "Log out", "cost_su": "SU —", "usd_about": " (≈ US$%s)", "usd_under": " (≈ under US$0.01)", "cost_cloud": "Cloud US$ —",
@@ -116,6 +138,8 @@ STRINGS = {
         "card_step": "Current step", "card_stopped_at": "Stopped at", "menu_more": "More", "stage_running_failed": "Run", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
         "dur_hm": "%dh %dm", "dur_m": "%dm", "dur_short": "<1m",
         "no_notices": "No notices", "no_failed_tasks": "No failed tasks",
+        "failed_unlisted": "The failed count is %d, but no failed task has a recorded detail; these may have been ignored or retried successfully.",
+        "failed_partial": "The table lists %d failed tasks, but the failed count is %d; the rest may have been ignored or retried successfully.",
         "launch_title": "Launch an analysis",
         "launch_intro": "Fill this in and press Submit: you go to the confirmation page first, and only the Send button there puts it in the queue.",
         "l_pipeline": "Pipeline (nf-core name)", "l_revision": "Revision", "l_run_name": "Analysis name",
@@ -132,6 +156,7 @@ STRINGS = {
         "tab_tasks": "Tasks", "tab_logs": "Logs", "tab_info": "Run info", "tab_config": "Configuration", "tab_metrics": "Metrics",
         "th_name": "Name", "th_exit": "Exit code", "th_message": "Error message (first line)", "th_workdir": "Work directory",
         "i_id": "ID", "i_name": "Name", "i_status": "Status", "i_cancel": "Cancel requested",
+        "i_pipeline": "Pipeline", "i_revision": "Revision", "i_site": "Compute environment", "i_updated": "Last update",
         "tab_outputs": "Outputs", "card_done": "Steps done", "ph_report": "Report", "ph_multiqc": "MultiQC report", "ph_metrics": "Metrics",
         "ph_download": "Download all", "o_loading": "Reading", "o_auto": "Updates every 15 seconds", "o_failed": "Could not read",
         "o_none": "No output folder on record", "o_empty": "This folder is empty", "o_read_at": "Read at", "o_relist": "Read again",
@@ -183,14 +208,16 @@ STYLE = (
     "pre{font-family:" + MONO + ";font-size:13px;background:var(--sunken);border-radius:4px;padding:12px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}"
     "code{font-family:" + MONO + "}small{font-size:12px;color:var(--muted)}"
     ".bad{color:var(--failed)}.ok{color:var(--succeeded)}"
+    ".devbar{display:flex;gap:8px;align-items:center;padding:8px 16px;background:var(--lost-bg);color:var(--lost);font-weight:600}"
+    ".pref{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.pref form{margin:0}"
     ".narrow{max-width:640px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px}"
     ".mast{display:flex;align-items:center;gap:16px;height:40px;padding:0 16px;background:var(--ink);color:var(--surface)}"
     ".mast .brand{font-weight:600}.mast .end{margin-left:auto;display:flex;align-items:center;gap:16px}"
     ".mast a{color:var(--surface);padding:0 8px}.mast a:focus-visible{outline-color:var(--surface)}"
     ".costs{display:flex;gap:12px}.cost{font-size:12px}"
     ".switch{display:flex}.switch a+a{border-left:1px solid var(--surface)}.switch a.here{font-weight:600;text-decoration:underline}"
-    ".wb{display:grid;grid-template-columns:272px minmax(0,1fr) 320px;min-height:calc(100vh - 40px)}.wb>*{min-width:0}"
-    "@media (max-width:1200px){.wb{grid-template-columns:232px minmax(0,1fr) 288px}}"
+    ".wb{display:grid;grid-template-columns:272px minmax(0,1fr) 360px;min-height:calc(100vh - 40px)}.wb>*{min-width:0}"
+    "@media (max-width:1200px){.wb{grid-template-columns:232px minmax(0,1fr) 300px}}"
     ".side{background:var(--raised);border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:12px}"
     ".nav,.tools,.rows,.foot{display:flex;flex-direction:column;gap:4px}"
     ".foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}"
@@ -206,7 +233,7 @@ STYLE = (
     ".state-failed{--c:var(--failed);--bg:var(--failed-bg)}.state-unknown{--c:var(--muted);--bg:var(--sunken)}"
     ".sym{color:var(--c)}"
     ".main{padding:24px;display:flex;flex-direction:column;gap:16px;overflow-wrap:anywhere}"
-    ".head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}"
+    ".head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.head .meta{flex-basis:100%;margin:0;color:var(--muted)}"
     ".badge{display:inline-flex;gap:4px;padding:0 8px;border-radius:999px;font-size:12px;line-height:20px;font-weight:600;"
     "white-space:nowrap;color:var(--c);background:var(--bg)}"
     ".steps{display:flex;gap:8px;list-style:none;margin:0;padding:0}.steps li{flex:1;min-width:0}"
@@ -251,7 +278,7 @@ STYLE = (
     ".tbl{width:100%;table-layout:fixed;border-collapse:collapse}"
     ".tbl th,.tbl td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);vertical-align:top;min-width:0;overflow-wrap:anywhere}"
     ".soon{background:var(--sunken);color:var(--muted);border-radius:6px;padding:16px;min-width:0}"
-    ".otbl code{overflow-wrap:anywhere}.ostat{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
+    ".otbl code{overflow-wrap:normal;word-break:keep-all}.ostat{display:flex;flex-wrap:wrap;align-items:center;gap:8px}"
     ".gsteps{display:flex;flex-direction:column;gap:12px}"
     ".gstep{background:var(--raised);border:1px solid var(--line);border-radius:6px;min-width:0}"
     ".gstep>summary{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px;min-height:44px;cursor:pointer}"
@@ -277,7 +304,9 @@ STYLE = (
     ".tbl.ce td{display:flow-root;border-bottom:0;padding:4px 0 4px 6rem}"
     ".tbl.ce td::before{content:attr(data-label);float:left;width:5.5rem;margin-left:-6rem;color:var(--muted);font-size:12px}}"
     "@media (max-width:900px){.wb{grid-template-columns:1fr}.main{order:-2}.rail{order:-1}.costs{display:none}"
-    ".counts{grid-template-columns:repeat(4,1fr)}}"
+    ".counts{grid-template-columns:repeat(4,1fr)}"
+    ".switch a,.pager a,.views a,.rtabs a,.tbl a,.otbl a,.ostat a,.rail a{display:inline-flex;align-items:center;min-height:24px;min-width:24px}"
+    ".otbl{display:block;overflow-x:auto;table-layout:auto}}"
 )
 
 
@@ -446,7 +475,10 @@ def _projects(runs):
     the runs that have no project name are the last group."""
     found = {}
     for run in runs[:LIST_CAP]:
-        found.setdefault(run.get("project"), []).append(run)
+        name = run.get("project") or None
+        if name is not None and "/" not in name and name.endswith(".nf"):       # a script file name (main.nf) is not a project name
+            name = None
+        found.setdefault(name, []).append(run)
     order = [name for name in found if name is not None] + ([None] if None in found else [])
     return [(name, found[name]) for name in order]
 
@@ -478,13 +510,15 @@ def _task_card(t, run):
     return out
 
 
-def _stage_card(t, run, stage, lang="zh", outputs=None, finished=None, user_name=""):
+def _stage_card(t, run, stage, lang="zh", outputs=None, finished=None, user_name="", studio=None):
+    if stage == "downstream" and run["status"] == "succeeded":
+        return web_downstream.render_downstream(lang, run, outputs, studio, t["stage_downstream"])
     if stage == "finished" and run["status"] == "succeeded":
         return web_finished.render_finished(lang, run, finished, outputs, user_name)
     if stage == "finished":
         inner = '<p>— <span class="muted">%s</span></p>' % esc(t["not_reached"])
     elif stage in PLACEHOLDER:
-        inner = '<p>— <span class="muted">%s</span></p>' % esc(PLACEHOLDER[stage])
+        inner = '<p>— %s</p>' % _later(t)
     elif stage != "running" and stage_of(run["status"]) != stage:
         inner = '<p>— <span class="muted">%s</span></p>' % esc(t["not_reached"])
     else:
@@ -573,7 +607,7 @@ def _failure_notice(t, run, acts=None):
     step = first_failed(failure)
     verb = (failure.get("actions") or ["relaunch"])[0]
     word = t["resume" if verb == "resume" else "rerun"]
-    when = _clock_hm(run.get("last_message_at") if lost else run.get("ended_at"))
+    when = _clock_hm(run.get("last_message_at") if lost else (run.get("ended_at") or run.get("last_message_at")))      # a lost run shown failed has no end
     rows = (("f_step", "<code>%s</code>" % esc(step) if step else "—"),
             ("f_reason", "<br>".join(esc(x) for x in _reason_lines(t, failure))),
             ("f_next", esc(word + t["confirm_suffix"])))
@@ -642,11 +676,13 @@ def _results_cards(t, run, now, outputs):
                    (t["card_compute"], esc(where)), (t["card_cost"], esc(_cost_value(t, run)))))
 
 
-def _report_cell(t, lang, run_id, outputs, key, folder, name):
+def _report_cell(t, lang, run_id, outputs, key, folder, name, reading=False):
     """One of the two report cells under the cards: a download link when the first level of the results holds the folder, `not produced` when it is
     known to hold none, and the grey `later` words while that is not known yet (still reading, or the reading failed)."""
     top = (outputs or {}).get("top")
     if top is None:
+        if reading and (outputs or {}).get("state") == "loading" and not (outputs or {}).get("sub"):      # the Outputs tab queued the first-level listing
+            return '<span class="off">%s <span class="ostat state-running">⟳ %s</span></span>' % (esc(t[key]), esc(t["o_loading"]))
         return _grey(t, key)
     if folder in top:
         return '<span class="off"><a href="%s">%s</a></span>' % (_url(lang, run_id, path="/run/file", sub=folder + "/" + name), esc(t[key]))
@@ -712,8 +748,8 @@ def _outputs_body(t, lang, run_id, out):
 def _results_body(t, lang, run, tab, now, outputs):
     """The results stage of a succeeded run: four cards, four tabs (Outputs, Run info, Tasks, Logs; the last three are the running
     stage's own bodies) and the things that come later as grey words, not links."""
-    later = '<p class="kv">%s%s%s%s</p>' % (_report_cell(t, lang, run["id"], outputs, "ph_report", "summary_report", "summary_report.html"),
-                                            _report_cell(t, lang, run["id"], outputs, "ph_multiqc", "multiqc", "multiqc_report.html"),
+    later = '<p class="kv">%s%s%s%s</p>' % (_report_cell(t, lang, run["id"], outputs, "ph_report", "summary_report", "summary_report.html", tab == "outputs"),
+                                            _report_cell(t, lang, run["id"], outputs, "ph_multiqc", "multiqc", "multiqc_report.html", tab == "outputs"),
                                             _grey(t, "ph_metrics"), _grey(t, "ph_download"))
     links = "".join('<a href="%s"%s>%s</a>' % (_url(lang, run["id"], None, tab=k), ' aria-current="page"' if k == tab else "", esc(t["tab_" + k]))
                     for k in RESULT_TABS)
@@ -730,21 +766,38 @@ def _tasks_bar(t, run):
     return '<section class="card">%s%s<dl class="counts">%s</dl></section>' % (_progress(run), facts, cells)
 
 
+def _last_update(run):
+    """The newest sign of life of a run: its last message, else its end, else its start; a dash when none is there."""
+    return _time(run.get("last_message_at") or run.get("ended_at") or run.get("started_at"))
+
+
+def _meta_line(run):
+    """The title row's facts: pipeline and revision, site, started, last update; a dash for each that is not known."""
+    pr = " ".join(x for x in (run.get("pipeline"), run.get("revision")) if x) or "—"
+    return esc(" · ".join((pr, run.get("compute_env") or "—", _time(run.get("started_at")), _last_update(run))))
+
+
 def tab_body(t, lang, run, tab):
     """The content of one tab of the running stage page. Logs, Configuration and Metrics are grey panels until their actions exist."""
     if tab == "tasks":
         tasks = run.get("failed_tasks") or []
+        failed = (run.get("tasks") or {}).get("failed", 0) or 0
         if not tasks:
+            if failed > 0:
+                return '<p class="muted">%s</p>' % esc(t["failed_unlisted"] % failed)
             return '<p class="muted">%s</p>' % esc(t["no_failed_tasks"])
         head = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_exit", "th_message", "th_workdir"))
         body = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
                        % (esc(f.get("name") or "—"), esc("—" if f.get("exit_code") is None else f["exit_code"]),
                           esc(_first_line(f.get("error_message") or "", REASON_CAP) or "—"), esc(f.get("workdir") or "—")) for f in tasks)
-        return '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, body)
+        note = '<p class="muted">%s</p>' % esc(t["failed_partial"] % (len(tasks), failed)) if failed > len(tasks) else ""
+        return '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>%s' % (head, body, note)
     if tab == "info":
         status = run["status"]
         rows = [(t["i_id"], run["id"]), (t["i_name"], run["name"]), (t["i_status"], _Html(_chip(t, status))),
-                (t["started"], _time(run.get("started_at"))), (t["ended"], _time(run.get("ended_at")))]
+                (t["started"], _time(run.get("started_at"))), (t["ended"], _time(run.get("ended_at"))),
+                (t["i_pipeline"], run.get("pipeline") or "—"), (t["i_revision"], run.get("revision") or "—"),
+                (t["i_site"], run.get("compute_env") or "—"), (t["i_updated"], _last_update(run))]
         if run.get("cancel_requested_at"):
             rows.append((t["i_cancel"], _time(run["cancel_requested_at"])))
         full = '<pre class="reason">%s</pre>' % esc(run["failure_reason"]) if run.get("failure_reason") else ""     # the whole text lives here, not on the Tasks tab
@@ -759,7 +812,7 @@ def _running_body(t, selected, lang, tab_param, stage_param, now, acts=None):
     return '%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), _tasks_bar(t, selected), links, tab_body(t, lang, selected, tab))
 
 
-def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None, finished=None, user_name=""):
+def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None, finished=None, user_name="", studio=None):
     own = stage_of(selected["status"])
     current = pick_stage(stage_param, own)
     explicit = pick_stage(stage_param, None)
@@ -784,7 +837,7 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     badge = '<span class="badge state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(_state(t, status)))
     running = current == "running"
     buttons = ("".join(acts.form(verb, selected["id"]) + (acts.edit_link(selected["id"]) if verb == "resume" and _failure_of(selected) else "")
-                       for verb in ("resume", "relaunch", "cancel")) if acts else "") if running else ""
+                       for verb in ("resume", "relaunch", "cancel")) if acts else "") if running and selected["status"] != "succeeded" else ""
     quick = '<a href="%s">%s</a>' % (esc("/launch?from=" + urllib.parse.quote(str(selected["id"]), safe="") + ("&lang=en" if lang == "en" else "")),
                                     esc(t["quick"])) if running else ""
     menu = '<details class="menu"><summary>%s</summary>%s%s</details>' % (esc(t["menu_more"]), buttons, quick) if running else ""
@@ -793,12 +846,12 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     elif current == "results" and status == "succeeded":
         inner = _results_body(t, lang, selected, pick_results_tab(tab_param), now, outputs)
     else:
-        inner = _stage_card(t, selected, current, lang, outputs, finished, user_name)
+        inner = _stage_card(t, selected, current, lang, outputs, finished, user_name, studio)
     note = '<p class="bad" role="alert">%s</p>' % esc(flash) if flash else ""
     views = '<nav class="views"><a href="%s" aria-current="page">%s</a>%s</nav>' % (_url(lang, selected["id"]), esc(t["main_window"]), _grey(t, "terminal"))
-    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s</div>%s%s'
+    return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s<p class="meta">%s</p></div>%s%s'
             '<ol class="steps" data-current="%s">%s</ol>%s<p class="pager">%s%s</p></main>'
-            % (esc(selected["name"]), badge, menu, views, note, current, "".join(cells), inner, prev_, next_))
+            % (esc(selected["name"]), badge, menu, _meta_line(selected), views, note, current, "".join(cells), inner, prev_, next_))
 
 
 def _settings_page(t):
@@ -838,6 +891,25 @@ def default_run(runs):
     return runs[0]["id"] if runs else None
 
 
+def refusal_block(r, lang="zh"):
+    """The one block that tells a person why a launch was turned back (confirmation page and board share it). `r` is jobs.refusal_of's answer.
+    The command is shown only as text in a <pre>; there is no button, form, link or script here."""
+    t = STRINGS[pick_lang(lang)]
+    if r["state"] == "error":
+        body = '<p class="bad">%s</p><p>%s</p>' % (esc(t["refusal_error"]), esc(t["refusal_error_msg"] % r["reason"]))
+        if r.get("left"):
+            body += "<p>%s</p>" % esc(t["refusal_error_left"] % r["left"])
+    elif r["site_down"]:
+        host = esc(r["host"])
+        if r["open_command"]:
+            body = '<p class="bad">%s</p><p>%s</p><pre>%s</pre>' % (esc(t["refusal_site_down"]), esc(t["refusal_site_down_do"] % r["host"]), esc(r["open_command"]))
+        else:
+            body = '<p class="bad">%s</p><p>%s</p>' % (esc(t["refusal_site_down"]), esc(t["refusal_site_down_nocmd"]))
+    else:
+        body = '<p class="bad">%s</p>' % esc(t["refusal_other"] % r["reason"])
+    return '<section id="refusal">%s</section>' % body
+
+
 def _empty_page(t, lang):
     return ('<main class="main" data-pane="middle"><p>%s</p><p><a class="nv" href="%s">%s</a></p></main>'
             % (esc(t["no_analyses"]), _url(lang, path="/launch"), esc(t["new_analysis"])))
@@ -846,12 +918,13 @@ def _empty_page(t, lang):
 def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, path="/", refresh=False, tab=None, refresh_url=None):
     lang = pick_lang(lang)
     t = STRINGS[lang]
-    body = '%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), _left(t, runs, run, lang, csrf, here), middle(t, lang),
-                                                right(t, lang))
+    bar = ('<div class="devbar" role="status"><span aria-hidden="true">!</span><span>%s</span></div>' % esc(web_devmode.banner(lang))) if DEV_MODE.get() else ""
+    body = '%s%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), bar, _left(t, runs, run, lang, csrf, here), middle(t, lang),
+                                                  right(t, lang))
     return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)
 
 
-def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None):
+def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None, refusal=None, studio=None):
     """GET /: the page of a logged-in user. `runs` are newest first (as list_runs gives them, with their `failure`); `selected` is the
     detail of one run (get_run, with its `failure`), or None for the empty page of a person with no run. `act_csrf(run_id)` gives the CSRF
     token of that run's buttons (spec 012b); without it no button is drawn. `flash` is one plain line of refusal shown at the top of the
@@ -867,9 +940,13 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
         if tab == "outputs":      # the page reloads itself to the address without `relist`, so a Read-again click is not repeated every 15 seconds
             refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs", sub=(outputs or {}).get("sub"))
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
-    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
+    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name, studio)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
+    if refusal:
+        inner = middle
+        middle = lambda t, lang_: inner(t, lang_).replace('data-pane="middle">', 'data-pane="middle">' + refusal_block(refusal, lang_), 1)
     return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_), lang_), run_id, stage,
-                  refresh=not flash, tab=tab, refresh_url=refresh_url)
+                  refresh=not flash and not (selected is not None and selected["status"] == "succeeded" and stage == "downstream"),
+                  tab=tab, refresh_url=refresh_url)
 
 
 # ---- spec 012b: the launch form -----------------------------------------------------------------------------------------------------------
@@ -960,7 +1037,11 @@ GUIDED = {
         "g_th_pipeline": "管線", "g_th_revision": "版本", "g_th_run": "上次分析名稱", "g_th_at": "上次送出時間", "g_th_ce": "運算環境",
         "g_select": "選用", "g_quick": "沿用設定重新分析", "g_no_used": "尚無使用紀錄。",
         "g_search": "搜尋全部 nf-core（尚未開放）",
-        "g_preview": "預覽與欄位角色（尚未開放）",
+        "g_pv_title": "樣本表預覽", "g_pv_pick": "選定樣本表後顯示預覽。", "g_pv_total": "共 %d 列", "g_pv_total1": "共 1 列", "g_pv_first": "僅顯示前 5 列",
+        "g_pv_roles": "欄位角色", "g_pv_th_role": "角色", "g_pv_req": "✓ 必填", "g_pv_opt": "✓ 選填", "g_pv_none": "— 管線無此欄",
+        "g_pv_miss": "✗ 缺少必填欄", "g_pv_paired": "已配對 %d／%d",
+        "g_pv_big": "樣本表大於 1 MiB，無法預覽。", "g_pv_text": "樣本表不是 UTF-8 文字檔，無法預覽。",
+        "g_pv_empty": "樣本表是空的，沒有標頭列。", "g_pv_unread": "無法讀取所選樣本表，請重新上傳。",
         "g_no_sheet": "尚無已上傳的樣本表，請先上傳。", "g_go_board": "前往看板", "g_go_upload": "前往上傳資料", "g_go_settings": "前往設定頁",
         "g_reg_bad": "此管線版本尚未在所選運算環境登記，請先至設定頁登記。",
         "g_ver_wait": "正在讀取版本清單…",
@@ -991,7 +1072,13 @@ GUIDED = {
         "g_th_pipeline": "Pipeline", "g_th_revision": "Revision", "g_th_run": "Last analysis", "g_th_at": "Last launched", "g_th_ce": "Compute environment",
         "g_select": "Select", "g_quick": "Re-run with the same settings", "g_no_used": "No usage history.",
         "g_search": "Search all of nf-core (not yet available)",
-        "g_preview": "Preview and column roles (not yet available)",
+        "g_pv_title": "Samplesheet preview", "g_pv_pick": "The preview appears once a samplesheet is selected.", "g_pv_total": "%d rows in total",
+        "g_pv_total1": "1 row in total", "g_pv_first": "Showing the first 5 rows",
+        "g_pv_roles": "Column roles", "g_pv_th_role": "Role", "g_pv_req": "✓ Required", "g_pv_opt": "✓ Optional", "g_pv_none": "— Not in this pipeline",
+        "g_pv_miss": "✗ Missing required column", "g_pv_paired": "Paired %d/%d",
+        "g_pv_big": "The samplesheet is larger than 1 MiB and cannot be previewed.",
+        "g_pv_text": "The samplesheet is not a UTF-8 text file and cannot be previewed.",
+        "g_pv_empty": "The samplesheet is empty and has no header row.", "g_pv_unread": "The selected samplesheet cannot be read. Please upload it again.",
         "g_no_sheet": "No samplesheet has been uploaded. Please upload one first.", "g_go_board": "Go to the board", "g_go_upload": "Go to upload data", "g_go_settings": "Go to the settings page",
         "g_reg_bad": "This pipeline version is not registered on the selected compute environment. Register it on the Settings page first.",
         "g_ver_wait": "Reading the version list…",
@@ -1152,7 +1239,8 @@ def render_launch(name, csrf, runs, values, errors, notes, sheets, envs, token, 
         four = ('<p class="bad"><span class="csym">✗</span> %s</p><p><a href="%s">%s</a></p>'
                 % (esc(t["g_no_sheet"]), _url(lang, path="/upload"), esc(t["g_go_upload"])))
     four += web_launch.samplesheet_block(t, lang, pair, quiet)
-    four += '<p class="off">%s</p>' % esc(t["g_preview"])
+    if sheets:
+        four += web_launch.preview_block(t, lang, g.get("preview"), pair)
     # 5 parameters: whether the table was read, the earlier analysis to follow, the table (every box holds its default), the box for the rest
     reuse_opts = '<option value="">%s</option>' % esc(t["g_reuse_off"]) + "".join(
         '<option value="%s"%s>%s</option>' % (esc(r["run_name"]), " selected" if r["run_name"] == given.get("params_from") else "",

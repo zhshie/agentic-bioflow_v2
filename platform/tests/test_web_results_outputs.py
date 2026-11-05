@@ -91,7 +91,9 @@ def test_ro01_results_stage_has_cards_and_tabs(w):
     assert got[0][1] == "4 / 4" and got[1][1] == "1 小時 0 分" and "lab-a" in got[2][1] and got[3][1] == "SU —"
     assert tabs(t) == [("outputs", "輸出", True), ("info", "執行資訊", False), ("tasks", "任務", False), ("logs", "日誌", False)]
     m = mid(t)
-    for word in ("報告", "MultiQC 報告", "指標", "全部下載"):
+    for word in ("報告", "MultiQC 報告"):      # the first load of the Outputs tab: the listing is being read
+        assert '<span class="off">%s <span class="ostat state-running">⟳ 讀取中</span></span>' % word in m, word
+    for word in ("指標", "全部下載"):
         assert re.search(r'<span class="off">%s <span class="later">之後開放</span></span>' % word, m), word
     assert "<progress" not in m and '<dl class="counts">' not in m
     assert 'class="sq"' in m and "完成" in plain(m)       # the state of the run is on the same screen (TC-015)
@@ -343,7 +345,9 @@ def test_ro10_english(w):
     ann, c, rid = world(w)
     t = c.get(url(rid) + "&lang=en").text
     assert [x[1] for x in tabs(t)] == ["Outputs", "Run info", "Tasks", "Logs"]
-    for word in ("Report", "MultiQC report", "Metrics", "Download all"):
+    for word in ("Report", "MultiQC report"):
+        assert '<span class="off">%s <span class="ostat state-running">⟳ Reading</span></span>' % word in t, word
+    for word in ("Metrics", "Download all"):
         assert re.search(r'<span class="off">%s <span class="later">Coming later</span></span>' % word, t), word
     assert no_cjk(mid(t)), cjk(mid(t))
     finish(w, listings(w)[0]["id"], entries=ENTRIES)
@@ -394,7 +398,7 @@ def test_ro11b_long_names_wrap_and_no_new_colour(w):
     finish(w, listings(w)[0]["id"], entries=[{"name": "x" * 200, "type": "file", "size": 1, "modified": "2026-10-20T08:00:00Z"}])
     t = c.get(url(rid)).text
     assert "x" * 200 in t and 'class="tbl otbl"' in t
-    assert ".otbl code{overflow-wrap:anywhere}" in t
+    assert ".otbl code{overflow-wrap:normal;word-break:keep-all}" in t
     from abf_platform import web_board
     new = web_board.STYLE.split(".otbl", 1)[1]
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb|hsl", new)

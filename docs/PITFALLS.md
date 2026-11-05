@@ -2546,3 +2546,11 @@ Symptom: `read_run_file` and `list_site_files` answered that the path was refuse
 Root cause: the first ssh step, `realpath`, failed with exit 255 and was read as bad input rather than as an unreachable site
 Check: `platform/tests/test_station_realpath_down.py`
 Touches: read_run_file, list_site_files, realpath, site_unreachable, connect_failure, on_site: needs-human, ControlMaster
+
+**59. A head job killed by the scheduler left the run `lost` for good (2026-11-03, head-nodefail-detect).**
+What was seen: Slurm NODE_FAIL of the head job (t1: platform job 78, Slurm 654018) leaves no Nextflow completion record, so the run showed `lost` and could not be resumed. Rule: a lost run is looked at again through the scheduler (squeue, then sacct) and the answer is an overlay at query time, never written to the index. A fact that is not exactly the table's words for this launch's number is ignored. Note: a lost run with a live head still lists `relaunch` in `actions` (kept as in v3).
+
+Symptom: a run whose Slurm head job ended as NODE_FAIL showed `lost` with no reason and could not be resumed
+Root cause: the head job is killed before Nextflow writes a completion record, and the platform never asked the scheduler again
+Check: `platform/tests/test_head_nodefail.py`, `platform/tests/test_station_head_state.py`
+Touches: NODE_FAIL, lost, squeue, sacct, overlay

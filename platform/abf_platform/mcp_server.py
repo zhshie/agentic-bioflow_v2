@@ -1,10 +1,10 @@
-# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers sixteen read-only tools, and is built on the official Python mcp SDK.
-"""MCP server: sixteen read-only tools: list_runs, get_run, list_compute_envs, get_compute_env, list_agents,
+# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers fifteen read-only tools, and is built on the official Python mcp SDK.
+"""MCP server: fifteen read-only tools: list_runs, list_compute_envs, get_compute_env, list_agents,
 list_site_files, list_used_pipelines, my_usage, run_outputs, read_run_file, read_task_log, and the five canvas reads find_module, describe_module,
-list_pipelines, get_pipeline, get_validation; and five tools that ask a person:
-launch, cancel, forget, resume, relaunch.
+list_pipelines, get_pipeline, get_validation; and six tools that ask a person:
+launch, launch_pipeline, cancel, forget, resume, relaunch.
 
-The sixteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
+get_run is the one query that is not marked read-only: for a lost run it queues one read of the site (ruling R2). The fifteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
   - toward runs: this module never writes the run index (status.py opens it read-only);
   - toward the site: list_site_files may put one read-only question (list a folder) in the job queue of
@@ -20,10 +20,11 @@ resume and relaunch (spec 009e) are the same kind of tool, for a run that failed
 run. resume may also carry params (only the keys to change) and extra_config (settings text); the pipeline, revision, samples and
 environment are those of the first launch and cannot be said again.
 """
-from typing import Any
+from typing import Annotated, Any
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp_types import ToolAnnotations
+from pydantic import Field
 
 import abf_platform.actions.catalogue as catalogue_actions
 import abf_platform.actions.pipelines as pipeline_actions
@@ -31,6 +32,8 @@ import abf_platform.actions.pipelines as pipeline_actions
 from . import actions, guidance, http_auth
 
 _READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
+# get_run: asks no one's yes, but a lost run makes it queue one read of the site and write that job to platform.db (ruling R2), so not read-only
+_QUERY = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 _WRITES = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
 _STOPS = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False)
 
@@ -48,7 +51,7 @@ def build_server(index_path, platform_path=None):
     def list_runs(ctx: Context) -> dict:
         return actions.list_runs(index_path, caller=_caller(ctx), platform_path=platform_path)
 
-    @server.tool(name="get_run", annotations=_READ_ONLY,
+    @server.tool(name="get_run", annotations=_QUERY,
                  description="One run by its id: status, times, task numbers, task numbers per process, and the "
                              "failed tasks with their exit code and error message (and workdir, the task's folder on the site, "
                              "when Nextflow reported it); a failed run also has failure_reason, "
@@ -56,7 +59,8 @@ def build_server(index_path, platform_path=None):
                              "a confirmed cancel of the run was sent; it is a fact about the request, not a status. "
                              "It also has su: the SU the run's finished tasks used and what that costs (an estimate from "
                              "Nextflow's task records; null with the reasons when a record lacks what the formula needs). "
-                             "usd_approx in su is a rough conversion at the rate in the settings file.")
+                             "usd_approx in su is a rough conversion at the rate in the settings file. "
+                             "A lost run (no word from Nextflow) triggers one read-only site query, to ask the scheduler what became of its head job.")
     def get_run(ctx: Context, run_id: str) -> dict:
         return actions.get_run(index_path, run_id, caller=_caller(ctx), platform_path=platform_path)
 
@@ -178,25 +182,41 @@ def _add_write_tools(server, platform_path, index_path):
     Nothing here says yes for anybody."""
 
     @server.tool(name="launch", annotations=_WRITES,
-                 description="Ask to launch a Nextflow pipeline on a compute environment. This does NOT start anything: it builds the "
-                             "same analysis the terminal command builds, writes a request and shows the person a summary (pipeline, "
-                             "samples, where it runs, where the results go). The person says yes in their own client's form or on "
-                             "a page whose address this returns; you cannot say it for them. When the answer says sent is false, "
-                             "tell the person what to do and, after they have pressed send, call launch again with the same arguments "
-                             "to get the job number. Give the samplesheet in exactly one of two ways: samplesheet is the path of a CSV "
-                             "file you uploaded to your own folder on this platform, or samplesheet_text is the CSV itself (at most "
-                             "1 MiB), which writes no file. A path cell in the CSV may name a file on the site if the environment may "
-                             "read it; params is a flat mapping of pipeline parameters. "
-                             "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used.")
-    async def launch_tool(ctx: Context, pipeline: str, revision: str, run_name: str, samplesheet: str | None = None,
+                 description="Ask to launch a Nextflow run on a compute environment (to continue a failed run use resume or "
+                             "relaunch). This does NOT start anything: it writes a request and returns a summary with sent false and "
+                             "a page address. The person answers in their own client's form or on that page; you cannot answer for "
+                             "them. After that call launch again with the same arguments to get the job number. Samples: samplesheet "
+                             "(a CSV you uploaded) or samplesheet_text (the CSV, at most 1 MiB). "
+                             "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used. "
+                             "Or none, with profiles such as [\"test\"].")
+    async def launch_tool(ctx: Context, pipeline: Annotated[str, Field(description="The pipeline to run: an nf-core name such as nf-core/rnaseq, or a pipeline the site already has. Use it with revision, which says which release or branch to run.")], revision: str, run_name: str, samplesheet: str | None = None,
                           samplesheet_text: str | None = None, ce_name: str | None = None,
-                          params: dict[str, Any] | None = None, path_columns: list[str] | None = None,
-                          dataset: str | None = None, dataset_version: str | None = None) -> dict:
+                          params: Annotated[dict[str, Any] | None, Field(description="A flat mapping of pipeline parameters, e.g. {\"genome\": \"GRCh38\"}.")] = None,
+                          path_columns: list[str] | None = None,
+                          dataset: str | None = None, dataset_version: str | None = None,
+                          profiles: Annotated[list[str] | None, Field(description="The pipeline's own Config profiles, e.g. [\"test\"]. "
+                                                                      "With test, test_full or test_* no samplesheet is needed: the pipeline runs on its own test data "
+                                                                      "(a pipeline installed on the site, Slurm only).")] = None) -> dict:
         return await actions.request_launch(platform_path, pipeline=pipeline, revision=revision, run_name=run_name,
                                             samplesheet=samplesheet, samplesheet_text=samplesheet_text, ce_name=ce_name, params=params,
-                                            path_columns=path_columns, dataset=dataset, dataset_version=dataset_version,
+                                            path_columns=path_columns, dataset=dataset, dataset_version=dataset_version, profiles=profiles,
                                             caller=_caller(ctx), person=actions.person_at(ctx),
                                             remote=_remote(ctx))
+
+    @server.tool(name="launch_pipeline", annotations=_WRITES,
+                 description="Ask to launch one of the person's own saved canvas pipelines: pipeline_id, version (newest when none), "
+                             "run_name, optional ce_name and params (flat mapping). Samplesheet in one way only: samplesheet (path of "
+                             "your uploaded CSV) or samplesheet_text (the CSV, at most 1 MiB). This does NOT start anything: it checks "
+                             "the pipeline again, writes a request and returns a summary; you cannot say yes for the person. When "
+                             "the answer says sent is false, tell them what to do, then call launch_pipeline again with the same "
+                             "arguments to get the job number.")
+    async def launch_pipeline_tool(ctx: Context, pipeline_id: int, run_name: str, version: int | None = None,
+                                   samplesheet: str | None = None, samplesheet_text: str | None = None, ce_name: str | None = None,
+                                   params: dict[str, Any] | None = None) -> dict:
+        return await actions.request_pipeline_launch(platform_path, pipeline_id=pipeline_id, version=version, run_name=run_name,
+                                                     samplesheet=samplesheet, samplesheet_text=samplesheet_text, ce_name=ce_name,
+                                                     params=params, caller=_caller(ctx), person=actions.person_at(ctx),
+                                                     remote=_remote(ctx))
 
     @server.tool(name="cancel", annotations=_STOPS,
                  description="Ask to stop one run that this platform launched. This does NOT stop anything: it writes a request and shows "

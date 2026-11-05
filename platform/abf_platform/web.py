@@ -65,8 +65,8 @@ from starlette.requests import ClientDisconnect
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from abf_launch.build import CONFIG_LIMIT       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
-from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
+from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
+from . import actions, oauth, store, web_board, web_cost, web_launch, web_refusal, web_settings
 from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
@@ -148,11 +148,11 @@ def _esc(text):
     return html.escape(str(text), quote=True)
 
 
-def _page(title, body, status=200, form_action=None):
+def _page(title, body, status=200, form_action=None, lang="zh"):
     headers = _HEADERS
     if form_action:        # the consent form ends in a redirect to the connector, which a form-action rule also covers
         headers = dict(_HEADERS, **{"Content-Security-Policy": _HEADERS["Content-Security-Policy"].replace("form-action 'self'", "form-action 'self' " + form_action)})
-    return HTMLResponse(web_board.document(title, "<h1>%s</h1>%s" % (_esc(title), body)), status_code=status, headers=headers)
+    return HTMLResponse(web_board.document(title, "<h1>%s</h1>%s" % (_esc(title), body), lang=lang), status_code=status, headers=headers)
 
 
 def _login_form(next_path="", message="", status=200):
@@ -198,7 +198,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     def user_of(request):
         sid = session_id(request)
-        return (sid, store.web_session_user(tokens_path, sid, clock())) if sid else (None, None)
+        user = store.web_session_user(tokens_path, sid, clock()) if sid else None
+        # 012a: the development-mode banner of this request is that of this person only (set again for every request, never carried over)
+        web_board.DEV_MODE.set(bool(user is not None and store.user_prefs(tokens_path, user["user_id"])["dev_mode"]))
+        return (sid, user) if sid else (None, None)
 
     def csrf(sid, rid):
         return _mac(key, "csrf", sid, rid)
@@ -380,12 +383,16 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         response.delete_cookie(COOKIE, path="/")
         return response
 
-    def view_of(rid, user):
+    def view_of(rid, user, lang="zh"):
         """(response or None, request description) for a logged-in user and an address."""
         req = actions.describe_request(platform_path, rid, clock=clock)
         if req is None:
+            if lang == "en":
+                return _page("Not found", "<p>No such request.</p>", 404, lang="en"), None
             return _page("找不到 (not found)", "<p>無此申請。</p>", 404), None
         if req["caller_user_id"] != user["user_id"]:
+            if lang == "en":
+                return _page("Not yours", "<p class=\"bad\">That request was not sent by you, so it cannot be viewed or acted on here.</p>", 403, lang="en"), None
             return _page("非您的申請 (not yours)", "<p class=\"bad\">該申請並非由您送出，無法在此檢視或操作。</p>", 403), None
         return None, req
 
@@ -433,49 +440,72 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     def state_page(req, sid, rid, lang="zh"):
         clean = req["kind"] == "clean_work"
-        title = "清理確認" if clean else ("送出確認" if req["kind"] == "launch" else "取消確認")
+        en = lang == "en"
+        if en:
+            title = "Confirm clean-up" if clean else ("Confirm launch" if req["kind"] == "launch" else "Confirm cancel")
+        else:
+            title = "清理確認" if clean else ("送出確認" if req["kind"] == "launch" else "取消確認")
         shown = "<details><summary>%s</summary><pre>%s</pre></details>" % (_PLAIN[lang]["full"], _esc(req["summary"] or ""))
         if req["state"] in ("pending", "confirmed"):
             shown = plain_block(rid, lang) + changes_block(req, lang) + shown
         if req["state"] == "pending":
             if clean:
-                intro = "<p>以下為將被刪除的全部內容。確認無誤後，請按「確認刪除」；按下後才會排入佇列。</p>"
-                button = "Confirm delete" if lang == "en" else "確認刪除"
+                intro = ("<p>Everything that will be deleted is shown below. If it is correct, press \"Confirm delete\"; nothing is queued until you press it.</p>" if en else
+                         "<p>以下為將被刪除的全部內容。確認無誤後，請按「確認刪除」；按下後才會排入佇列。</p>")
+                button = "Confirm delete" if en else "確認刪除"
             else:
-                intro = "<p>以下為將被%s的全部內容。確認無誤後，請按「送出」；按下後才會排入佇列。</p>" % ("送出" if req["kind"] == "launch" else "取消")
-                button = "送出"
+                intro = ("<p>Everything that will be sent is shown below. If it is correct, press \"Send\"; nothing is queued until you press it.</p>" if en else
+                         "<p>以下為將被%s的全部內容。確認無誤後，請按「送出」；按下後才會排入佇列。</p>" % ("送出" if req["kind"] == "launch" else "取消"))
+                button = "Send" if en else "送出"
             return _page(title, "%s%s<form method=\"post\" action=\"/c/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
-                         "<button type=\"submit\">%s</button></form>" % (intro, shown, rid, _esc(csrf(sid, rid)), button))
+                         "<button type=\"submit\">%s</button></form>" % (intro, shown, rid, _esc(csrf(sid, rid)), button), lang=lang)
         if req["state"] == "confirmed":
-            return _page(title, "<p class=\"ok\">已送出。工作編號 %s。</p>%s" % (_esc(req["job_id"]), shown))
+            refused = None
+            if req["kind"] == "launch" and req["job_id"] is not None:
+                try:
+                    refused = web_refusal.refusal_of(platform_path, req["job_id"])
+                except sqlite3.Error:
+                    refused = None
+            if refused:
+                return _page(title, web_board.refusal_block(refused, lang) + shown, lang=lang)
+            line = "Sent. Job number %s." if en else "已送出。工作編號 %s。"
+            return _page(title, "<p class=\"ok\">%s</p>%s" % (line % _esc(req["job_id"]), shown), lang=lang)
         if req["state"] == "expired":
             if clean:
-                return _page(title, "<p class=\"bad\">該申請已逾時（7 天），不會自動重新提出。</p>")
-            return _page(title, "<p class=\"bad\">該申請已逾時（10 分鐘）。請重新送出。</p>")
+                return _page(title, "<p class=\"bad\">%s</p>" % ("This request has expired (7 days) and will not be raised again." if en else "該申請已逾時（7 天），不會自動重新提出。"), lang=lang)
+            return _page(title, "<p class=\"bad\">%s</p>" % ("This request has expired (10 minutes). Please send it again." if en else "該申請已逾時（10 分鐘）。請重新送出。"), lang=lang)
+        reason = _esc(req["void_reason"] or "-")
         if clean:
-            return _page(title, "<p class=\"bad\">該申請已作廢：%s。</p>" % _esc(req["void_reason"] or "-"), 409)
-        return _page(title, "<p class=\"bad\">該申請已作廢：%s。請重新送出。</p>" % _esc(req["void_reason"] or "-"), 409)
+            return _page(title, "<p class=\"bad\">%s</p>" % (("This request was voided: %s." if en else "該申請已作廢：%s。") % reason), 409, lang=lang)
+        return _page(title, "<p class=\"bad\">%s</p>" % (("This request was voided: %s. Please send it again." if en else "該申請已作廢：%s。請重新送出。") % reason), 409, lang=lang)
+
+    def no_address(lang):
+        if lang == "en":
+            return _page("Not found", "<p>No such address.</p>", 404, lang="en")
+        return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
 
     async def confirm_get(request):
         rid = request.path_params["rid"]
+        lang = web_board.pick_lang(request.query_params.get("lang"))
         if not RID.match(rid):
-            return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
+            return no_address(lang)
         sid, user = user_of(request)
         if user is None:
             return to_welcome(request) or _login_form("/c/" + rid)
-        answer, req = view_of(rid, user)
-        return answer or state_page(req, sid, rid, web_board.pick_lang(request.query_params.get("lang")))
+        answer, req = view_of(rid, user, lang)
+        return answer or state_page(req, sid, rid, lang)
 
     async def confirm_post(request):
         if not same_origin(request):
             return foreign(request)
         rid = request.path_params["rid"]
+        lang = web_board.pick_lang(request.query_params.get("lang"))
         if not RID.match(rid):
-            return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
+            return no_address(lang)
         sid, user = user_of(request)
         if user is None:
             return to_welcome(request) or _login_form("/c/" + rid, "請先登入 (log in first)", 401)
-        answer, req = view_of(rid, user)
+        answer, req = view_of(rid, user, lang)
         if answer is not None:
             return answer
         form = await body_of(request)
@@ -521,6 +551,11 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         ce = actions.run_environment(actions.platform_path_for(index_path, platform_path), view["name"])
         if ce:        # the Compute card: the environment the newest hand-off record names (the page's own addition; the action's answer is unchanged)
             view["compute_env"] = ce
+        sent = actions.launch_prefill(platform_path, view["name"], caller=caller)        # the title row's pipeline, revision and site (a run the platform never sent has none: a dash)
+        if sent.get("found") and sent.get("kept"):
+            view["pipeline"], view["revision"] = sent.get("pipeline"), sent.get("revision")
+            if not view.get("compute_env") and sent.get("ce_name"):
+                view["compute_env"] = sent["ce_name"]
         return view
 
     def read_outputs(run_id, caller, outputs_tab, relist, subpath=None):
@@ -543,7 +578,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         except sqlite3.Error:
             return None
 
-    async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200, relist=False, subpath=None):
+    async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200, relist=False, subpath=None, studio=None):
         """The board for one logged-in user: one run's page (the one named, else the one that needs the person most, else the newest;
         an empty page for a person with no run), with `flash` (one plain line of refusal) on it after a refused button."""
         runs = await run_in_threadpool(read_runs, caller)
@@ -559,12 +594,18 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "finished" and not flash:
                 finished = await run_in_threadpool(read_finished, selected, caller)
                 outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
+            if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "downstream" and not flash:
+                outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
             if selected["status"] == "succeeded":
                 asked = (await run_in_threadpool(actions.clean_requests, platform_path, caller=caller, clock=clock)).get(selected["name"])
                 if asked:
                     selected["clean_request"] = asked
+        try:
+            refusal = await run_in_threadpool(web_refusal.latest_refusal, platform_path, user["user_id"], clock())
+        except sqlite3.Error:
+            refusal = None
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
-                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished)
+                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     async def board(request):
@@ -579,7 +620,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                                      relist=request.query_params.get("relist") == "1")
         return await board_page(sid, user, caller, lang, request.query_params.get("run") or "", request.query_params.get("stage"),
                                 request.query_params.get("tab"), relist=request.query_params.get("relist") == "1",
-                                subpath=request.query_params.get("path"))
+                                subpath=request.query_params.get("path"), studio=request.query_params.get("studio"))
 
     async def run_file_get(request):
         """One result file of the caller's own run, as a download (results-files). The action reads the answer of the agent's job or queues one; this
@@ -638,7 +679,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         lang = web_board.pick_lang(form.get("lang"))
         run_id = str(form.get("run", ""))[:200]
         if verb not in ("resume", "relaunch", "cancel"):
-            return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
+            return no_address(lang)
         if not _same(form.get("csrf", ""), csrf(sid, "act:" + run_id)):
             return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(web_board.STRINGS[lang]["r_form"]), 403)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
@@ -748,6 +789,13 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             reuse = actions.list_used_pipelines(platform_path, caller=caller, pipeline=pipeline, revision=revision)["pipelines"]
         return used, reuse
 
+    def launch_preview(caller, name):
+        """Step 4: the first rows of the caller's own chosen samplesheet, or the kind of reason it cannot be read (nothing is written)."""
+        try:
+            return dict(actions.preview_samplesheet(platform_path, caller, name), state="ok")
+        except BuildRefusal as e:
+            return {"state": "error", "kind": getattr(e, "kind", "unreadable")}
+
     def launch_files(caller, full, revision, ce_name, src, enqueue=True):
         """The pipeline's own files for the guided page (guided-launch-2): on the new-pipeline tab the list of releases (the version drop-down; when
         no revision is chosen yet its newest one is the revision, guided-launch-2d), then what pipeline_files answers for the pair, then (only when
@@ -770,9 +818,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         sheets, envs = await run_in_threadpool(launch_choices, caller)
         names = [e["name"] for e in envs]
         values = dict(values)
+        chosen_sheet = values.get("samplesheet") if values.get("samplesheet") in sheets else None
         values.setdefault("samplesheet", sheets[0] if sheets else None)
         values.setdefault("ce_name", names[0] if names else None)
         guide = dict(guide or {})
+        if chosen_sheet:
+            guide["preview"] = await run_in_threadpool(launch_preview, caller, chosen_sheet)
         pipeline = (values.get("pipeline") or "").strip()
         revision = (values.get("revision") or "").strip()
         full = pipeline if "/" in pipeline else ("nf-core/" + pipeline if pipeline else "")
@@ -1108,7 +1159,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         lists = {e["name"]: await run_in_threadpool(lambda e=e: actions.site_pipeline_inventory(platform_path, ce=e["name"], caller=caller))
                  for e in envs if e.get("platform") == web_settings.SLURM_TYPE}      # what each Slurm site last reported it has installed (reads only)
         return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "settings-pipeline"), flash, given,
-                                                lists, csrf(sid, "settings-inventory")),
+                                                lists, csrf(sid, "settings-inventory"), actions.get_my_settings(tokens_path, caller=caller),
+                                                csrf(sid, "settings-personal"), store.has_live_pat(tokens_path, user["user_id"])),
                             status_code=code, headers=_HEADERS)
 
     async def settings(request):
@@ -1119,6 +1171,26 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         lang = web_board.pick_lang(request.query_params.get("lang"))
         key, ce = request.query_params.get("notice"), request.query_params.get("ce")
         return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "notice", key=key, ce=ce))
+
+    # ---- settings-personal (012a): one click saves one of the person's own two switches; the answer is a redirect with a notice, or the page with one sentence.
+    async def personal_post(request):
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        if not same_origin(request):
+            return pf_refused(lang, "foreign")
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        t = web_settings.words(lang)
+        key, on = str(form.get("key", "")), str(form.get("on", ""))
+        if not _same(form.get("csrf", ""), csrf(sid, "settings-personal")) or key not in store.PREF_DEFAULTS or on not in ("0", "1"):
+            return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "fail", text=t["pref_bad"]), None, 400)
+        done = actions.set_my_setting(tokens_path, key, on == "1", confirmed_by=actions.PAGE, caller=caller)
+        if not done.get("ok"):
+            return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "fail", text=t["pref_failed"]), None, 400)
+        return RedirectResponse("/settings?notice=personal-saved%s" % ("&lang=en" if lang == "en" else ""), status_code=303, headers=_HEADERS)
 
     # ---- settings-register-pipeline: register or remove a pipeline version on the person's own compute environment, in two steps.
     # Step one only checks (check_site_pipeline_change reads) and shows what will change; step two, after the person presses the button, is the
@@ -1321,6 +1393,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return gone or _page("未處理", "<p class=\"bad\">未變更任何內容。請返回連接器重新開始。</p>", 403 if status == "user" else 404)
 
     app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
+                            Route("/settings/personal", personal_post, methods=["POST"]),
                             Route("/settings/pipelines", pipelines_post, methods=["POST"]),
                             Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]),
                             Route("/settings/inventory", inventory_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),

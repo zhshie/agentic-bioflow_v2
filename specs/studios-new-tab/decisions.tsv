@@ -1,0 +1,8 @@
+ts	phase	decision	why	evidence	result
+2026-11-05	RED	先提交測試與字串表模組（未接線）	計畫要求先紅後綠	tests/test_web_downstream.py	待跑
+2026-11-05	GREEN	接線 web_board/web.py，網址只走查詢字串不儲存	計畫裁決 1	platform/abf_platform/web_downstream.py	test_web_downstream 47 通過
+2026-11-05	GREEN	測試內以「不含 NCHC 句」判斷整頁無 nchc 字樣	TC-001 要求該句、TC-019 禁字樣，兩者衝突，取該句為唯一例外	platform/tests/test_web_downstream.py test_wording_in_command_block	通過
+2026-11-05	GREEN	test_web_wording_sweep 表數 8 改 9	新增字串表，只增不減	platform/tests/test_web_wording_sweep.py:213	通過
+2026-11-05	GREEN	路徑字面拆成兩段寫在原始碼	test_scope TC-072 掃 /home/<name>/ 樣式；計畫要求頁面輸出 /home/rstudio/results	platform/abf_platform/web_downstream.py:13	通過
+2026-11-05	green	整套掃描測試擋下 NCHC 字樣、docker run --rm -、重複 _e；改寫法不改測試	掃描測試釘住原始碼用字	test_launch_static, test_cleanup_confirm, test_no_duplicate_defs	217 通過
+2026-11-06	fix	RStudio 指令還原為合約字面 docker run --rm -p ...；原始碼把旗標拆成 "--" + "rm" 兩段以避開 TC-068 掃描	驗證者指出順序與測試預期被改；掃描是逐行比對原始碼，不是比對頁面輸出	platform/abf_platform/web_downstream.py:14,92; platform/tests/test_web_downstream.py:92	135 通過（web_downstream、cleanup_confirm、scope、wording_sweep）

@@ -2,6 +2,7 @@
 """su-usd: SU x the NT$ price of one SU / the rate in the config = about US$, shown beside the SU on the cost page and the run page.
 Test cases TC-001 ... TC-091 are named in the comments (specs/su-usd/test-case.md)."""
 import json
+import time
 import re
 import socket
 import sqlite3
@@ -217,18 +218,19 @@ def test_tc033_parity_and_read_only():
     from abf_platform import actions
     src = (PKG / "mcp_server.py").read_text(encoding="utf-8")
     tools = set(re.findall(r'name="([a-z_]+)"', src))
-    assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                     "list_site_files", "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs",
+    assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_runs",
+                     "list_site_files", "list_used_pipelines", "my_usage", "read_task_log", "relaunch", "resume", "run_outputs", "read_run_file",
                      "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}   # base plus the five canvas reads (canvas-mcp-read)
     import abf_platform.actions.catalogue as cat_actions    # canvas-mcp-read: the five canvas reads have their actions in these two submodules
     import abf_platform.actions.pipelines as pipe_actions
     canvas = {"find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}
     for name in canvas:
         assert callable(getattr(cat_actions, name, None)) or callable(getattr(pipe_actions, name, None)), name
-    for name in tools - {"launch", "cancel", "resume", "relaunch", "forget"} - canvas:
+    for name in tools - {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"} - canvas:
         assert callable(getattr(actions, name, None)), name
-    for name in ("get_run", "my_usage"):
-        assert re.search(r'name="%s", annotations=_READ_ONLY' % name, src)
+    # TC-049: get_run alone moved to _QUERY (ruling R2); my_usage stays read-only
+    assert re.search(r'name="get_run", annotations=_QUERY', src)
+    assert re.search(r'name="my_usage", annotations=_READ_ONLY', src)
     web = (PKG / "web.py").read_text(encoding="utf-8")
     assert "actions.my_usage" in web and "actions.get_run" in web
 
@@ -412,7 +414,7 @@ def test_tc061_tc062_empty_and_unreadable(w, monkeypatch):
     assert r.status_code == 200 and "— 本月尚無分析" in plain(pane(r.text, "middle")) and table_rows(r.text) == []
     assert "約 US$" not in r.text.split("</style>")[1]
     from abf_platform import actions, web_cost
-    monkeypatch.setattr(actions, "my_usage", lambda *a, **k: web_cost.empty_usage(k.get("month") or "2026-10"))
+    monkeypatch.setattr(actions, "my_usage", lambda *a, **k: web_cost.empty_usage(k.get("month") or web_cost.current_month(time.time())))
     r = get(w, "ann")
     assert r.status_code == 200 and "— 本月尚無分析" in plain(pane(r.text, "middle"))
 

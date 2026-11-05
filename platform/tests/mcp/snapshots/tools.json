@@ -201,6 +201,7 @@
             }
           ],
           "default": null,
+          "description": "A flat mapping of pipeline parameters, e.g. {\"genome\": \"GRCh38\"}.",
           "title": "Params"
         },
         "path_columns": {
@@ -219,8 +220,25 @@
           "title": "Path Columns"
         },
         "pipeline": {
+          "description": "The pipeline to run: an nf-core name such as nf-core/rnaseq, or a pipeline the site already has. Use it with revision, which says which release or branch to run.",
           "title": "Pipeline",
           "type": "string"
+        },
+        "profiles": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The pipeline's own Config profiles, e.g. [\"test\"]. With test, test_full or test_* no samplesheet is needed: the pipeline runs on its own test data (a pipeline installed on the site, Slurm only).",
+          "title": "Profiles"
         },
         "revision": {
           "title": "Revision",
@@ -264,6 +282,88 @@
       "type": "object"
     },
     "name": "launch"
+  },
+  {
+    "inputSchema": {
+      "properties": {
+        "ce_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ce Name"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Params"
+        },
+        "pipeline_id": {
+          "title": "Pipeline Id",
+          "type": "integer"
+        },
+        "run_name": {
+          "title": "Run Name",
+          "type": "string"
+        },
+        "samplesheet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samplesheet"
+        },
+        "samplesheet_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samplesheet Text"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "pipeline_id",
+        "run_name"
+      ],
+      "title": "launch_pipeline_toolArguments",
+      "type": "object"
+    },
+    "name": "launch_pipeline"
   },
   {
     "inputSchema": {

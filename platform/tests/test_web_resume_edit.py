@@ -74,6 +74,16 @@ def make_run(rig, ann, name="run-a", status="failed", params=None, reusable=True
     return "id-" + name
 
 
+def finish_run(rig, name):
+    """The run ends as succeeded. The menu of a succeeded run no longer has a resume form (web-bugs-a #337), so a test that wants to
+    press resume on one takes the form while the run is still failed and calls this before posting."""
+    from abf_platform import store
+    con = store.connect_index(rig.index)
+    with con:
+        con.execute("UPDATE runs SET final_status = 'succeeded' WHERE run_name = ?", (name,))
+    con.close()
+
+
 def edit_url(rid, lang=""):
     return "/act/resume/edit?run=" + urllib.parse.quote(rid, safe="") + ("&lang=en" if lang == "en" else "")
 
@@ -294,9 +304,14 @@ def test_tc023_tc027_tc086_other_people_and_missing(rig, fx):
 def test_tc024_not_resumable_goes_back_to_the_run_page(rig, fx):
     # TC-024, TC-050
     ann, c = ready(rig)
-    for rid in (make_run(rig, ann, "run-ok", status="succeeded"), make_run(rig, ann, "run-go", status=None)):
+    for rid in (make_run(rig, ann, "run-ok", status="failed"), make_run(rig, ann, "run-go", status=None)):
         r = c.get(edit_url(rid))
-        post = c.post("/act/resume", data=act_form(c.get("/?run=%s&stage=running" % rid).text, "resume", rid))
+        form = act_form(c.get("/?run=%s&stage=running" % rid).text, "resume", rid) if rid == "id-run-go" else None
+        if form is None:
+            form = act_form(c.get("/?run=%s&stage=running" % rid).text, "resume", rid)
+            finish_run(rig, "run-ok")
+            r = c.get(edit_url(rid))
+        post = c.post("/act/resume", data=form)
         assert r.status_code == post.status_code == 409
         assert 'name="extra_config"' not in r.text
         assert re.search(r'<p class="bad" role="alert">([^<]*)</p>', r.text).group(1) == re.search(r'<p class="bad" role="alert">([^<]*)</p>', post.text).group(1)
@@ -439,8 +454,9 @@ def test_tc045_to_tc047_csrf_and_origin(rig, fx, spy):
 def test_tc049_not_resumable_with_edits(rig, fx):
     # TC-049, TC-050
     ann, c = ready(rig)
-    rid = make_run(rig, ann, "run-ok", status="succeeded")
+    rid = make_run(rig, ann, "run-ok", status="failed")
     base = act_form(c.get("/?run=%s&stage=running" % rid).text, "resume", rid)
+    finish_run(rig, "run-ok")
     r = c.post("/act/resume", data=dict(base, extra_config=MEM))
     assert r.status_code == 400 and "✕ 未能完成：" in r.text and 'name="extra_config"' in r.text
     plain = c.post("/act/resume", data=base)
@@ -609,4 +625,4 @@ def test_tc079_the_style_is_pinned():
     # TC-079
     import hashlib
     from abf_platform import web_board
-    assert hashlib.sha256(web_board.STYLE.encode()).hexdigest() == "6b2683ae09caee2a0e66778f2cde00e56e9ab500413829cf531c5c27ce8742f3"      # the value on the base (v3)
+    assert hashlib.sha256(web_board.STYLE.encode()).hexdigest() == "719ce2abf9783006813e34889d8180ef2123d266168ed70e0969f8532ea1f59a"      # the value on the base (v3)

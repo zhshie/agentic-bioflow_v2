@@ -122,7 +122,11 @@ def test_the_expired_and_void_pages_for_clean_work_say_seven_days_and_do_not_say
     expire(w, rid)
     for lang in ("zh", "en"):
         t = c.get("/c/%s?lang=%s" % (rid, lang)).text
-        assert "清理確認" in t and "該申請已逾時（7 天），不會自動重新提出。" in t
+        if lang == "zh":
+            assert "清理確認" in t and "該申請已逾時（7 天），不會自動重新提出。" in t
+        else:      # web-bugs-a #335: the English page is English
+            assert "Confirm clean-up" in t and "This request has expired (7 days) and will not be raised again." in t
+            assert re.search(r"[㐀-鿿]", t) is None
         assert "10 分鐘" not in t and "回到 AI" not in t
         assert "<form" not in t and "<button" not in t and "<a " not in t.split("</h1>")[1]
 
@@ -155,12 +159,12 @@ def test_get_changes_nothing_for_a_clean_request(w):
 # guided-launch-2c changed five rules (the red star, the step area width, the form width, the field width, the phone cells) and the column widths of the table, so they were pinned a third time; again only the stylesheet differs.
 # guided-launch-2d replaced one rule of the same stylesheet (.dlink, the link that opened the diagram, became .gdia, the picture), so they were pinned a sixth time; again only the stylesheet differs.
 # web-nano4-path: the void (409), expired, pressed and late pages, and the failed and running boards, were pinned again (specs/web-nano4-path/ledger.md says what each one changed)
-BASE_CONFIRM = {'pending-launch-zh': (200, 'cbb48ae2d5e37305'), 'pending-cancel-zh': (200, 'c6ab40646e5b076e'), 'pending-launch-en': (200, 'ff8b0337d45b455a'), 'pending-cancel-en': (200, '5ce5dd64fd5a89e9'), 'void-zh': (409, '41755269fc9f6766'), 'void-en': (409, '41755269fc9f6766'), 'confirmed-launch-zh': (200, '3d9ff790cbb732ab'), 'confirmed-launch-en': (200, '600414dcebec32e6'), 'confirmed-cancel-zh': (200, '97cb98a3a8fbe947'), 'confirmed-cancel-en': (200, '6db5d1756ebcd0cd')}
-BASE_EXPIRED = {'expired-launch-zh': (200, '523f87da28be07a7'), 'expired-cancel-zh': (200, '1b1c8e0631ccc7ff'), 'expired-launch-en': (200, '523f87da28be07a7'), 'expired-cancel-en': (200, '1b1c8e0631ccc7ff')}
-BASE_POST = {'pressed-launch': (200, 'a34f62e11916b3f4'), 'pressed-cancel': (200, '0cd42b3a6362279f'), 'late-launch': (410, '6e7214f55f0f7a1f'), 'late-cancel': (410, '6e7214f55f0f7a1f')}
+BASE_CONFIRM = {'pending-launch-zh': (200, 'fe5514ddb54b87be'), 'pending-cancel-zh': (200, 'a091909211bfbfe6'), 'pending-launch-en': (200, 'f81df5bf56856375'), 'pending-cancel-en': (200, 'a74ae004df83b803'), 'void-zh': (409, 'fa3f7fe76403162c'), 'void-en': (409, '9c654393f983a69d'), 'confirmed-launch-zh': (200, 'e5a786eb63758e56'), 'confirmed-launch-en': (200, 'ea17937b2dffe930'), 'confirmed-cancel-zh': (200, 'e3a05a74d73d0ff0'), 'confirmed-cancel-en': (200, '2b9fb608c4d551aa')}
+BASE_EXPIRED = {'expired-launch-zh': (200, 'c5337bf1963a59ac'), 'expired-cancel-zh': (200, '72238ce3aba6beba'), 'expired-launch-en': (200, 'def9e0588a5b5cb5'), 'expired-cancel-en': (200, '7c037fdbe087273c')}
+BASE_POST = {'pressed-launch': (200, '8ba58c6a5e41a5e4'), 'pressed-cancel': (200, 'f4e7154548d941de'), 'late-launch': (410, 'ae6e585c5f53be41'), 'late-cancel': (410, 'ae6e585c5f53be41')}
 # web-upload-page ruling 25: the left column's upload item is a link now, so the six board digests are the new ones (only that item differs)
-BASE_BOARD = {'succeeded-zh': (200, 'a4af8bb5a5b19d46'), 'succeeded-en': (200, '72cbbda7e4510517'), 'failed-zh': (200, '179793ff14d6b655'), 'failed-en': (200, '5348502adb90bd82'), 'running-zh': (200, '816b53a71229567f'), 'running-en': (200, '4372dc4d2c4050bf')}
-BASE_STYLE = '6b2683ae09caee2a'
+BASE_BOARD = {'succeeded-zh': (200, 'c10f407709d4b3c7'), 'succeeded-en': (200, '0faeee8889bb0ea5'), 'failed-zh': (200, '1aea141b3e133d77'), 'failed-en': (200, '6dd0647722ea2208'), 'running-zh': (200, '851275a8f28eda5b'), 'running-en': (200, '556a5359e5fed9e3')}
+BASE_STYLE = '719ce2abf9783006'
 
 
 def launch_and_cancel(w, ann):

@@ -377,9 +377,10 @@ def test_tc071_exactly_six_read_only_tools_over_stdio_and_http(tmp_path):
         stop_proc(proc)
     want = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]
     for ts in (tools, tools_http):
-        assert sorted(t.name for t in ts) == sorted(want + ["launch", "cancel", "forget", "resume", "relaunch"])    # 009e: plus resume and relaunch
+        assert sorted(t.name for t in ts) == sorted(want + ["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"])    # 009e: plus resume and relaunch
         for t in [t for t in ts if t.name in want]:
-            assert t.annotations is not None and t.annotations.read_only_hint is True
+            # TC-049: get_run alone is no longer read-only (ruling R2: a lost run queues one site read); every other tool still is
+            assert t.annotations is not None and t.annotations.read_only_hint is (t.name != "get_run")
             assert t.annotations.destructive_hint is not True
             assert not re.search(r"launch|cancel|delete|clean|write|create|update|enqueue", t.name)
     for a, b in zip(via_stdio, via_http):

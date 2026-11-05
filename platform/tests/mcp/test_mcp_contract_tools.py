@@ -17,7 +17,7 @@ EXPECTED_TOOLS = sorted([
     "list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines",
     "my_usage", "run_outputs", "read_run_file", "read_task_log", "find_module", "describe_module", "list_pipelines",
     "get_pipeline", "get_validation",
-    "launch", "cancel", "forget", "resume", "relaunch",
+    "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch",
 ])
 
 
@@ -122,8 +122,7 @@ LIMIT = 600
 # Technical debt, listed for the maintainer: these descriptions are longer than LIMIT today. A tool listed here may not grow past the
 # number written next to it; shorten the description and delete the line. (Measured on v3.)
 OVER_LIMIT = {
-    "get_run": 683,
-    "launch": 968,
+    "get_run": 804,      # ruling R2: +121 for the sentence that a lost run triggers one read-only site query
     "run_outputs": 700,
 }
 

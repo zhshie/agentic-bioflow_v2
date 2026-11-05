@@ -24,7 +24,7 @@ LIMIT = 26214400
 BANNED = ["用過", "選好", "寫死", "自己填", "自己調整", "你還沒", "還沒有", "還不能", "這個", "這份", "這條", "這一版", "一下", "弄", "搞", "東西",
           "喔", "啦", "吧", "囉", "蠻"]      # DESIGN.md 用字; the single word 超 is checked apart, because 超過 is the plain word for "more than"
 REPORT = "multiqc/multiqc_report.html"
-STYLE_SHA256 = "6b2683ae09caee2a0e66778f2cde00e56e9ab500413829cf531c5c27ce8742f3"      # the stylesheet of the base (D13 pins it)
+STYLE_SHA256 = "719ce2abf9783006813e34889d8180ef2123d266168ed70e0969f8532ea1f59a"      # the stylesheet of the base plus the two 012a rules (.devbar, .pref); D13 pins it
 HTML_BYTES = b"<html><script>alert(1)</script>\xff\xfe\x00 binary \x80</html>\n"
 INTERNAL = re.compile(r"Traceback|JobRefused|\bSELECT\b|sqlite|args_json|result_json|deadline_at|Exception|, line \d+")
 
