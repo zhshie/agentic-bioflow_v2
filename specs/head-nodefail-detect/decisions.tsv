@@ -28,3 +28,4 @@ ts	phase	decision	why	evidence	result
 2026-11-04	merge	合併 origin/v3；tc048 的 REQUEST_TOOLS 期望值加入 v3 新增的 launch_pipeline，其餘不變	v3 新增 launch_pipeline 為寫入工具，與 get_run 無關	tests/test_head_nodefail.py:805	待全套
 2026-11-05	merge	test_mcp_launch_pipeline 的唯讀數 16→15（get_run 非唯讀，裁決 R2）；test_no_schema_change 在 origin/v3 本身就紅（v3 動了 store.py），不碰	全套第一輪紅 2 支	platform/tests/test_mcp_launch_pipeline.py:269	待重跑
 2026-11-05	fix	撤回裁決 R4：還原 test-case.md TC-044 為驗卷者版本，jobs.py 去掉「已有抓取列」條件，測試改回 no_fetch 也不再問	實作期間改合約算 FAIL；維護者原裁決 R1 是失聯超過6小時且無事實就不再問	jobs.py:501; test_head_nodefail.py:test_tc044; commit 5a690011	待跑
+2026-11-05	fix	TC-044 移時鐘前補 heartbeat，並加變異測試	原測試時鐘移動使 agent 離線而空過	platform/tests/test_head_nodefail.py test_tc044_*	5 passed

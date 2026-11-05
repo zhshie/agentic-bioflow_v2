@@ -734,8 +734,31 @@ def test_tc044_a_run_lost_for_seven_hours_with_no_fact_is_not_asked_again(rig, h
     for step in range(3):
         v = get(rig, rid)
         assert v["status"] == "lost" and v["failure"]["failure_reason"] is None
-        assert jobs.ask_head_state(rig.state, "x", clock=lambda s=step: time.time() + 120 * (s + 1), last_message_at=time.time() - 7 * 3600) is False
+        later = time.time() + 120 * (step + 1)
+        _agent_online_at(rig, later)      # the agent is online at the moved time, so only the 6-hour limit can say no
+        assert jobs.ask_head_state(rig.state, "x", clock=lambda t=later: t, last_message_at=time.time() - 7 * 3600) is False
     assert len(fetch_jobs(rig)) == n
+
+
+def _agent_online_at(rig, t):
+    con = sqlite3.connect(str(rig.state))
+    with con:
+        con.execute("UPDATE agents SET last_seen_at = ?", (t,))
+    con.close()
+
+
+@pytest.mark.parametrize("how", ["no_fetch", "only_none"])
+def test_tc044_mutation_without_the_give_up_the_later_steps_ask_again(rig, how, monkeypatch):
+    # TC-044 mutation proof (ruling of 11-05): with the 6-hour limit switched off, the moved-clock calls queue a fetch (True),
+    # so the steps of the test above really exercise the limit and not an offline agent
+    from abf_platform import jobs
+    _lost_for(rig, 7)
+    if how == "only_none":
+        add_fetch(rig, "x", None, age=7 * 3600)
+    monkeypatch.setattr(jobs, "BAD_END_GIVE_UP_SECONDS", 10 ** 12)
+    later = time.time() + 120
+    _agent_online_at(rig, later)
+    assert jobs.ask_head_state(rig.state, "x", clock=lambda: later, last_message_at=time.time() - 7 * 3600) is True
 
 
 def test_tc045_a_run_lost_for_five_hours_is_still_asked_once(rig):
