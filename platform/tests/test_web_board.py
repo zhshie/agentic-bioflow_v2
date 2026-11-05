@@ -809,7 +809,7 @@ def test_tch11_read_only(w):
         forms = re.findall(r"<form\b[^>]*>", t)
         assert 'action="/logout"' in forms[0]
         # settings-register-pipeline: /settings now also holds the register and remove forms of that task (action /settings/pipelines)
-        own = r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">' if url != "/settings" else r'<form class="(act|lform)" method="post" action="/settings/(pipelines|inventory)">'      # settings-pick-installed: and the reload button of the site list
+        own = r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">' if url != "/settings" else r'<form (class="(act|lform)" )?method="post" action="/settings/(pipelines|inventory|personal)">'      # settings-pick-installed: and the reload button of the site list; 012a: and the two switch forms
         assert all(re.fullmatch(own, f) for f in forms[1:])     # 012b
         assert len(forms) > 1          # the failed run is on the Now page and on its own page: both have the buttons that ask
         assert t.count("<button") == len(forms)
@@ -822,7 +822,7 @@ def test_tch11_read_only(w):
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),
                       ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
-                      ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")), ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline; settings-pick-installed: the reload button
+                      ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")), ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/personal", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline; settings-pick-installed: the reload button
                       ("/token", ("OPTIONS", "POST")),
                       ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),      # web-upload-page
                       ("/usage", ("GET", "HEAD")), ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: /welcome
@@ -963,7 +963,7 @@ def test_tcs39_s40_s41_s42_settings(w):
     for word in ("AI 模型金鑰", "逐步模式", "開發模式"):
         assert word in mid
     # settings-register-pipeline ruling 1: apart from the register and remove forms of that task, the middle column still has nothing to press
-    assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", re.sub(r'<form[^>]*action="/settings/(pipelines|inventory)".*?</form>', "", mid, flags=re.S))      # settings-pick-installed: and the reload form
+    assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", re.sub(r'<form[^>]*action="/settings/(pipelines|inventory|personal)".*?</form>', "", mid, flags=re.S))      # settings-pick-installed: and the reload form; 012a: and the switch forms
     # TC-N14 / TC-K6 (R8): the second key is named nowhere; spelled by concatenation so the platform-wide safety test stays at 0
     second = "J" + "ev"
     for url in ("/settings", "/settings?lang=en"):
@@ -1204,7 +1204,7 @@ def test_tn05_no_new_tool_or_action(w):
     from abf_platform import actions
     tools, _ = w.mcp([])
     assert sorted(t.name for t in tools) == sorted(["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
-                                                    "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "forget", "resume", "relaunch"])
+                                                    "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"])
     assert not [n for n in dir(actions) if "board" in n]
 
 
@@ -1237,7 +1237,7 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
             if tag == "<table" and url == "/settings":      # settings-page ruling 11: only /settings may carry a table (the compute environments)
                 continue
             assert tag not in t, (url, tag)
-        settings_free = re.sub(r'<form[^>]*action="/settings/(pipelines|inventory)".*?</form>', "", t, flags=re.S) if url == "/settings" else t      # settings-register-pipeline: its own forms are checked in test_web_settings_register.py
+        settings_free = re.sub(r'<form[^>]*action="/settings/(pipelines|inventory|personal)".*?</form>', "", t, flags=re.S) if url == "/settings" else t     # settings-register-pipeline: its own forms are checked in test_web_settings_register.py
         assert [m for m in re.findall(r"<input\b[^>]*>", settings_free) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m or ('name="ce"' in m and url == "/settings"))] == []     # 012b: the buttons carry the run id (and the language)
         # settings-pick-installed: the folded "advanced" block of a Slurm environment on /settings is a <details class="padv"> (the plan says so)
         assert t.count("<details") - t.count('<details class="menu">') - (t.count('<details class="padv">') if url == "/settings" else 0) == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))

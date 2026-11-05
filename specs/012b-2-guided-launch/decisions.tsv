@@ -1,0 +1,14 @@
+ts	phase	decision	why	evidence	result
+2026-11-04	設計	「已選定」只算網址或表單明確帶 samplesheet，不算下拉預設第一項	避免一進頁面就讀檔；符合裁定	platform/abf_platform/web.py launch_page chosen_sheet	test_no_sheet_selected_no_preview 通過
+2026-11-04	設計	缺必填欄只標示，不擋送出	裁定：預覽是提示不是關卡	platform/abf_platform/web_launch.py preview_block	test_schema_loading_error_and_missing 通過
+2026-11-04	設計	新增唯讀動作 preview_samplesheet，並登記於 WEB_ONLY 與 NO_TOOL	網頁專用，無 MCP 工具；parity 守衛要求	platform/tests/test_web_parity.py WEB_ONLY	test_web_parity 通過
+2026-11-04	流程	實作先於測試寫成，之後補測試；未依 RED 再 GREEN 順序	前段上下文中斷，實作已先落地	test_web_guided_launch_preview.py	如實記錄，測試對最終實作全數通過
+2026-11-04	設計	schema_input 為 none 時既有的「✗ 。」行屬原行為，測試只檢查預覽區	避免改動範圍外的既有行為	test_web_guided_launch_preview.py test_schema_loading_error_and_missing	通過
+2026-11-04	用字	太大一句 zh 由「超過」改為「大於」，並補 zh 的 g_pv_total1	既有 test_web_wording_sweep 禁用「超」字且中英字串表鍵須一致；計畫原句與之衝突（TC-308 原文用「超過」）	platform/abf_platform/web_board.py g_pv_big	三個既有測試回綠；偏離 TC-308 的字面，須回報
+2026-11-04T19:00	全套	更新兩個釘住雜湊的既有測試（動作數 51->52、web_board.STRINGS 雜湊）	新增 preview_samplesheet 與 g_pv_* 字串必然改變釘住值，沿用既有慣例加註解	test_k8s_launch.py::test_the_user_visible_actions_are_those_of_the_base; test_web_settings_ce_mobile.py::test_ce08_no_new_strings	待重跑
+2026-11-04T20:00	修正回合	TC-108／TC-315 測試改成真的 POST /launch；NUL、非 UTF-8、空檔三種由既有送出檢查拒絕，改斷言拒絕句不含預覽字樣	退回指出只檢查按鈕文字，比 TC 弱；這三種的拒絕不是預覽造成	test_web_guided_launch_preview.py press_send	18 通過
+2026-11-04T20:05	修正回合	TC-308 用字與 TC-621 範圍不自行裁決，記入 ledger 請維護者決定	不能改 test-case.md，也不能放寬既有禁字表	ledger.md 修正回合	待裁決
+2026-11-05T09:00	修正回合R2	補 27 條缺的斷言（TC-015,112,312,313,403,406-408,411,511-514,517,518,605,608,610,613,614,803,804）	裁決 R2 要求補測試不改行為	test_web_guided_launch_preview.py（新增 11 個測試）	29 通過
+2026-11-05T09:05	修正回合R2	TC-312/313/514 用 chmod 000 的真檔（列得出但讀不到），不用 monkeypatch；root 下會跳過	符號連結不會被列入清單，無法作為「已選但讀不到」；chmod 是能在 WSL 穩定重現的真實失敗	test_web_guided_launch_preview.py unreadable()	通過（非 root）
+2026-11-05T09:10	修正回合R2	TC-605 以 <style> 文字的 sha256 釘住（本片對 web_board.py 的 diff 只動 STRINGS，未動 CSS）	無法在測試內取得修改前的頁面	test_style_sheet_text_is_the_one_before_this_task	通過
+2026-11-05T09:15	修正回合R2	TC-616（其餘各步與修改前逐字相同）未另寫自動斷言；TC-613 只斷言六步順序與標題，「只列可用運算環境」未重寫	測試內無修改前頁面可比對；環境過濾已由既有 guided-launch 測試覆蓋；TC-803 的 no_per_pipeline_config.sh 部分由全套 shell 測試跑	diff 只改第 4 步（web.py、web_launch.preview_block）	誠實標為未補

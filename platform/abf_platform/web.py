@@ -65,7 +65,7 @@ from starlette.requests import ClientDisconnect
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from abf_launch.build import CONFIG_LIMIT       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
+from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
 from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
 from . import uploads_web, web_upload
 
@@ -198,7 +198,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     def user_of(request):
         sid = session_id(request)
-        return (sid, store.web_session_user(tokens_path, sid, clock())) if sid else (None, None)
+        user = store.web_session_user(tokens_path, sid, clock()) if sid else None
+        # 012a: the development-mode banner of this request is that of this person only (set again for every request, never carried over)
+        web_board.DEV_MODE.set(bool(user is not None and store.user_prefs(tokens_path, user["user_id"])["dev_mode"]))
+        return (sid, user) if sid else (None, None)
 
     def csrf(sid, rid):
         return _mac(key, "csrf", sid, rid)
@@ -748,6 +751,13 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             reuse = actions.list_used_pipelines(platform_path, caller=caller, pipeline=pipeline, revision=revision)["pipelines"]
         return used, reuse
 
+    def launch_preview(caller, name):
+        """Step 4: the first rows of the caller's own chosen samplesheet, or the kind of reason it cannot be read (nothing is written)."""
+        try:
+            return dict(actions.preview_samplesheet(platform_path, caller, name), state="ok")
+        except BuildRefusal as e:
+            return {"state": "error", "kind": getattr(e, "kind", "unreadable")}
+
     def launch_files(caller, full, revision, ce_name, src, enqueue=True):
         """The pipeline's own files for the guided page (guided-launch-2): on the new-pipeline tab the list of releases (the version drop-down; when
         no revision is chosen yet its newest one is the revision, guided-launch-2d), then what pipeline_files answers for the pair, then (only when
@@ -770,9 +780,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         sheets, envs = await run_in_threadpool(launch_choices, caller)
         names = [e["name"] for e in envs]
         values = dict(values)
+        chosen_sheet = values.get("samplesheet") if values.get("samplesheet") in sheets else None
         values.setdefault("samplesheet", sheets[0] if sheets else None)
         values.setdefault("ce_name", names[0] if names else None)
         guide = dict(guide or {})
+        if chosen_sheet:
+            guide["preview"] = await run_in_threadpool(launch_preview, caller, chosen_sheet)
         pipeline = (values.get("pipeline") or "").strip()
         revision = (values.get("revision") or "").strip()
         full = pipeline if "/" in pipeline else ("nf-core/" + pipeline if pipeline else "")
@@ -1108,7 +1121,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         lists = {e["name"]: await run_in_threadpool(lambda e=e: actions.site_pipeline_inventory(platform_path, ce=e["name"], caller=caller))
                  for e in envs if e.get("platform") == web_settings.SLURM_TYPE}      # what each Slurm site last reported it has installed (reads only)
         return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "settings-pipeline"), flash, given,
-                                                lists, csrf(sid, "settings-inventory")),
+                                                lists, csrf(sid, "settings-inventory"), actions.get_my_settings(tokens_path, caller=caller),
+                                                csrf(sid, "settings-personal"), store.has_live_pat(tokens_path, user["user_id"])),
                             status_code=code, headers=_HEADERS)
 
     async def settings(request):
@@ -1119,6 +1133,26 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         lang = web_board.pick_lang(request.query_params.get("lang"))
         key, ce = request.query_params.get("notice"), request.query_params.get("ce")
         return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "notice", key=key, ce=ce))
+
+    # ---- settings-personal (012a): one click saves one of the person's own two switches; the answer is a redirect with a notice, or the page with one sentence.
+    async def personal_post(request):
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        if not same_origin(request):
+            return pf_refused(lang, "foreign")
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        t = web_settings.words(lang)
+        key, on = str(form.get("key", "")), str(form.get("on", ""))
+        if not _same(form.get("csrf", ""), csrf(sid, "settings-personal")) or key not in store.PREF_DEFAULTS or on not in ("0", "1"):
+            return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "fail", text=t["pref_bad"]), None, 400)
+        done = actions.set_my_setting(tokens_path, key, on == "1", confirmed_by=actions.PAGE, caller=caller)
+        if not done.get("ok"):
+            return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "fail", text=t["pref_failed"]), None, 400)
+        return RedirectResponse("/settings?notice=personal-saved%s" % ("&lang=en" if lang == "en" else ""), status_code=303, headers=_HEADERS)
 
     # ---- settings-register-pipeline: register or remove a pipeline version on the person's own compute environment, in two steps.
     # Step one only checks (check_site_pipeline_change reads) and shows what will change; step two, after the person presses the button, is the
@@ -1321,6 +1355,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return gone or _page("未處理", "<p class=\"bad\">未變更任何內容。請返回連接器重新開始。</p>", 403 if status == "user" else 404)
 
     app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
+                            Route("/settings/personal", personal_post, methods=["POST"]),
                             Route("/settings/pipelines", pipelines_post, methods=["POST"]),
                             Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]),
                             Route("/settings/inventory", inventory_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
