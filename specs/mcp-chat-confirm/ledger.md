@@ -18,3 +18,7 @@
 ## 第二次合併 origin/v3 (075b6177) 後
 - 合併乾淨無衝突，HEAD 1630efc8。全套 146/150，1 FAIL (platform_upgrade_test TC-U28)，3 逾時 (shard_2/4/6, 300s)。
 - TC-U28 以 merge-base 比對 platform/ 是否未動；合併後 merge-base=origin/v3，任何改 platform/ 的分支必紅。計畫未授權改該測試，故卡住。
+
+## 第三次：合併 origin/v3 (b3ec5b32，TC-U28 已刪) 後
+- 合併乾淨，HEAD 8ca9459a。修 test_tcm_50（launch 描述不含 confirm 字樣，TC-017 釘住）。鏡像的 origin/v3 過舊，已手動 fetch 更新（環境，非程式碼）。
+- 全套 150/150 全綠，在 81983198 跑的（之後只改本 ledger）。
