@@ -894,7 +894,7 @@ One row per kind of data. Every period below is a constant in `platform/abf_plat
 | Job rows: the queue between the platform and the agent, with a copy of what was queued | `platform.db` (`jobs`) | 7 days after the job ends. |
 | Newest release of a pipeline | `release-tags.json` (next to `platform.db`) | 24 hours |
 | Tokens, users and OAuth: sha256 of access tokens, scrypt hashes of web passwords, the connectors that registered and their logins | `tokens.db` (`tokens`, `users`, `oauth_clients`, `oauth_requests`, `oauth_codes`) | A run token 14 days; an OAuth access token 1 hour and a refresh token 30 days; a connector not used for 30 days is forgotten. Personal access tokens and users: no automatic deletion. |
-| 本人的每月費用提醒額度（美元），由本人在網頁設定；現行由管理者於終端機（`abf-platform user add --cloud-cap-usd`、`abf-platform user cloud-cap`）寫入，將由使用者網頁取代（實作在 cost-reminder-quota 計畫） | `tokens.db` (`cloud_caps`) | 無自動刪除；只有本人能改。規格已定；程式尚未改（見 cost-reminder-quota 計畫）。在那之前，終端機指令仍是唯一寫入口，未設額度仍擋雲端送出。 |
+| 本人的每月費用提醒額度（美元），由本人在網頁設定；現行由管理者於終端機（`abf-platform user add --cloud-cap-usd`、`abf-platform user cloud-cap`）寫入，將由使用者網頁取代（實作在 cost-reminder-quota 計畫） | `tokens.db` (`cloud_caps`) | 無自動刪除（no automatic deletion）；只有本人能改。規格已定；程式尚未改（見 cost-reminder-quota 計畫）。在那之前，終端機指令仍是唯一寫入口，未設額度仍擋雲端送出。 |
 | Web sessions: sha256 of a browser login's id | `tokens.db` (`web_sessions`) | 12 hours; expired rows are cleared at the next login. |
 | Cookie signing key | `web_signing.key` | no automatic deletion. |
 | Uploads: samplesheets uploaded for runs | `uploads` folder, one folder per user | no automatic deletion. |
