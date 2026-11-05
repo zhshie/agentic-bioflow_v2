@@ -506,7 +506,7 @@ def head_state(state_path, run_name):
         con.close()
 
 
-def ask_head_state(state_path, run_name, clock=time.time):
+def ask_head_state(state_path, run_name, clock=time.time, last_message_at=None):
     """Queue one read-back of a lost run so that the answer is there next time, unless one is already waiting or any one (finished,
     refused, failed or expired) is less than a minute old. The check and the insert are one write. Never raises and never waits; it
     adds no new kind of job."""
@@ -522,6 +522,10 @@ def ask_head_state(state_path, run_name, clock=time.time):
         rows = _fetches_of(con, launch)
         known, known_row = _newest_fact_row(rows, launch)
         wait = HEAD_STATE_FRESH_SECONDS
+        if known is None:      # ruling R1: no fact at all is not asked about for ever; the run has been silent since its newest sign of life
+            signs = [t for t in (last_message_at, _col(launch, "submitted_at")) if isinstance(t, (int, float))]
+            if signs and now - max(signs) > BAD_END_GIVE_UP_SECONDS:
+                return False
         if known is not None and known["state"] == "COMPLETED":      # a head that ended well does not change
             return False
         if known is not None and known["state"] in failures.ENDED_BAD:      # ruling Q1: a bad end is asked again, slowly, and not for ever
