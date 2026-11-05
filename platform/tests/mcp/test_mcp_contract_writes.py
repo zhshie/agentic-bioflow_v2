@@ -9,7 +9,7 @@ import pytest
 from helpers import tool_json, tool_text
 from resume_harness import Rig
 
-WRITE_TOOLS = ["cancel", "forget", "launch", "relaunch", "resume"]
+WRITE_TOOLS = ["cancel", "forget", "launch", "launch_pipeline", "relaunch", "resume"]
 
 # Real write points of the action layer: a call that is only a question must never reach one of them.
 FORBIDDEN = [("abf_platform.confirm", "approve"), ("abf_platform.actions", "approve"), ("abf_platform.actions", "launch"),
@@ -37,7 +37,8 @@ def make_rig(tmp_path, monkeypatch):
 
 
 def call_args(rig, tool):
-    return {"launch": lambda: rig.w.choices(run="run-new"), "cancel": lambda: {"run_name": "run-c"}, "forget": lambda: {"run_name": "run-f"},
+    return {"launch": lambda: rig.w.choices(run="run-new"), "launch_pipeline": lambda: {"pipeline_id": 999999, "run_name": "run-new", "samplesheet_text": "a,b\n1,2\n"},
+            "cancel": lambda: {"run_name": "run-c"}, "forget": lambda: {"run_name": "run-f"},
             "resume": lambda: {"run_name": "run-r"}, "relaunch": lambda: {"run_name": "run-r"}}[tool]()
 
 
@@ -77,7 +78,13 @@ def test_write_tool_called_once_has_no_side_effect(tmp_path, monkeypatch, tool):
     assert all(r[0] is None for r in rig.sql("SELECT forgotten_at FROM confirmations"))
 
 
-@pytest.mark.parametrize("tool", WRITE_TOOLS)
+# launch_pipeline needs a saved pipeline owned by a caller, which this rig (a local, ownerless session) cannot make; its real reply is checked
+# in test_mcp_launch_pipeline.py (launch-pipeline-mcp). Here the call can only fail "pipeline not found", which gives no address. Strict.
+NOT_SENT_GAPS = {"launch_pipeline": "the rig has no saved pipeline: its not-found answer carries no page address (the real reply is tested in test_mcp_launch_pipeline.py)"}
+
+
+@pytest.mark.parametrize("tool", [pytest.param(t, marks=pytest.mark.xfail(strict=True, reason=NOT_SENT_GAPS[t])) if t in NOT_SENT_GAPS else t
+                                  for t in WRITE_TOOLS])
 def test_write_tool_reply_says_not_sent(tmp_path, monkeypatch, tool):
     # TC-011
     rig, _, _, out, _ = one_unconfirmed_call(tmp_path, monkeypatch, tool)
@@ -108,6 +115,7 @@ ERROR_INPUTS = {
     "get_pipeline": {"pipeline_id": 999999},
     "get_validation": {"pipeline_id": 999999},
     "launch": {"pipeline": "nope/pipe", "revision": "0", "run_name": "nope-run-zz", "samplesheet_text": "a,b\n1,2\n", "ce_name": "no-such-env"},
+    "launch_pipeline": {"pipeline_id": 999999, "run_name": "nope-run-zz", "samplesheet_text": "a,b\n1,2\n"},
     "cancel": {"run_name": "nope-run-zz"},
     "forget": {"run_name": "nope-run-zz"},
     "resume": {"run_name": "nope-run-zz"},
@@ -115,7 +123,7 @@ ERROR_INPUTS = {
 }
 
 # The object the message must name, where it is not the first text argument.
-NAMED = {"launch": "no-such-env", "get_pipeline": "999999", "get_validation": "999999"}
+NAMED = {"launch": "no-such-env", "launch_pipeline": "999999", "get_pipeline": "999999", "get_validation": "999999"}
 
 # Product gaps found by this test, one per tool: the current message lacks the name of the failed object or a next step (請/用/先).
 # They are listed in the ledger for the maintainer; strict, so the day the product is fixed the mark must come off. Nothing under
@@ -123,7 +131,7 @@ NAMED = {"launch": "no-such-env", "get_pipeline": "999999", "get_validation": "9
 NO_NEXT = "the message names the failure but not what to do next"
 NO_NAME = "the message does not name the failed object"
 GAPS = {
-    "cancel": NO_NEXT, "get_pipeline": NO_NEXT, "get_validation": NO_NEXT, "get_compute_env": NO_NEXT, "get_run": NO_NEXT, "launch": NO_NEXT, "list_site_files": NO_NEXT,
+    "cancel": NO_NEXT, "launch_pipeline": NO_NEXT, "get_pipeline": NO_NEXT, "get_validation": NO_NEXT, "get_compute_env": NO_NEXT, "get_run": NO_NEXT, "launch": NO_NEXT, "list_site_files": NO_NEXT,
     "read_task_log": NO_NEXT, "relaunch": NO_NEXT, "resume": NO_NEXT,
     "find_module": NO_NAME + " (the hint does not repeat the keyword)", "forget": NO_NAME + " and gives no next step",
     "my_usage": NO_NAME, "read_run_file": NO_NAME + " and gives no next step", "run_outputs": NO_NAME + " and gives no next step",

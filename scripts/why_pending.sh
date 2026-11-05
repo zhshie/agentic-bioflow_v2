@@ -83,7 +83,7 @@ explain() {
 
 # GB, rounded UP. Rounding a 53G request down by one would land it in the box
 # below and read as advice to shrink into a floor it does not clear.
-to_gb() {
+mem_to_gb_ceil() {
     case "$2" in
         T|t) echo $(( $1 * 1024 )) ;;
         G|g) echo "$1" ;;
@@ -105,7 +105,7 @@ ladder() {   # ladder <ReqTRES> <partition>
     local req="$1" part="${2:-}" cpu=1 memgb=1 i pick=-1
     local -a qs cs ms hs
     [[ $req =~ (^|,)cpu=([0-9]+) ]]            && cpu="${BASH_REMATCH[2]}"
-    [[ $req =~ (^|,)mem=([0-9]+)([KMGTkmgt]?) ]] && memgb=$(to_gb "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+    [[ $req =~ (^|,)mem=([0-9]+)([KMGTkmgt]?) ]] && memgb=$(mem_to_gb_ceil "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
 
     local q c m h
     while IFS=$'\t' read -r q c m h; do
