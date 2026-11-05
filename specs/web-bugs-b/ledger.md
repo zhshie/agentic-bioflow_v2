@@ -17,3 +17,8 @@
 
 ## 紅綠
 改前 `test_web_bugs_b.py` 13 紅 3 綠（commit `RED:`），改後 16 綠（commit `GREEN:`）。
+
+## 交接（全套 149/150）
+- 唯一失敗：tests/platform_upgrade_test.sh TC-U28（`git diff --name-only $(merge-base origin/v3 HEAD) -- platform` 必須為空）。任何改 platform/ 的分支都會失敗（web-bugs-a #368 也改了 platform，同樣會踩到）；不在計畫列的檔案內，執行者不改。
+- 需要 developer-agent 決定：放寬 TC-U28（如 TC-U26 改成看現況），或確認 CI 不跑此檢查。
+- 其餘全綠；已重釘 test_web_finished fs02/fs07、ce08 字串雜湊、guided_launch_preview CSS 雜湊（均不在計畫列表，見 decisions.tsv）。
