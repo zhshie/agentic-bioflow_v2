@@ -240,7 +240,7 @@ def test_menu_failed_lost_running_unchanged(w, status):
 
 # ---- #339 ------------------------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("stage", ["launch", "downstream"])
+@pytest.mark.parametrize("stage", ["launch"])      # studios-new-tab: a succeeded run now has a downstream page; the placeholder stays for the others (test_web_downstream.py)
 def test_stage_placeholder_launch_downstream(w, stage):
     # TC-050 .. TC-055 TC-058
     ann = w.user("ann")

@@ -75,8 +75,8 @@ Buttons are fixed verbs only (上傳, 續跑, 重跑, 設定, 日誌, 打包, �
    - "Figures produced": live list of `analysis/figures/` (JS), newest highlighted, each with an "Include in package" checkbox; button "Package the n selected figures, go to Finished"; the script goes into the package too.
    - Positron is not embedded (no free web build; ELv2 hosting clause).
 10. **Finished stage**: delivery package (edited report, tables, MultiQC, figures, methods with versions, samplesheet), provenance, Download.
-11. **Cost** (`#cost`, from the masthead meter): cards NCHC SU / Cloud used / cap / remaining; "never converted" line; Action-needed notice when a launch would exceed the cloud cap (use NCHC / wait for reset); per-analysis table with status Running / Reconciled / Estimate, bill pending.
-12. **Settings**: compute environments, credentials (token, 12 h), Secrets (AI model key, Jev key optional; browser only), Personal (step-by-step mode, development mode); Operator panel and Roles as dashed "coming later".
+11. **Cost** (`#cost`, from the masthead meter): one row per compute environment, each row expandable (expand) to the analyses that ran there; with a single environment there is just one row. The unit follows the environment: SU for a Slurm (NCHC) environment, US dollars for a cloud environment; amounts are never summed across environments and never converted. The analysis page gets a cost row with the columns environment / usage / status / scope, matching the Metrics tab of a Seqera run page. Action-needed notice when a launch would exceed the user's own monthly cost reminder quota (use a Slurm environment / wait for the monthly reset).
+12. **Settings**: compute environments, credentials, Access tokens (12 h; an item of its own), Secrets (AI model key, Jev key optional; browser only), step-by-step mode, development mode, and the monthly cost reminder quota (set by the user themself, in US dollars); Operator panel and Roles as dashed "coming later".
 13. **Sign-in to confirm** (from an MCP client): name, token, remember 12 h → launch summary.
 
 ## 用字 (wording of the Chinese interface; guided-launch-2b)
