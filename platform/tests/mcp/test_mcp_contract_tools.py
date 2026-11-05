@@ -123,7 +123,6 @@ LIMIT = 600
 # number written next to it; shorten the description and delete the line. (Measured on v3.)
 OVER_LIMIT = {
     "get_run": 804,      # ruling R2: +121 for the sentence that a lost run triggers one read-only site query
-    "launch": 968,
     "run_outputs": 700,
 }
 
