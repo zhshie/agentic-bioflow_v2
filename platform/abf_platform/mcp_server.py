@@ -197,7 +197,7 @@ def _add_write_tools(server, platform_path, index_path):
                              "(a CSV you uploaded) or samplesheet_text (the CSV, at most 1 MiB). "
                              "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used. "
                              "Or none, with profiles such as [\"test\"].")
-    async def launch_tool(ctx: Context, pipeline: str, revision: str, run_name: str, samplesheet: str | None = None,
+    async def launch_tool(ctx: Context, pipeline: Annotated[str, Field(description="The pipeline to run: an nf-core name such as nf-core/rnaseq, or a pipeline the site already has. Use it with revision, which says which release or branch to run.")], revision: str, run_name: str, samplesheet: str | None = None,
                           samplesheet_text: str | None = None, ce_name: str | None = None,
                           params: Annotated[dict[str, Any] | None, Field(description="A flat mapping of pipeline parameters, e.g. {\"genome\": \"GRCh38\"}.")] = None,
                           path_columns: list[str] | None = None,
