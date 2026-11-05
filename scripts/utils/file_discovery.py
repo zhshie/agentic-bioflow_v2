@@ -9,8 +9,7 @@ in a directory structure.
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 @dataclass
@@ -32,12 +31,6 @@ EXTENSIONS = {
     "fastq": [".fastq.gz", ".fq.gz", ".fastq", ".fq"],
     "bam": [".bam"],
     "cram": [".cram"],
-}
-
-# Index file extensions
-INDEX_EXTENSIONS = {
-    "bam": [".bam.bai", ".bai"],
-    "cram": [".cram.crai", ".crai"],
 }
 
 
@@ -129,63 +122,3 @@ def count_files_by_type(directory: str) -> Dict[str, int]:
             counts[file_type] = 0
     return counts
 
-
-def find_index_file(alignment_file: str) -> Optional[str]:
-    """
-    Find index file for a BAM or CRAM file.
-
-    Args:
-        alignment_file: Path to BAM or CRAM file
-
-    Returns:
-        Path to index file if found, None otherwise
-    """
-    path = Path(alignment_file)
-
-    # Determine file type
-    if path.suffix.lower() == ".bam":
-        index_exts = INDEX_EXTENSIONS["bam"]
-    elif path.suffix.lower() == ".cram":
-        index_exts = INDEX_EXTENSIONS["cram"]
-    else:
-        return None
-
-    # Try common index file patterns
-    for ext in index_exts:
-        # Pattern: file.bam.bai or file.bai
-        if ext.startswith(".bam") or ext.startswith(".cram"):
-            candidate = Path(str(path) + ext.split(".")[-1])
-        else:
-            candidate = path.with_suffix(ext)
-
-        if candidate.exists():
-            return str(candidate)
-
-        # Also try: file.bam -> file.bam.bai
-        candidate = Path(str(path) + "." + ext.lstrip("."))
-        if candidate.exists():
-            return str(candidate)
-
-    return None
-
-
-def detect_input_type(directory: str) -> str:
-    """
-    Auto-detect predominant input file type in directory.
-
-    Prioritizes: FASTQ > BAM > CRAM
-
-    Args:
-        directory: Directory to scan
-
-    Returns:
-        Detected file type ('fastq', 'bam', or 'cram')
-    """
-    counts = count_files_by_type(directory)
-
-    # Prioritize by preference
-    for file_type in ["fastq", "bam", "cram"]:
-        if counts.get(file_type, 0) > 0:
-            return file_type
-
-    return "fastq"  # Default
