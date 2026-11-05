@@ -206,11 +206,11 @@ def test_the_launch_tool_has_two_more_properties_and_the_tools_are_the_same(d):
     launch = [t for t in tools if t.name == "launch"][0]
     props = set(launch.input_schema["properties"])
     today = {"pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns"}
-    assert props == today | {"dataset", "dataset_version"}
+    assert props == today | {"dataset", "dataset_version", "profiles"}      # launch-test-profile: plus the optional profiles
     assert launch.input_schema["required"] == ["pipeline", "revision", "run_name"]
     assert not [p for p in props if re.search(r"confirm|approve|yes|send|force|skip|accept|送出|void", p)]
     assert "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used." in launch.description
-    assert sorted(t.name for t in tools) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "list_agents", "list_compute_envs",
+    assert sorted(t.name for t in tools) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "launch_pipeline", "list_agents", "list_compute_envs",
                                               "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch",
                                               "resume", "run_outputs"]
 
