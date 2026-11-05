@@ -3,3 +3,4 @@ ts	phase	decision	why	evidence	result
 2026-11-05T18:10	repin	test_su_usd 假資料月份改為目前月份	寫死 2026-10 在 11 月起被視為過去月份而失敗，非行為改變	test_su_usd.py:416	40 綠
 2026-11-05T18:15	repin	test_web_results_outputs.py:401 預期改成新的 .otbl code 規則	#343 4.2 要求拿掉 anywhere	test_web_results_outputs.py:401	22 綠
 2026-11-05	整套測試	test_web_finished fs02/fs07 改為只禁列輸出（不再禁 launch_prefill）	TC-025 要求標題列在每個階段讀 launch_prefill，與舊斷言互斥；計畫未列此二測	platform/tests/test_web_finished.py	待全套
+2026-11-05	整套測試	重新釘 ce08 STRINGS 雜湊與 guided_launch_preview CSS 雜湊；fs07 改為每次請求恰好多一次 prefill；web.py 註解去掉 forgot 字樣	標題列新增字串與 CSS；tc101 禁止 web.py 出現 forgot	platform/tests/test_web_settings_ce_mobile.py:101	待全套

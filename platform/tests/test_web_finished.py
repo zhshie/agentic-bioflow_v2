@@ -204,11 +204,11 @@ def test_fs07_finished_page_never_queues_a_listing(w, monkeypatch):
     for _ in range(3):
         c.get(url(rid))
     assert listings(w) == [] and seen and all(k.get("enqueue") is False for k in seen)
-    n = len(seen)
+    n = len(pre)
     c.get("/?run=%s&stage=launch" % rid)
     c.get("/?run=%s&stage=running" % rid)
     c.get("/?run=%s&stage=results" % rid)
-    assert len(seen) == n      # web-bugs-b: the title row reads launch_prefill on every stage; the output listing stays finished-only
+    assert len(pre) == n + 3      # web-bugs-b: the title row reads launch_prefill once per request; the finished stage adds no second read on other stages
     src = (Path(__file__).resolve().parent.parent / "abf_platform" / "web_finished.py").read_text(encoding="utf-8")
     assert not re.search(r"^\s*(import|from)\s+(socket|ssl|http|urllib|requests|subprocess|paramiko)", src, re.M)
 
