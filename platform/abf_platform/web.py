@@ -570,7 +570,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         except sqlite3.Error:
             return None
 
-    async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200, relist=False, subpath=None):
+    async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200, relist=False, subpath=None, studio=None):
         """The board for one logged-in user: one run's page (the one named, else the one that needs the person most, else the newest;
         an empty page for a person with no run), with `flash` (one plain line of refusal) on it after a refused button."""
         runs = await run_in_threadpool(read_runs, caller)
@@ -586,12 +586,14 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "finished" and not flash:
                 finished = await run_in_threadpool(read_finished, selected, caller)
                 outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
+            if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "downstream" and not flash:
+                outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
             if selected["status"] == "succeeded":
                 asked = (await run_in_threadpool(actions.clean_requests, platform_path, caller=caller, clock=clock)).get(selected["name"])
                 if asked:
                     selected["clean_request"] = asked
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
-                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished)
+                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, studio=studio)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     async def board(request):
@@ -606,7 +608,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                                      relist=request.query_params.get("relist") == "1")
         return await board_page(sid, user, caller, lang, request.query_params.get("run") or "", request.query_params.get("stage"),
                                 request.query_params.get("tab"), relist=request.query_params.get("relist") == "1",
-                                subpath=request.query_params.get("path"))
+                                subpath=request.query_params.get("path"), studio=request.query_params.get("studio"))
 
     async def run_file_get(request):
         """One result file of the caller's own run, as a download (results-files). The action reads the answer of the agent's job or queues one; this
