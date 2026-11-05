@@ -543,6 +543,11 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         ce = actions.run_environment(actions.platform_path_for(index_path, platform_path), view["name"])
         if ce:        # the Compute card: the environment the newest hand-off record names (the page's own addition; the action's answer is unchanged)
             view["compute_env"] = ce
+        sent = actions.launch_prefill(platform_path, view["name"], caller=caller)        # the title row's pipeline, revision and site (a foreign or forgotten run has none: a dash)
+        if sent.get("found") and sent.get("kept"):
+            view["pipeline"], view["revision"] = sent.get("pipeline"), sent.get("revision")
+            if not view.get("compute_env") and sent.get("ce_name"):
+                view["compute_env"] = sent["ce_name"]
         return view
 
     def read_outputs(run_id, caller, outputs_tab, relist, subpath=None):

@@ -37,7 +37,7 @@ def middle(text):
 
 
 def small_of_first_card(text):
-    return plain(re.search(r"<small>(.*?)</small>", middle(text), re.S).group(1))
+    return plain(re.search(r'class="cv">[^<]*</p><small>(.*?)</small>', middle(text), re.S).group(1))
 
 
 # ---- #338
@@ -131,7 +131,7 @@ def test_341_head_has_meta_line():  # TC-018, TC-019, TC-021
 
 def test_341_meta_line_missing_values_dash():  # TC-022
     line = meta_of(board(run_dict()))
-    assert line.count("—") >= 3 and web_board._time("2026-11-05T01:00:00Z") in line
+    assert line.startswith("— · — · ") and web_board._time("2026-11-05T01:00:00Z") in line
 
 
 def test_341_info_tab_has_new_rows():  # TC-023, TC-024
@@ -152,7 +152,9 @@ def test_341_read_run_adds_pipeline_revision(w, monkeypatch):  # TC-025 .. TC-02
     url = "/?run=%s" % ids["running"]
     monkeypatch.setattr(actions, "launch_prefill", lambda *a, **k: {"found": True, "kept": True, "pipeline": "nf-core/rnaseq", "revision": "3.14.0", "ce_name": "ce-x"})
     line = meta_of(c.get(url).text)
-    assert "nf-core/rnaseq" in line and "3.14.0" in line and "ce-x" in line
+    assert "nf-core/rnaseq" in line and "3.14.0" in line and "lab-a" in line      # the hand-off record's environment wins
+    monkeypatch.setattr(actions, "run_environment", lambda *a, **k: None)
+    assert "ce-x" in meta_of(c.get(url).text)      # TC-028: else the prefill's ce_name
     for answer in ({"found": False, "kept": False}, {"found": True, "kept": False, "launched_at": "2026-11-01T00:00:00Z"}):
         monkeypatch.setattr(actions, "launch_prefill", lambda *a, answer=answer, **k: answer)
         line = meta_of(c.get(url).text)
