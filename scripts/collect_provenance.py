@@ -80,7 +80,7 @@ NOT_CITED = {"python", "python3", "r", "r-base", "sed", "awk", "perl", "bash",
              "pandas", "numpy", "yaml", "nextflow", "gawk", "grep", "coreutils"}
 
 TIMESTAMPED = re.compile(r"^(execution_report|execution_trace|execution_timeline"
-                         r"|params|pipeline_dag)_(.+?)\.(html|txt|json)$")
+                         r"|params|pipeline_dag)_(.+?)\.(html|txt|json)\Z")
 
 
 def newest(paths):
@@ -188,7 +188,7 @@ def dois_from_citations(path):
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
-                m = re.match(r"^\s*(10\.\d{4,9}/\S+?)\s*(#\s*(.*))?$", line.rstrip())
+                m = re.match(r"^\s*(10\.\d{4,9}/\S+?)\s*(#\s*(.*))?\Z", line.rstrip())
                 if m:
                     out.append({"doi": m.group(1), "tool": (m.group(3) or "").strip()})
     except OSError:
