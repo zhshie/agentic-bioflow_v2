@@ -128,13 +128,13 @@ real failures, each with the fix.
   its exit code. `tests/run_all.sh` runs all of them and is the release check;
   a single file still runs directly with `bash tests/<name>.sh`. T20 (2.18)
   added `.github/workflows/tests.yml`: ubuntu-latest, `jq` installed first,
-  then `bash tests/run_all.sh`, on every PR and every push to `main` — CI
+  then `bash tests/run_all.sh`, on every PR and every push to the branches it lists — CI
   running the same command a contributor runs locally, nothing more.
 
 ## Running tests
 
 ```bash
-bash tests/run_all.sh                    # all 73, ~100s, one verdict + exit code
+bash tests/run_all.sh                    # the whole suite: one verdict + exit code (it prints its own N/M passed)
 bash tests/run_all.sh --only confirm_    # just the safety-net gates
 bash tests/confirm_launch_test.sh        # one file, full output
 ```
