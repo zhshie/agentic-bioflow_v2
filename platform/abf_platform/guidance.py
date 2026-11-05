@@ -13,7 +13,7 @@ HEADING = "## The five commands"
 PARAGRAPH_START = "**The user does not have to name a command.**"
 MAX_BYTES = 2048
 
-FIXED_SENTENCE = ("Seven tools of this server are read-only. Each of the tools launch, cancel, resume and relaunch only asks: it "
+FIXED_SENTENCE = ("Seven tools of this server are read-only. Each of the tools launch, launch_pipeline, cancel, resume and relaunch only asks: it "
                   "does not start anything until the person says yes in their own client's form or on the page that the answer "
                   "names, and you cannot say it for them (in the terminal, abf-platform launch, cancel, resume and relaunch ask "
                   "the same way). A failed run is relaunched with its name alone; a resume may also carry changed parameters and extra resource settings. The tool forget only asks too: it "
