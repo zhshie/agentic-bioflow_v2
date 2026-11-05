@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # Nothing existing: drives the platform's own settings page in a real Chrome (settings-ce-table-mobile); Playwright is only the browser driver.
-"""Purpose: manual check of the compute-environment table on /settings, at 1440 px and at 390 px (device emulation), in zh and en.
+"""Purpose: manual check of the compute-environment table and the personal section on /settings, at 1440 px and at 390 px (device emulation), in zh and en.
 
 How to run: from the repo root, in WSL or Linux (the platform side is Unix-only): `cd platform && python ../scripts/dev/check_settings_mobile.py [screenshot-dir]`.
 Needs playwright + Chrome in the Python named by ABF_PLAYWRIGHT_PYTHON (default: this Python, if it has playwright). See docs/TESTING.md.
-It starts a throwaway platform, writes four screenshots to argv[1] (default specs/settings-ce-table-mobile/screenshots) and prints
-document.documentElement.scrollWidth vs clientWidth for each. Exit 0 = no sideways scroll in all four, 1 = overflow, 77 = no playwright/Chrome (skipped, nothing checked).
+The driver turns development mode on first (clicks the real switch), so the banner is in every screenshot. It starts a throwaway platform, writes four
+screenshots to argv[1] (default specs/settings-ce-table-mobile/screenshots) and prints document.documentElement.scrollWidth vs clientWidth for each, the
+height of the two personal switch buttons against the shortest other button on the page, and whether the banner and both rows are there.
+Exit 0 = no sideways scroll, switch buttons not shorter than the other buttons, banner and two rows present, in all four; 1 = a check failed; 77 = no playwright/Chrome (skipped, nothing checked).
 It takes no options: argv[1] is always the output folder.
 One-off: not completely. Written for settings-ce-table-mobile, but kept as the reviewer's re-runnable look at that page; not part of pytest or CI
 (tests/check_settings_mobile_smoke_test.sh only checks that it imports and skips loudly without playwright)."""
@@ -40,11 +42,26 @@ DRIVER = textwrap.dedent('''
             page.fill("input[name=password]", password)
             page.click("button[type=submit]")
             page.wait_for_load_state()
+            page.goto(base + "/settings")
+            turn_on = page.locator('form[action="/settings/personal"]:has(input[name=key][value=dev_mode]):has(input[name=on][value="1"]) button')
+            if turn_on.count():
+                turn_on.first.click()
+                page.wait_for_load_state()
             for lang in ("zh", "en"):
                 page.goto(base + "/settings?lang=" + lang)
                 sw, cw = page.evaluate("[document.documentElement.scrollWidth, document.documentElement.clientWidth]")
                 print("WIDTH", width, lang, "scrollWidth", sw, "clientWidth", cw)
                 bad += sw > cw
+                rows = page.locator("li.pref").count()
+                banner = page.locator(".devbar").count()
+                own_h, other_h = page.evaluate("""() => {
+                    const own = [...document.querySelectorAll('form[action="/settings/personal"] button')];
+                    const other = [...document.querySelectorAll('button')].filter(b => !own.includes(b) && b.offsetHeight > 0);
+                    return [own.map(b => b.getBoundingClientRect().height), other.map(b => b.getBoundingClientRect().height)];
+                }""")
+                print("PREF", width, lang, "rows", rows, "banner", banner, "switch heights", own_h, "other min", min(other_h) if other_h else None)
+                bad += rows != 2 or banner != 1 or len(own_h) != 2
+                bad += bool(other_h) and min(own_h or [0]) < min(other_h)
                 page.screenshot(path="%s/settings-ce-%d-%s.png" % (out, width, lang), full_page=True)
             ctx.close()
         b.close()
