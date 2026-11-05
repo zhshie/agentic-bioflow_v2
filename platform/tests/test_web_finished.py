@@ -109,7 +109,7 @@ def test_fs02_other_states_not_reached(w, monkeypatch):
         t2 = c.get("/?run=%s&stage=running" % rid).text
         cell = re.search(r'<li[^>]*data-step="finished"[^>]*>(.*?)</li>', mid(t2), re.S)
         assert "is-later" in cell.group(0) and "<a" not in cell.group(1) and "完成" in cell.group(1), st
-    assert calls == []
+    assert "outputs" not in calls      # web-bugs-b TC-025: the title row now reads launch_prefill on every state, so only the listing is still barred
 
 
 def test_fs03_provenance_kept(w):
@@ -208,7 +208,7 @@ def test_fs07_finished_page_never_queues_a_listing(w, monkeypatch):
     c.get("/?run=%s&stage=launch" % rid)
     c.get("/?run=%s&stage=running" % rid)
     c.get("/?run=%s&stage=results" % rid)
-    assert len(pre) == n
+    assert len(pre) == n + 3      # web-bugs-b: the title row reads launch_prefill once per request; the finished stage adds no second read on other stages
     src = (Path(__file__).resolve().parent.parent / "abf_platform" / "web_finished.py").read_text(encoding="utf-8")
     assert not re.search(r"^\s*(import|from)\s+(socket|ssl|http|urllib|requests|subprocess|paramiko)", src, re.M)
 
@@ -294,3 +294,101 @@ def test_fs13_finished_link_in_strip(w):
     ann, c, rid = world(w)
     cell = re.search(r'<li[^>]*data-step="finished"[^>]*>(.*?)</li>', mid(c.get("/?run=" + rid).text), re.S).group(1)
     assert re.search(r'href="/\?run=%s&amp;stage=finished[&"]' % rid, cell)
+
+
+# ---- finish-package-download: download links on the finished page (TC-001 ... TC-020) ----
+
+def test_fs12_finished_lists_download_links_for_top_level_files(w):
+    # TC-001, TC-002, TC-019
+    ann, c, rid = world(w)
+    read_outputs(w, rid, c, ENTRIES)
+    t = c.get(url(rid)).text
+    sec = section(t, "交付包")
+    assert sec.count("下載結果檔") == 1
+    assert 'href="/run/file?run=%s&amp;path=zeta.txt"' % rid in sec and 'href="/run/file?run=%s&amp;path=alpha.tsv"' % rid in sec
+    assert 'path=dada2"' not in sec and 'path=multiqc"' not in sec
+    assert re.search(r'>zeta\.txt</a> <span class="muted">2\.0 KB</span>', sec) and re.search(r'>alpha\.tsv</a> <span class="muted">0\.0 KB</span>', sec)
+    assert "全部下載" not in sec and ".zip" not in sec
+
+
+def test_fs13_multiqc_links_to_the_report_file(w):
+    # TC-003, TC-004
+    ann, c, rid = world(w)
+    read_outputs(w, rid, c, ENTRIES)
+    sec = section(c.get(url(rid)).text, "交付包")
+    assert 'href="/run/file?run=%s&amp;path=multiqc/multiqc_report.html">MultiQC 報告</a>' % rid in sec
+    for i, entries in enumerate(([e for e in ENTRIES if e["name"] != "multiqc"],
+                                 [dict(e, type="file") if e["name"] == "multiqc" else e for e in ENTRIES])):
+        ann, c, rid = world(w, name="neg%d" % i, who="neg%d" % i)
+        read_outputs(w, rid, c, entries)
+        assert "multiqc_report.html" not in c.get(url(rid)).text
+
+
+def test_fs14_too_large_file_is_text_not_a_link(w):
+    # TC-005, TC-019
+    ann, c, rid = world(w)
+    read_outputs(w, rid, c, ENTRIES + [{"name": "huge.bam", "type": "file", "size": 30 * 1048576, "modified": ""}])
+    sec = section(c.get(url(rid)).text, "交付包")
+    assert "huge.bam" in sec and "大於 25 MB" in sec and "path=huge.bam" not in sec and not re.search(r"<a[^>]*>huge\.bam", sec)
+
+
+def test_fs15_no_block_before_outputs_are_read(w):
+    # TC-008, TC-009
+    ann, c, rid = world(w)
+    assert "下載結果檔" not in c.get(url(rid)).text and listings(w) == []
+    c.get("/?run=%s&stage=results&tab=outputs" % rid)
+    finish(w, listings(w)[-1]["id"], ok=False, message="no")
+    assert "下載結果檔" not in c.get(url(rid)).text
+    ann, c, rid = world(w, name="empty-one", who="u2")
+    read_outputs(w, rid, c, [])
+    assert "下載結果檔" not in c.get(url(rid)).text
+    ann, c, rid = world(w, name="unread-one", who="u3")
+    n = len(listings(w))
+    assert "下載結果檔" not in c.get(url(rid)).text and len(listings(w)) == n
+
+
+def test_fs16_other_users_run_gives_no_links(w):
+    # TC-015, TC-016
+    ann, c, rid = world(w)
+    read_outputs(w, rid, c, ENTRIES)
+    w.user("bob")
+    bob = w.web()
+    assert w.login(bob, "bob").status_code == 303
+    r = bob.get(url(rid))
+    assert r.status_code == 404 and "/run/file" not in r.text and "zeta.txt" not in r.text
+    before = len(w.sql("SELECT id FROM jobs WHERE kind = 'read_run_file'"))
+    r2 = bob.get("/run/file?run=%s&path=zeta.txt" % rid)
+    assert r2.status_code == 404 and len(w.sql("SELECT id FROM jobs WHERE kind = 'read_run_file'")) == before
+
+
+def test_fs17_more_than_twenty_files_are_capped(w):
+    # TC-006
+    ann, c, rid = world(w)
+    read_outputs(w, rid, c, [{"name": "f%02d.txt" % i, "type": "file", "size": 5, "modified": ""} for i in range(25)])
+    sec = section(c.get(url(rid)).text, "交付包")
+    assert len(re.findall(r'<a href="/run/file\?', sec)) == 20
+    assert re.search(r"其餘檔案請至「<a [^>]*>查看輸出</a>」。", sec)
+    assert re.search(r'<a href="/\?run=%s&amp;stage=results&amp;tab=outputs">查看輸出</a>' % rid, sec)
+
+
+def test_fs18_english_download_block(w):
+    # TC-007
+    ann, c, rid = world(w)
+    read_outputs(w, rid, c, ENTRIES + [{"name": "huge.bam", "type": "file", "size": 30 * 1048576, "modified": ""}])
+    t = c.get(url(rid, "&lang=en")).text
+    sec = section(t, "Delivery package")
+    assert no_cjk(t) and sec.count("Download result files") == 1 and "Over 25 MB" in sec
+    assert 'lang=en' in re.search(r'<a href="(/run/file\?[^"]*zeta[^"]*)"', sec).group(1)
+
+
+def test_fs19_download_block_changes_nothing_else(w):
+    # TC-011, TC-012, TC-017
+    ann, c, rid = world(w)
+    read_outputs(w, rid, c, ENTRIES)
+    before = [j["kind"] for j in w.sql("SELECT kind FROM jobs")]
+    t = c.get(url(rid)).text
+    assert [j["kind"] for j in w.sql("SELECT kind FROM jobs")] == before
+    rows = dict(pack_rows(t))
+    assert rows["結果表格"] == "✓ 在輸出資料夾" and rows["MultiQC 報告"] == "✓ 在輸出資料夾" and len(rows) == 6
+    assert "<form" not in mid(t) and "<button" not in mid(t) and "style=" not in t and 'href="/download' not in t
+    assert '<p class="off">下載交付包 <span class="later">之後開放</span></p>' in section(t, "交付包")

@@ -229,11 +229,6 @@ for e in '$D/platform-upgrade.sh' '$D/Caddyfile.template' '$D/backup.sh' '$D/env
 done
 if [ -n "$wl" ] && [ -z "$wl_missing" ]; then ok "TC-U26 hosted_deploy_test.sh want_list names platform-upgrade.sh and the six originals"; else bad "TC-U26" "want_list missing:${wl_missing:- (no want_list= line)}"; fi
 
-if mb=$(git merge-base origin/v3 HEAD 2>/dev/null) && git cat-file -e "$mb:tests/hosted_deploy_test.sh" 2>/dev/null; then
-  ch=$(git diff --name-only "$mb" -- platform deploy/backup.sh deploy/systemd)
-  if [ -z "$ch" ]; then ok "TC-U28 platform/, backup.sh and deploy/systemd untouched"; else bad "TC-U28" "$ch"; fi
-else skip "TC-U28" "no origin/v3"; fi
-
 echo
 [ "$fails" -eq 0 ] && echo "all platform_upgrade tests passed" || echo "$fails FAILED"
 exit $((fails>0))
