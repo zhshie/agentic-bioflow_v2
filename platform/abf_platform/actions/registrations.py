@@ -8,6 +8,7 @@ import sqlite3
 import time
 
 from .. import compute_envs, store
+from . import _caller_id  # one shared definition, in actions/__init__.py (defined before this module is imported)
 
 _TABLE = """
 CREATE TABLE IF NOT EXISTS pipeline_registrations (
@@ -42,10 +43,6 @@ def _no(message, field=None):
 
 def _owner_key(user_id):
     return "" if user_id is None else str(user_id)
-
-
-def _caller_id(caller):
-    return caller.user_id if caller else None
 
 
 def _require_human(confirmed_by):
