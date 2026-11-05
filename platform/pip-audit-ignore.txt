@@ -1,0 +1,3 @@
+# Vulnerability IDs pip-audit must ignore, one per line, in this form:
+#   <ID>  # reason, added YYYY-MM-DD, review by YYYY-MM-DD (at most 90 days later)
+# Empty on purpose: no finding has needed ignoring.
