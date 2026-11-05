@@ -8,7 +8,7 @@ import pytest
 from human_harness import World, csrf_of
 from test_confirm_page import logged_in
 from test_clean_page import run_and_request, expire, launch_and_cancel, T0
-from test_web_board import seed, pane, login, cjk, rows
+from test_web_board import seed, pane, login, cjk, no_cjk
 
 
 @pytest.fixture
@@ -86,22 +86,22 @@ def test_confirm_en_confirmed_expired_void(w):
     assert "已送出。工作編號" in c.get("/c/" + launch).text
     w.clock.t += 700
     t = c.get("/c/%s?lang=en" % cancel).text
-    assert "This request has expired (10 minutes). Please send it again." in t and cjk(t) == []
+    assert "This request has expired (10 minutes). Please send it again." in t and no_cjk(t)
     # clean: 7 days, void
     w2 = w
     rid = run_and_request(w2, ann, "run-b", at=w.clock.t)
     expire(w2, rid)
     t = c.get("/c/%s?lang=en" % rid).text
-    assert "This request has expired (7 days) and will not be raised again." in t and cjk(t) == []
+    assert "This request has expired (7 days) and will not be raised again." in t and no_cjk(t)
     rid = run_and_request(w2, ann, "run-c", at=w.clock.t)
     assert confirm.void(w.ip.state_db, rid, "X-reason")
     t = c.get("/c/%s?lang=en" % rid).text
-    assert "This request was voided: X-reason." in t and "Please send it again." not in t and cjk(t) == []
+    assert "This request was voided: X-reason." in t and "Please send it again." not in t and no_cjk(t)
     # non clean void
     w.launch(caller=ann, answer=__import__("human_harness").form_answer("decline"), run="run-three")
     void_id = [x["id"] for x in w.confirmations() if x["state"] == "void"][0]
     t = c.get("/c/%s?lang=en" % void_id).text
-    assert re.search(r"This request was voided: .*\. Please send it again\.", t) and cjk(t) == []
+    assert re.search(r"This request was voided: .*\. Please send it again\.", t)
 
 
 def test_confirm_zh_unchanged(w):
@@ -172,7 +172,7 @@ def test_tasks_tab_unlisted_failures_zh_en(w):
     en = run_tab(w, "web-test-2", "en")
     assert ('<p class="muted">The failed count is 4, but no failed task has a recorded detail; '
             'these may have been ignored or retried successfully.</p>') in en
-    assert "No failed tasks" not in en and cjk(en) == []
+    assert "No failed tasks" not in en and no_cjk(en)
 
 
 def test_tasks_tab_partial_rows_note(w):
@@ -184,7 +184,7 @@ def test_tasks_tab_partial_rows_note(w):
     assert "TASK_0" in zh and "TASK_1" in zh and "無失敗任務" not in zh
     assert re.search(r'<p class="muted">[^<]*列出 2[^<]*計數 4', zh)
     en = run_tab(w, "p4", "en")
-    assert re.search(r'<p class="muted">[^<]*2[^<]*4', en) and cjk(en) == []
+    assert re.search(r'<p class="muted">[^<]*2[^<]*4', en) and no_cjk(en)
     rid = seed(w, "p2", "succeeded", ann, counts={"succeeded": 71, "failed": 2})
     set_failed_tasks(w, rid, 2)
     zh = run_tab(w, "p2", "zh")
@@ -249,7 +249,7 @@ def test_stage_placeholder_launch_downstream(w, stage):
     assert "012b" not in zh and "016" not in zh
     assert '<span class="later">之後開放</span>' in zh
     en = pane(c.get("/?run=id-s1&stage=%s&lang=en" % stage).text, "middle")
-    assert '<span class="later">Coming later</span>' in en and cjk(en) == []
+    assert '<span class="later">Coming later</span>' in en and no_cjk(en)
     assert "012b" not in en and "016" not in en
 
 

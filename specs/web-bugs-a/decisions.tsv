@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-11-05T12:00	green	#337 只對 succeeded 移除 buttons，quick 連結保留	計畫裁決 R4 方案 A	web_board.py:_run_page	test_menu_* 綠
+2026-11-05T12:05	green	#340 在 _projects 正規化 *.nf 為 None	裁決 R6	web_board.py:_projects	test_left_group_* 綠
+2026-11-05T12:10	green	只重釘 BASE_* 的 -en 鍵	英文確認頁改為英文，zh 雜湊不變	test_clean_page.py:158	132 passed

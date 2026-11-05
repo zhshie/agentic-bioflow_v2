@@ -544,9 +544,10 @@ def test_tch21_stage_bodies(w):
         assert re.search(r"%s\s*%d(?!\d)" % (label, n), mid), (label, n)
     assert "10-18 09:05" in plain(pane(c.get("/?run=" + b + "&tab=info").text, "middle"))
     assert "Process terminated with an error exit status (137)" in c.get("/?run=" + a).text
-    for stage, feature in (("launch", "012b"), ("downstream", "016"), ("finished", "該次分析尚未進行至此階段。")):      # finished-stage: a run that has not succeeded has not reached it
+    for stage, feature in (("launch", "之後開放"), ("downstream", "之後開放"), ("finished", "該次分析尚未進行至此階段。")):      # finished-stage: a run that has not succeeded has not reached it
         body = pane(c.get("/?run=%s&stage=%s" % (a, stage)).text, "middle")
         assert "—" in body and feature in body, stage
+        assert "012b" not in body and "016" not in body, stage
 
 
 def test_tcs47_no_raw_iso_time(w):

@@ -19,7 +19,7 @@ from . import web_devmode
 from . import web_finished
 
 STAGES = ("launch", "running", "results", "downstream", "finished")
-PLACEHOLDER = {"launch": "012b", "downstream": "016"}      # the feature that will provide the stage
+PLACEHOLDER = ("launch", "downstream")      # stages whose page is still to come: a grey "coming later" line
 LIST_CAP = 100
 REASON_CAP = 80
 REFRESH_SECONDS = 15
@@ -63,6 +63,8 @@ STRINGS = {
         "card_step": "目前步驟", "card_stopped_at": "停在", "menu_more": "更多", "stage_running_failed": "執行", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
         "dur_hm": "%d 小時 %d 分", "dur_m": "%d 分", "dur_short": "不到 1 分",
         "no_notices": "目前無通知", "no_failed_tasks": "無失敗任務",
+        "failed_unlisted": "失敗計數 %d，但沒有可列出的失敗任務明細；這些失敗可能已被忽略或重試成功。",
+        "failed_partial": "上表列出 %d 個失敗任務，但失敗計數 %d；其餘可能已被忽略或重試成功。",
         "launch_title": "啟動分析", "launch_intro": "填寫完成後按「送出」，將先前往確認頁；於確認頁按「送出」才會排入佇列。",
         "l_pipeline": "管線（nf-core 名稱）", "l_revision": "版本", "l_run_name": "分析名稱", "l_samplesheet": "樣本表（從已上傳的檔案中選擇）",
         "l_ce": "運算環境", "l_params": "其他參數（選填）", "l_submit": "送出（前往確認頁）",
@@ -120,6 +122,8 @@ STRINGS = {
         "card_step": "Current step", "card_stopped_at": "Stopped at", "menu_more": "More", "stage_running_failed": "Run", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
         "dur_hm": "%dh %dm", "dur_m": "%dm", "dur_short": "<1m",
         "no_notices": "No notices", "no_failed_tasks": "No failed tasks",
+        "failed_unlisted": "The failed count is %d, but no failed task has a recorded detail; these may have been ignored or retried successfully.",
+        "failed_partial": "The table lists %d failed tasks, but the failed count is %d; the rest may have been ignored or retried successfully.",
         "launch_title": "Launch an analysis",
         "launch_intro": "Fill this in and press Submit: you go to the confirmation page first, and only the Send button there puts it in the queue.",
         "l_pipeline": "Pipeline (nf-core name)", "l_revision": "Revision", "l_run_name": "Analysis name",
@@ -452,7 +456,10 @@ def _projects(runs):
     the runs that have no project name are the last group."""
     found = {}
     for run in runs[:LIST_CAP]:
-        found.setdefault(run.get("project"), []).append(run)
+        name = run.get("project") or None
+        if name is not None and "/" not in name and name.endswith(".nf"):       # a script file name (main.nf) is not a project name
+            name = None
+        found.setdefault(name, []).append(run)
     order = [name for name in found if name is not None] + ([None] if None in found else [])
     return [(name, found[name]) for name in order]
 
@@ -490,7 +497,7 @@ def _stage_card(t, run, stage, lang="zh", outputs=None, finished=None, user_name
     if stage == "finished":
         inner = '<p>— <span class="muted">%s</span></p>' % esc(t["not_reached"])
     elif stage in PLACEHOLDER:
-        inner = '<p>— <span class="muted">%s</span></p>' % esc(PLACEHOLDER[stage])
+        inner = '<p>— %s</p>' % _later(t)
     elif stage != "running" and stage_of(run["status"]) != stage:
         inner = '<p>— <span class="muted">%s</span></p>' % esc(t["not_reached"])
     else:
@@ -742,13 +749,17 @@ def tab_body(t, lang, run, tab):
     """The content of one tab of the running stage page. Logs, Configuration and Metrics are grey panels until their actions exist."""
     if tab == "tasks":
         tasks = run.get("failed_tasks") or []
+        failed = (run.get("tasks") or {}).get("failed", 0) or 0
         if not tasks:
+            if failed > 0:
+                return '<p class="muted">%s</p>' % esc(t["failed_unlisted"] % failed)
             return '<p class="muted">%s</p>' % esc(t["no_failed_tasks"])
         head = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_exit", "th_message", "th_workdir"))
         body = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
                        % (esc(f.get("name") or "—"), esc("—" if f.get("exit_code") is None else f["exit_code"]),
                           esc(_first_line(f.get("error_message") or "", REASON_CAP) or "—"), esc(f.get("workdir") or "—")) for f in tasks)
-        return '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (head, body)
+        note = '<p class="muted">%s</p>' % esc(t["failed_partial"] % (len(tasks), failed)) if failed > len(tasks) else ""
+        return '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>%s' % (head, body, note)
     if tab == "info":
         status = run["status"]
         rows = [(t["i_id"], run["id"]), (t["i_name"], run["name"]), (t["i_status"], _Html(_chip(t, status))),
@@ -792,7 +803,7 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     badge = '<span class="badge state-%s"><span class="sq"></span> %s</span>' % (_css(status), esc(_state(t, status)))
     running = current == "running"
     buttons = ("".join(acts.form(verb, selected["id"]) + (acts.edit_link(selected["id"]) if verb == "resume" and _failure_of(selected) else "")
-                       for verb in ("resume", "relaunch", "cancel")) if acts else "") if running else ""
+                       for verb in ("resume", "relaunch", "cancel")) if acts else "") if running and selected["status"] != "succeeded" else ""
     quick = '<a href="%s">%s</a>' % (esc("/launch?from=" + urllib.parse.quote(str(selected["id"]), safe="") + ("&lang=en" if lang == "en" else "")),
                                     esc(t["quick"])) if running else ""
     menu = '<details class="menu"><summary>%s</summary>%s%s</details>' % (esc(t["menu_more"]), buttons, quick) if running else ""
