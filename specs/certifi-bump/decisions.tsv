@@ -3,3 +3,5 @@ ts	phase	decision	why	evidence	result
 2026-11-05	GREEN	選 certifi==2026.10.18（計畫最低修正版）	只改一行	platform/constraints.txt:5	三條新測試綠
 2026-11-05	FIX	測試檔加 Nothing existing 檔頭	test_scope TC-070 要求每個測試檔有此標頭	platform/tests/test_scope.py:78	已補
 2026-11-05	BLOCKED	不改 platform_upgrade_test.sh 的 TC-U28	TC-U28 要求 platform/ 相對 merge-base 完全不變，與任何 constraints 改動互斥，計畫未允許改它	tests/platform_upgrade_test.sh:234	卡住，待 developer-agent 裁決
+2026-11-06	MERGE	合併 origin/v3（TC-U28 已刪）	裁決要求；無衝突	3137b78f	乾淨合併
+2026-11-06	SUITE	全套第一輪：platform_clock 與 station_e2e 兩測試紅，重跑通過；第二輪 shard_6 逾時，只重跑該片通過(286s)	與本案無關的負載抖動，單跑 test_station_e2e 85 過	381978fc	150/150 綠
