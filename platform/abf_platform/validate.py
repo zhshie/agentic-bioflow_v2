@@ -11,7 +11,7 @@ from . import catalogue, compose
 CHECKS = ["static"]
 SHA_FIELD = "catalogue_sha"        # the key of a result, and the name of the column that keeps it
 _CLASS = {"map": "meta", "file": "path", "directory": "path", "string": "val", "boolean": "val", "integer": "val", "float": "val"}
-_PLAIN = re.compile(r"^[A-Za-z0-9._-]+$")
+_PLAIN = re.compile(r"^[A-Za-z0-9._-]+\Z")
 
 
 def _kind(record):
