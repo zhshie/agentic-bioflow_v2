@@ -282,11 +282,7 @@ def test_no_web_route_for_it(d, w):
 
 def test_no_schema_change():
     # TC-032
-<<<<<<< HEAD
-    # developer-agent 11-05: pin moved from the stale commit e428661b (v3 added a job kind since) to origin/v3
-=======
     # pin moved from the stale commit e428661b (v3 changed store.py since) to origin/v3
->>>>>>> origin/v3
     out = subprocess.run(["git", "diff", "--stat", "origin/v3", "--", "migrations", "abf_platform/store.py", "abf_platform/schema.sql"],
                          cwd=str(HERE.parent), capture_output=True, text=True).stdout
     assert out.strip() == ""
