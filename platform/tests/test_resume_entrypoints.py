@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from helpers import REPO_ROOT, tool_json
+from helpers import CHAT_ARGS, REPO_ROOT, tool_json
 from human_harness import form_answer
 from launch_harness import Pty, cli_argv
 from resume_harness import SESSION, FakePerson, Rig
@@ -51,10 +51,10 @@ def test_tc133_tc134_tc135_each_new_tool_takes_one_argument_the_run_name_and_non
     # TC-133, TC-134, TC-135 (resume-edit-params-b: resume also takes the two optional edits; relaunch still only the name)
     t = tools_of(rig)[name]
     props = t.input_schema.get("properties", {})
-    assert set(props) == ({"run_name", "params", "extra_config"} if name == "resume" else {"run_name"})
+    assert set(props) - CHAT_ARGS == ({"run_name", "params", "extra_config"} if name == "resume" else {"run_name"}) and CHAT_ARGS <= set(props)
     assert t.input_schema.get("required") == ["run_name"]
     assert props["run_name"].get("type") == "string"
-    assert not (set(props) & YES_FIELDS)
+    assert not (set(props) & YES_FIELDS)    # user_confirmed is not in YES_FIELDS: it is the CHAT argument
     assert t.annotations.read_only_hint is False and t.annotations.destructive_hint is False
 
 

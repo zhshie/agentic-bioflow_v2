@@ -12,7 +12,7 @@ import sqlite3
 
 import pytest
 
-from helpers import PLATFORM_DIR
+from helpers import CHAT_ARGS, PLATFORM_DIR
 from human_harness import PASSWORD, World, csrf_of, form_answer, pending_id_of
 from owner_harness import Duo, SHARED, sql_exec, sql_rows
 from resume_harness import SESSION
@@ -457,7 +457,7 @@ def test_tc048_no_argument_can_say_yes(d):
     tools, _ = d.w.mcp([])
     props = {t.name: set(t.input_schema["properties"]) for t in tools}["launch"]
     assert "samplesheet_text" in props
-    assert not any(re.search(r"confirm|approve|yes|send|force|skip|accept|送出", p, re.I) for p in props), props
+    assert not any(re.search(r"confirm|approve|yes|send|force|skip|accept|送出", p, re.I) for p in props - CHAT_ARGS), props    # the CHAT arguments of launch are the only exception (specs/mcp-chat-confirm)
 
 
 def test_tc049_bob_cannot_press_alices_request(d, w):

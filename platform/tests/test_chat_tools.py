@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from helpers import PLATFORM_DIR, tool_json
+from helpers import CHAT_ARGS, PLATFORM_DIR, tool_json
 from human_harness import World
 from resume_harness import Rig
 
@@ -65,7 +65,10 @@ def test_tc020_the_list_is_derived_not_copied(tmp_path):
     by = {t.name: t for t in server_tools(tmp_path)}
     for s in specs(tmp_path):
         assert s["description"] == by[s["name"]].description
-        assert s["input_schema"] == by[s["name"]].input_schema
+        want = by[s["name"]].input_schema
+        if s["name"] in ("launch", "cancel", "resume", "relaunch"):    # the browser chat is not offered the CHAT arguments (TC-053)
+            want = dict(want, properties={k: v for k, v in want["properties"].items() if k not in CHAT_ARGS})
+        assert s["input_schema"] == want
 
 
 def test_tc021_the_list_is_cached_per_process(tmp_path, monkeypatch):

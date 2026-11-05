@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from helpers import tool_json
+from helpers import CHAT_ARGS, tool_json
 from human_harness import csrf_of, form_answer, pending_id_of
 from launch_harness import Pty, cli_argv
 from resume_harness import SESSION, FakePerson, Rig
@@ -310,9 +310,9 @@ def test_request_resume_and_relaunch_take_only_the_edits_they_should():
     # TC-018, TC-030
     from abf_platform import actions
     assert list(inspect.signature(actions.request_resume).parameters) == [
-        "platform_path", "run_name", "params", "extra_config", "caller", "person", "clock", "remote", "index_path"]
+        "platform_path", "run_name", "params", "extra_config", "caller", "person", "clock", "remote", "index_path", "request_id", "user_confirmed"]
     assert list(inspect.signature(actions.request_relaunch).parameters) == [
-        "platform_path", "run_name", "caller", "person", "clock", "remote", "index_path"]
+        "platform_path", "run_name", "caller", "person", "clock", "remote", "index_path", "request_id", "user_confirmed"]
 
 
 # ---- the actions: asking twice, the yes, tampering --------------------------------------------------------------------------------------------
@@ -430,8 +430,8 @@ def test_mcp_resume_takes_run_name_and_two_optional_fields_and_relaunch_still_on
     assert sorted(t) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs",
                          "list_site_files", "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
     yes = {"yes", "y", "confirm", "confirmed", "approve", "approved", "force", "送出", "kind", "command", "script"}
-    assert set(t["resume"].input_schema["properties"]) == {"run_name", "params", "extra_config"}
-    assert set(t["relaunch"].input_schema["properties"]) == {"run_name"}
+    assert set(t["resume"].input_schema["properties"]) == {"run_name", "params", "extra_config"} | CHAT_ARGS
+    assert set(t["relaunch"].input_schema["properties"]) == {"run_name"} | CHAT_ARGS
     for name in ("resume", "relaunch"):
         assert t[name].input_schema.get("required") == ["run_name"]
         assert not set(t[name].input_schema["properties"]) & yes

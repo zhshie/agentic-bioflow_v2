@@ -56,7 +56,7 @@ OWED_BEFORE_012B = {"list_compute_envs", "get_compute_env", "list_agents", "list
 # v3 (keep-submissions, resume/relaunch): request_forget, request_resume, request_relaunch are what the tools forget, resume, relaunch call; forget_check and keep_screen are helpers; the FORGET_* and RUN_NOT_FOUND words are constants.
 INTERNAL = {"offer_cleanup", "offer_cleanups", "request_pipeline_launch", "request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
             "person_at", "caller_area", "confined_samplesheet", "read_confined_samplesheet", "forget_check", "keep_screen",
-            "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE",
+            "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "CHAT", "TERMINAL", "DEFAULT_WEB_BASE",
             "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND",
             # #138 read_task_log words, and estimate_su (a v3 helper with no MCP tool, TC-029, and no web route)
             "RUN_NOT_FOUND_TEXT", "READ_WHICH", "NO_WORKDIR", "LOG_NOT_FOUND", "estimate_su", "READ_CHARS",
