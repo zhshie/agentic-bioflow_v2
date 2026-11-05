@@ -730,6 +730,11 @@ this channel is weaker than the form and the page, and the amendment says so.
   content and kind as the request, and within ten minutes; over stdio there is no caller, so CHAT
   is refused there. Its limit: a client program an AI controls can set `user_confirmed=true`
   without asking, so for the AI itself this channel rests on its instructions, not on a barrier.
+- Its relation to 5.0.0: the sentence in 5.0.0, "A pending request, a token, and anything the
+  model can answer are not a channel", no longer applies to CHAT. A pending request and a token
+  are still not a channel by themselves; CHAT is a channel only as the person's own reply relayed
+  on the request id, and the platform cannot check that the reply was a person's. The 5.0.0 entry
+  is left as it was written; this entry supersedes it for CHAT.
 - The Safety Net rule on write tools names the fourth channel and says a chat reply counts only as
   the person's own, relayed with the request id and `user_confirmed=true`; the line that lists
   the write tools is unchanged.
