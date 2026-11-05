@@ -42,7 +42,7 @@ def specs(tmp_path):
 
 def offered_by_rule(tools):
     req = chat_tools().REQUEST_TOOLS
-    return {t.name for t in tools if (t.annotations is not None and t.annotations.read_only_hint is True) or t.name in req}
+    return {t.name for t in tools if (t.annotations is not None and t.annotations.read_only_hint is True) or t.name in req or t.name in chat_tools().QUERY_TOOLS}
 
 
 def test_tc001_tc034_the_list_is_what_the_server_has_and_is_read_only_or_a_request_tool(tmp_path):
@@ -128,8 +128,8 @@ def test_tc025_the_progress_tools_are_offered_and_read_only(tmp_path):
     # TC-025
     by = {t.name: t for t in server_tools(tmp_path)}
     names = {s["name"] for s in specs(tmp_path)}
-    for n in ("list_runs", "get_run"):
-        assert n in names and by[n].annotations.read_only_hint is True
+    for n in ("list_runs", "get_run"):      # ruling R2: get_run is a query that is not marked read-only (see QUERY_TOOLS)
+        assert n in names and by[n].annotations.read_only_hint is (n != "get_run")
 
 
 # ---- the source of the module ------------------------------------------------------------------------------------

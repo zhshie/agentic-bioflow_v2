@@ -163,17 +163,10 @@ def pipeline_name(run):
     return None
 
 
-def assets_dir(base, pipeline):
-    if not pipeline:
-        return None
-    d = os.path.join(base, pipeline)
-    return d if os.path.isdir(d) else None
-
-
 # --- fetching what a local `nextflow pull` would have left ------------------
-GITHUB_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$")
-REV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]*$")
-SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+GITHUB_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+\Z")
+REV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]*\Z")
+SHA_RE = re.compile(r"^[0-9a-fA-F]{40}\Z")
 NOT_FOUND = 44
 CITATIONS_PATH = "CITATIONS.md"
 TEMPLATE_PATH = "assets/methods_description_template.yml"
@@ -248,7 +241,7 @@ def revision_candidates(rev):
     return out
 
 
-IMMUTABLE_REV_RE = re.compile(r"^[vV]?[0-9]+(\.[0-9]+){0,3}$")
+IMMUTABLE_REV_RE = re.compile(r"^[vV]?[0-9]+(\.[0-9]+){0,3}\Z")
 TEMPLATE_DATA_RE = re.compile(r"^data:\s*\|", re.M)
 
 
