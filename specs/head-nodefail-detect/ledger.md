@@ -24,3 +24,4 @@
   - 全套（11-05，裁決 R7）：143/144；唯一紅為 platform_upgrade_test.sh TC-U28（本機鏡像 origin/v3 夠新才觸發的已知環境假紅，以 CI 為準）。
   - 修正輪（11-05，驗卷者 TC-044）：裁決 R4 撤回。test-case.md 還原成驗卷者 bac7a1e8 的版本（實作期間不得改合約）；jobs.ask_head_state 恢復維護者原裁決 R1（失聯超過 6 小時且無事實就不再問，不論有無抓取列）；TC-044 no_fetch 測試改回「列總數不增加」。R4 的「從未問過的 run 問一次」若要保留，需維護者決定並由驗卷者重新確認合約。
   - 修正輪（11-05，對抗審 TC-044）：測試移動時鐘的每一步先把 agents.last_seen_at 補到移動後時間點，使 agent 保持線上；新增 test_tc044_mutation_*（monkeypatch jobs.BAD_END_GIVE_UP_SECONDS=1e12 後，同樣的呼叫回 True），即變異證明：關掉放棄則這幾步轉紅。產品程式碼未動。
+  - 合併 origin/v3 5ff54aa7（11-05，第二次）：唯一衝突 test_mcp_launch_pipeline.py 為註解，取 v3 版；其餘自動合併，tool 計數測試無需再改。注意：origin/v3 本身 test_mcp_contract_tools.py 有 4 支紅（snapshot 缺 launch 的 profiles/params 說明、launch 599 字已低於 OVER_LIMIT、launch.pipeline 無說明），與本分支無關，未動。
