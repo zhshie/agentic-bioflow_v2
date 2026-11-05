@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-11-05	RED	改前實跑合約測試檔，紅四支，與計畫一致	計畫作法1	test_mcp_contract_tools.py	4 failed 7 passed
+2026-11-05	GREEN	pipeline 加 Field 說明、OVER_LIMIT 刪 launch、用 REGEN_CMD 重產快照	計畫作法2-4	mcp_server.py launch_tool	合約檔 11 passed
