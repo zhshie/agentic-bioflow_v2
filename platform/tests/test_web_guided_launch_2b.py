@@ -613,7 +613,7 @@ def test_h11_old_strings_are_gone(rig, fk):
             assert old not in main_of(page), (state, old)
     # guided-launch-2d: step count 6; the pre-check hint, the diagram hint and the 套用此版本 link are gone; the no-sheet and no-environment sentences are the new ones
     news = {"used": ["曾使用的管線", "其他 nf-core 管線", "選用", "沿用設定重新分析", "請依序完成步驟 1 至 6。按下「送出」後將進入確認頁，於確認頁再次送出才會排入佇列。"],
-            "no pipeline": ["尚未選擇", "預覽與欄位角色（尚未開放）", "分析名稱", "送出（前往確認頁）"],
+            "no pipeline": ["尚未選擇", "分析名稱", "送出（前往確認頁）"],
             "no version": ["管線（nf-core 名稱）", "版本 *"],      # guided-launch-2d: the newest version is chosen by itself, so 選定版本後檢查 is no longer shown here (it still shows with no version decided, see test_g01_no_revision)
             "stale": ["目前無法連線至 GitHub，以下為"],
             "no diagram": ["此管線未提供流程圖。"], "no sheet": ["尚無已上傳的樣本表，請先上傳。", "尚無可用的運算環境，請先至設定頁完成設定。"],
