@@ -560,7 +560,7 @@ def test_tc058_tc059_tc060_no_upload_tool_no_site_job_no_folder_job(d):
     # TC-058, TC-059, TC-060
     tools, _ = d.w.mcp([])
     assert {t.name for t in tools} == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                                       "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "forget", "resume", "relaunch"}
+                                       "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"}
     before = tree(d.uploads)
     jobs_before = [r["id"] for r in sql_rows(d.state, "SELECT id FROM jobs")]
     assert pending(by_text(d, d.a, site_cells(3)))
@@ -624,3 +624,17 @@ def test_cs03_every_shape_the_base_refused_is_still_refused_and_the_one_allowed_
         assert "bob" not in out["message"] and "y.fq" not in out["message"]
     assert counts(d) == (0, 0, 0)
     assert pending(by_text(d, d.a, ["%s/x.fq" % SHARED]))       # the one shape the maintainer allowed
+
+
+def test_tc060_over_http_profiles_test_without_a_samplesheet_is_asked_as_in_process(w):
+    # TC-060 (launch-test-profile): an HTTP caller (a bearer-found user) asks for the pipeline's own test data
+    from profiles_harness import ask, feed, install_eight, profiles_map
+    ann = w.user("ann")
+    install_eight(w)
+    feed(w, profiles_map())
+    out = ask(w, ann, ["test"])
+    assert out["ok"] is True and out["state"] == "pending" and out["sent"] is False and out["confirmation_url"], out
+    row = w.confirmations()[-1]
+    b = json.loads(row["bundle_json"])
+    assert b["profiles"] == ["test"] and "samplesheet.csv" not in b["files"] and b["samplesheet"] is None
+    assert "Config profiles: test" in row["screen_text"]

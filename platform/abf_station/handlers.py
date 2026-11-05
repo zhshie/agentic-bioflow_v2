@@ -250,6 +250,42 @@ def _site_pipeline_command(entry):
 
 
 _COMMIT = re.compile(r"[0-9a-fA-F]{40}\Z")
+_PROFILE_HEAD = re.compile(r"\s*(?:([A-Za-z_][\w.-]*)|'([^'\n]+)'|\"([^\"\n]+)\")\s*\{")
+_PROFILE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z")
+_PROFILE_LIMIT = 100
+
+
+def _config_profiles(config_text):
+    """The names inside the `profiles { ... }` block of a pipeline's own nextflow.config (its Config profiles), in the order written; []
+    when there is no such block. Only a name that a launch could pass on is kept."""
+    clean = _blank_comments(config_text)
+    names = []
+    for m in re.finditer(r"(?<![\w.])profiles\s*\{", clean):
+        block = _block_after(clean, m.end() - 1)
+        pos = 0
+        for _ in range(len(block) + 1 if block is not None else 0):      # every pass moves pos on, so the text is never walked twice
+            head = _PROFILE_HEAD.match(block, pos)
+            if not head:
+                nxt = block.find("\n", pos)
+                if nxt < 0:
+                    break
+                pos = nxt + 1
+                continue
+            inner = _block_after(block, head.end() - 1)
+            if inner is None:
+                break
+            name = head.group(1) or head.group(2) or head.group(3)
+            if _PROFILE_NAME.match(name) and name not in names:
+                names.append(name)
+            pos = head.end() + len(inner) + 1
+    return names[:_PROFILE_LIMIT]
+
+
+def _site_profiles(entry, res):
+    """(`<pipeline> <revision>`, its Config profile names) from what the site printed of the pipeline's nextflow.config."""
+    lines = res.out.decode("utf-8", errors="replace").splitlines()
+    text = "\n".join(lines[lines.index("abf_site=main") + 1:])
+    return "%s %s" % (entry["pipeline"], entry["revision"]), _config_profiles(text)
 
 
 def _judge_site_pipeline(entry, res):
@@ -408,6 +444,7 @@ def preflight(env, ctx, inventory=False):
                 add("head_queue", "fail", "the head queue %s is not listed by sinfo" % env["headQueue"])
 
     entries = env.get("sitePipelines") or []
+    site_profiles = {}
     if entries:
         verdicts = []
         for entry in entries:
@@ -416,6 +453,9 @@ def preflight(env, ctx, inventory=False):
             if reason:
                 return abandon(reason)
             verdicts.append(_judge_site_pipeline(entry, res))
+            if verdicts[-1][0] and "abf_site=main" in res.out.decode("utf-8", errors="replace").splitlines():
+                key, names = _site_profiles(entry, res)
+                site_profiles[key] = names
         if all(ok for ok, _ in verdicts):
             add("site_pipeline", "pass", ", ".join(words for _, words in verdicts))
         else:
@@ -434,6 +474,8 @@ def preflight(env, ctx, inventory=False):
     verdict = _verdict(checks)
     if inventory:
         verdict["site_inventory"] = site_inventory(site)
+        if site_profiles:      # the Config profiles each installed pipeline's own config names; a launch checks a profile against them
+            verdict["site_profiles"] = site_profiles
     return verdict
 
 

@@ -487,7 +487,7 @@ def test_the_two_requests_share_one_back_half_and_the_signatures_are_those_named
     for fn in (actions.request_launch, actions.request_pipeline_launch):
         assert "_ask(" not in inspect.getsource(fn) and "find_approved" not in inspect.getsource(fn)
     old = list(inspect.signature(actions.request_launch).parameters)
-    assert old == ["platform_path", "pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns", "dataset", "dataset_version",
+    assert old == ["platform_path", "pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns", "dataset", "dataset_version", "profiles",
                    "caller", "person", "clock", "remote"]
     new = list(inspect.signature(actions.request_pipeline_launch).parameters)
     assert new == ["platform_path", "pipeline_id", "version", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "caller",
@@ -863,6 +863,9 @@ def test_no_new_public_name_in_the_tool_or_web_layers():
     # TC-161: the outer names stay for 017e
     for f in ("mcp_server.py", "web.py", "web_board.py"):
         text = read(PLATFORM / "abf_platform" / f)
+        # launch-pipeline-mcp (017e): the tool name launch_pipeline now belongs in mcp_server.py; every other name stays out
+        if f == "mcp_server.py":
+            text = text.replace("request_pipeline_launch", "").replace("launch_pipeline", "")
         assert "pipeline_launch" not in text and "launch_pipeline" not in text, f
     assert "pipeline_launch" not in read(PLATFORM / "abf_station" / "handlers.py")
 

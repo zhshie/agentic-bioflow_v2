@@ -752,6 +752,14 @@ def _migrate_tokens(con):
         except sqlite3.OperationalError:
             if "temp_until" not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
                 raise
+    for col in ("step_mode", "dev_mode"):      # 012a-settings-page: two personal flags; NULL (every old row) reads as the default
+        if col not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
+            try:
+                with con:
+                    con.execute("ALTER TABLE users ADD COLUMN %s INTEGER" % col)
+            except sqlite3.OperationalError:
+                if col not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
+                    raise   # a second process may have added it first; anything else is a real error
 
 
 def connect_tokens(path):
@@ -955,6 +963,49 @@ def list_pats(tokens_path):
         return [dict(r) for r in con.execute(
             "SELECT t.id AS id, u.name AS user, t.label AS label, t.created_at AS created_at, t.revoked_at AS revoked_at "
             "FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.kind = 'pat' ORDER BY t.id")]
+    finally:
+        con.close()
+
+
+PREF_DEFAULTS = {"step_mode": True, "dev_mode": False}      # 012a-settings-page: what a person with no saved choice has (step-by-step on, development off)
+
+
+def user_prefs(tokens_path, user_id):
+    """{'step_mode': bool, 'dev_mode': bool} of one user; a missing value (NULL, or no such file or user) is the default."""
+    out = dict(PREF_DEFAULTS)
+    if not Path(tokens_path).exists():
+        return out
+    con = connect_tokens(tokens_path)
+    try:
+        row = con.execute("SELECT step_mode, dev_mode FROM users WHERE id = ?", (user_id,)).fetchone()
+    finally:
+        con.close()
+    if row is not None:
+        for key in PREF_DEFAULTS:
+            if row[key] is not None:
+                out[key] = bool(row[key])
+    return out
+
+
+def set_user_pref(tokens_path, user_id, key, on):
+    """Save one personal flag of one user. Only the two keys of PREF_DEFAULTS are accepted (ValueError otherwise); `on` must be a bool."""
+    if key not in PREF_DEFAULTS or not isinstance(on, bool):
+        raise ValueError("unknown personal setting")
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            con.execute("UPDATE users SET %s = ? WHERE id = ?" % key, (1 if on else 0, user_id))
+    finally:
+        con.close()
+
+
+def has_live_pat(tokens_path, user_id):
+    """True when the user has a personal access token that is not revoked. Reads no value and no hash."""
+    if not Path(tokens_path).exists():
+        return False
+    con = connect_tokens(tokens_path)
+    try:
+        return con.execute("SELECT 1 FROM tokens WHERE kind = 'pat' AND user_id = ? AND revoked_at IS NULL LIMIT 1", (user_id,)).fetchone() is not None
     finally:
         con.close()
 
