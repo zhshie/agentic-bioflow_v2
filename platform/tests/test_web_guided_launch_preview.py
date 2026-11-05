@@ -414,7 +414,7 @@ def test_style_sheet_text_is_the_one_before_this_task(rig, fk):
     assert hashlib.sha256(css.encode("utf-8")).hexdigest() == CSS_SHA256
 
 
-CSS_SHA256 = "6b2683ae09caee2a0e66778f2cde00e56e9ab500413829cf531c5c27ce8742f3"
+CSS_SHA256 = "0b5b317c1dab4ca0f958e92cd6a0fb7b03185461f29854ea4f6f83531823ae00"
 
 
 def test_one_send_button_no_step_mode(rig, fk):
@@ -464,4 +464,4 @@ def test_mcp_tool_list_and_no_preview_tool(tmp_path):
     from abf_platform.mcp_server import build_server
     names = {t.name for t in asyncio.run(build_server(str(tmp_path / "index.db")).list_tools())}
     assert names == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log",
-                     "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "resume", "relaunch", "forget"}
+                     "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "cancel", "resume", "relaunch", "forget", "launch_pipeline"}
