@@ -1,0 +1,31 @@
+# Same-named shell functions defined in more than one script under scripts/**/*.sh.
+# Format: <name><TAB><file>. May only shrink; see tests/shell_helper_dupes_test.sh.
+alive	scripts/agent_ctl.sh
+alive	scripts/egress_ctl.sh
+die	scripts/egress_allow.sh
+die	scripts/fetch.sh
+die	scripts/init_workspace.sh
+die	scripts/input_checksums.sh
+die	scripts/on_site.sh
+die	scripts/push.sh
+die	scripts/record_adapter.sh
+die	scripts/reset_master.sh
+field	scripts/report.sh
+field	scripts/setup_proof.sh
+fix	scripts/launch_recheck.sh
+fix	scripts/preflight.sh
+rsync_local_path	scripts/fetch.sh
+rsync_local_path	scripts/push.sh
+say	scripts/launch_recheck.sh
+say	scripts/preflight.sh
+section	scripts/preflight_site.sh
+section	scripts/sweep.sh
+usage	scripts/detect_conditions.sh
+usage	scripts/egress_allow.sh
+usage	scripts/input_checksums.sh
+usage	scripts/intro.sh
+usage	scripts/relaunch_with_override.sh
+usage	scripts/report.sh
+usage	scripts/setup_proof.sh
+usage	scripts/sweep.sh
+usage	scripts/tune_resources.sh
