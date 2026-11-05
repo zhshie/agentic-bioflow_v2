@@ -241,6 +241,3 @@ source: 維護者 2026-11-04 對話（見下）；憲法 I.2 與 Safety Net 的�
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
-
-## 裁決（第六輪，2026-11-05，developer-agent）
-前五輪所有關於 worktree 的裁決（含 `-v3`、`-v4`）一律作廢。這次用新 id `mcp-chat-confirm-v5`、分支 `feat/mcp-chat-confirm-v5`，supervise 會直接從目前 `origin/v3` 開全新 worktree（`wt/mcp-chat-confirm-v5`），不必 rebase、不必檢查舊 worktree。verifier／executor 不得讀 `wt/mcp-chat-confirm`、`-v3`、`-v4`。`dir`／`ledger` 路徑仍為 `specs/mcp-chat-confirm/`（沿用，不改名）。其餘 TC 與作法以最後有效的裁決為準，計畫內「改讀 -v4」的句子現在一律讀成「用目前這個 worktree」。
