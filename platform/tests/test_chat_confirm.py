@@ -366,12 +366,39 @@ def test_tcm_45_page_and_form_stay(w):
     assert row(w, f["id"])["channel"] == "ELICITED"
 
 
+# What the base (merge-base with origin/v3, ea704065) has, written out so that any added route, tool, column, table or schema
+# change makes the test below fail. If a later change to the platform legitimately alters one of these, edit the list with it.
+BASE_TOOLS = ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation",
+              "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs", "list_site_files",
+              "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
+BASE_CONFIRMATION_COLUMNS = ["id", "sha256", "kind", "created_at", "used_at", "caller_user_id", "state", "channel", "confirmed_at",
+                             "expires_at", "ce_name", "bundle_json", "screen_text", "void_reason", "forgotten_at", "forgotten_by"]
+BASE_TABLES = ["agents", "compute_envs", "confirmations", "jobs", "launches", "meta"]
+BASE_SCHEMA_SHA256 = "b401f98b6b2db172fe8ef3e73155482424bc5f6da569a17a204e3a1085f75415"
+BASE_ROUTES = [
+    ("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")), ("/act/{verb}", ("POST",)),
+    ("/act/{verb}/edit", ("GET", "HEAD")), ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")),
+    ("/c/{rid}", ("POST",)), ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")),
+    ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")), ("/login", ("GET", "HEAD")), ("/login", ("POST",)),
+    ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")),
+    ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/personal", ("POST",)),
+    ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)), ("/token", ("OPTIONS", "POST")),
+    ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")), ("/usage", ("GET", "HEAD")),
+    ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))]
+
+
 def test_tcm_47_no_new_column_no_new_table(w):
-    # TC-047
-    cols = [r[1] for r in w.sql("PRAGMA table_info(confirmations)")]
-    assert "chat" not in " ".join(cols).lower()
-    assert set(cols) >= {"id", "sha256", "kind", "caller_user_id", "state", "channel", "confirmed_at"}
-    assert not any("chat" in r[0].lower() for r in w.sql("SELECT name FROM sqlite_master"))
+    # TC-047: the same HTTP routes, MCP tool names, confirmations columns, tables and schema as the base; no new migration
+    # (store.py, jobs.py and web.py are also a zero diff, which TC-077 checks).
+    import hashlib
+    assert sorted(t.name for t in tools(w).values()) == BASE_TOOLS
+    assert [r[1] for r in w.sql("PRAGMA table_info(confirmations)")] == BASE_CONFIRMATION_COLUMNS
+    rows = w.sql("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name")
+    assert [r[1] for r in rows if r[0] == "table"] == BASE_TABLES
+    blob = "\n".join(" ".join((r[2] or "").split()) for r in rows)
+    assert hashlib.sha256(blob.encode("utf-8")).hexdigest() == BASE_SCHEMA_SHA256
+    routes = sorted((getattr(r, "path", str(r)), tuple(sorted(getattr(r, "methods", None) or []))) for r in w.web().app.routes)
+    assert routes == sorted(BASE_ROUTES)
 
 
 def test_tcm_48_schemas_gain_two_optional_fields_on_four_tools(w):
@@ -424,7 +451,12 @@ def test_tcm_53_browser_chat_never_sees_the_chat_arguments(tmp_path):
         assert not banned.search(s["name"])
         for p in s["input_schema"].get("properties", {}):
             assert not banned.search(p), (s["name"], p)
-    assert "你沒有任何工具可以替本人說「是」" in chat_tools.CHAT_SYSTEM_PROMPT
+    # TC-054: CHAT_SYSTEM_PROMPT is word for word the base's (sha256 and length taken from ea704065)
+    import hashlib
+    prompt = chat_tools.CHAT_SYSTEM_PROMPT
+    assert len(prompt) == 939
+    assert hashlib.sha256(prompt.encode("utf-8")).hexdigest() == "c2d8214c032f2afb68dded1bdc58aa111e44f0c859f21e9622e60b0ca386b0e3"
+    assert "你沒有任何工具可以替本人說「是」" in prompt
 
 
 # ---- US4 ------------------------------------------------------------------------------------------------------------------------------
@@ -531,13 +563,49 @@ def test_tcm_74_refusals_have_a_plain_shape(w):
         assert len(m) > 12
 
 
-def test_tcm_75_no_secret_in_replies_or_logs(w, caplog):
-    # TC-075
+def test_tcm_75_no_secret_in_replies_or_logs(w, caplog, capfd):
+    # TC-075: ann and bob (each with a personal access token and a web password) run the representative cases of TC-001 to TC-029;
+    # no reply and no log line holds a token, a password or a full file path.
+    import sqlite3
+    from abf_platform import store
     from human_harness import PASSWORD
     ann, bob = w.user("ann"), w.user("bob")
+    secrets_ = {PASSWORD}
+    for u in (ann, bob):
+        t = store.create_token(w.ip.tokens, kind="pat", user_id=u.user_id, label="t-" + u.name)
+        assert t.startswith("abf_pat_")
+        secrets_.add(t)
+        secrets_.add(t[len("abf_pat_"):])
+    con = sqlite3.connect(str(w.ip.tokens))
+    secrets_ |= {r[0] for r in con.execute("SELECT token_hash FROM tokens")}
+    con.close()
+    outs = []
     with caplog.at_level("DEBUG"):
-        o1 = pending(w, ann)
-        outs = [yes(w, bob, o1["id"]), yes(w, ann, o1["id"]), yes(w, ann, o1["id"])]
-    blob = json.dumps(outs, ensure_ascii=False) + caplog.text
-    tokens = [r[0] for r in __import__("sqlite3").connect(str(w.ip.tokens)).execute("SELECT * FROM users")] if False else []
-    assert PASSWORD not in blob and str(w.tmp) not in blob
+        a1 = pending(w, ann)
+        b1 = pending(w, bob, run="run-bob")
+        outs += [a1, b1,
+                 w.launch(caller=ann, request_id=a1["id"]),                              # no true: still pending
+                 w.launch(caller=ann, user_confirmed=True),                              # true without an id
+                 yes(w, ann, "f" * 32),                                                  # unknown id
+                 yes(w, bob, a1["id"]),                                                  # somebody else's id
+                 yes(w, None, a1["id"]),                                                 # stdio
+                 yes(w, ann, a1["id"], run="changed-name"),                              # changed content
+                 yes(w, ann, a1["id"]),                                                  # confirmed
+                 yes(w, ann, a1["id"]),                                                  # repeated
+                 yes(w, bob, b1["id"])]                                                  # bob's own
+        con = sqlite3.connect(str(w.ip.state_db))
+        with con:
+            con.execute("UPDATE confirmations SET expires_at = ? WHERE id = ?", (time.time() - 1, b1["id"]))
+        con.close()
+        outs.append(yes(w, bob, b1["id"]))                                               # after the time limit
+    out, err = capfd.readouterr()
+    blob = json.dumps(outs, ensure_ascii=False, default=str) + caplog.text + out + err
+    assert len(outs) >= 12
+    for s in secrets_:
+        assert s not in blob, "a token or password reached a reply or a log"
+    assert "abf_pat_" not in blob
+    # Paths: the pending reply's `summary` is the same screen the form and the page show the person (it lists the person's own
+    # samplesheet, as the base does), so it is left out of the path check; every other reply field and every log line is checked.
+    bare = [{k: v for k, v in o.items() if k != "summary"} for o in outs]
+    blob2 = json.dumps(bare, ensure_ascii=False, default=str) + caplog.text + out + err
+    assert str(w.tmp) not in blob2 and str(w.ip.state_db.parent) not in blob2 and str(w.sheet) not in blob2

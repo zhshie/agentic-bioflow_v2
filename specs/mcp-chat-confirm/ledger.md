@@ -28,3 +28,7 @@
 - 描述長度：cancel 610→低於 600；resume、relaunch 改寫為不超過 600（內含 request_id 與 user_confirmed 一句）。tests/mcp 全過（72 passed）。
 - TC-026：test_tcm_26 改為 599 秒必須核可並排出 job（offline_after 放寬以免假時鐘造成離線）。
 - 注意：tests/platform_test.sh 只列舉 tests/test_*.py，platform/tests/mcp/ 不在全套分片內；已另跑 tests/mcp。
+
+## 修正輪二
+- TC-047、TC-054、TC-075：test_chat_confirm.py 改為與 base（ea704065）逐項比對，38 passed。pending 回覆的 summary 欄與表單／頁面同一份畫面，含使用者自己的 samplesheet 路徑（base 行為），路徑檢查排除該欄，token／密碼檢查含全部。
+- TC-071：7.0.0 條目需補一條 What changes bullet，寫明 5.0.0 那句 A pending request, a token, and anything the model can answer are not a channel 對 CHAT 不再適用（CHAT 只是人本人的回覆經 request id 轉述；單獨的待確認與 token 仍不是通道；5.0.0 條目不動）。憲法檔的編輯被拒，未寫入，卡住。
