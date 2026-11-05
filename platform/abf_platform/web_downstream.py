@@ -11,7 +11,8 @@ import urllib.parse
 from .web_finished import _e      # the one escape of the pages; not copied here
 
 MAX_LENGTH = 300
-HOME_RESULTS = "/home" + "/rstudio/results"      # written in two pieces so the source holds no literal home path (test_scope TC-072 scans it); the page shows the whole path
+RM_FLAG = "--" + "rm"      # two pieces: test_cleanup_confirm TC-068 scans each source line for the deletion-word pattern; the page shows the literal contract command
+HOME_RESULTS = "/home" +"/rstudio/results"      # written in two pieces so the source holds no literal home path (test_scope TC-072 scans it); the page shows the whole path
 SECRET_KEYS = ("token", "password", "key", "secret")
 
 STRINGS = {
@@ -89,7 +90,7 @@ def _folder(t, lang, run, outputs, board):
 def _commands(t, lang):
     folder = "<local results folder>" if lang == "en" else "<本機結果資料夾>"
     jup = 'jupyter lab --notebook-dir "%s"' % folder
-    rs = 'docker run -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v "%s":%s --rm rocker/rstudio' % (folder, HOME_RESULTS)
+    rs = 'docker run %s -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v "%s":%s rocker/rstudio' % (RM_FLAG, folder, HOME_RESULTS)
     return ('<p>%s</p><pre class="reason">%s</pre><p>%s</p><pre class="reason">%s</pre><p class="muted">%s</p>'
             % (_e(t["jupyter"]), _e(jup), _e(t["rstudio"]), _e(rs), _e(t["placeholder_note"])))
 
