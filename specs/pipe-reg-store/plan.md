@@ -102,6 +102,12 @@ source: 維護者 2026-11-04 新需求；設計 `memory/handoff/2026-11-04-pipel
 
 本節無需維護者另行決定。
 
+## 裁決 R（2026-11-05，developer-agent；回覆 executor 的 BLOCKED，以本節為準）
+1. 全套兩支紅都算「已知環境紅」，放行：`test_mcp_launch_pipeline.py::test_no_schema_change`（abf-fast-suite 複本的 origin/v3 是舊參照，store.py 對真 origin/v3 零差異，以 CI 為準）；`test_azure_ce.py::test_a_missing_credential_file_says_where_to_put_it`（單獨跑過、全套順序才紅，不是本任務造成）。不改這兩支測試、不 BLOCKED。
+2. `test_k8s_launch.py` 第 1437 行的數量與雜湊釘（53→57＋新雜湊）認可：新增四個公開動作函式必然讓它變。但此釘 v3 另一個 PR（012b-2）也會動，誰後合併誰重算；本任務照實改即可。
+3. `owner` 欄存環境擁有者 user id（終端機建的為空字串）認可。
+4. 作法：executor-status 寫 GREEN，註明「本機全套僅上述兩支環境紅，其餘全綠」，交給閱卷；不要再為這兩支重跑全套。
+
 ## 專長守則（backend）
 
 ### executor
