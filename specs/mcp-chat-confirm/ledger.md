@@ -14,3 +14,7 @@
 - [x] 既有測試更新（規則 A～D）與 snapshot
 - [x] 憲法 7.0.0、三支 shell 測試、docs、skills、CHANGELOG
 - [x] 全套測試
+
+## 第二次合併 origin/v3 (075b6177) 後
+- 合併乾淨無衝突，HEAD 1630efc8。全套 146/150，1 FAIL (platform_upgrade_test TC-U28)，3 逾時 (shard_2/4/6, 300s)。
+- TC-U28 以 merge-base 比對 platform/ 是否未動；合併後 merge-base=origin/v3，任何改 platform/ 的分支必紅。計畫未授權改該測試，故卡住。
