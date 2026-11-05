@@ -172,3 +172,6 @@ R. /code-review 第三次對 PR #318 的裁決（11-04，只收兩項，其餘�
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+## 裁決（2026-11-05 下午，developer-agent；對抗審 FAIL 後）
+對抗審實跑證明：`test_tc044_a_run_lost_for_seven_hours_with_no_fact_is_not_asked_again`（platform/tests/test_head_nodefail.py 約 :173）的「時鐘往後移再問」那幾步會空過——時鐘一移，rig 的 agent 變離線，enqueue 被拒（JobRefused→False），不是 6 小時放棄在起作用；關掉放棄機制它們仍是 False。產品程式碼沒問題（真實時鐘那幾步會正確失敗）。要求：這個測試在移動時鐘的每一步，先讓 agent 保持線上（在移動後的時間點補一筆新的 heartbeat，或改成把 jobs 的時間往回挪而不是把時鐘往前移），使「後續呼叫」真的只受 6 小時放棄影響；然後比照 verifier 的實跑：用 monkeypatch 關掉 `jobs.BAD_END_GIVE_UP_SECONDS` 的放棄，這幾步必須轉成 True（測試轉紅），ledger 記下這個變異證明。不改產品程式碼、不改其他測試。
