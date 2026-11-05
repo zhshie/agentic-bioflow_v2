@@ -708,7 +708,7 @@ def test_tc094_tc095_tc104_eleven_tools_and_the_column_names_scan_still_catches_
         if t.name in ("launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"):
             assert t.annotations.read_only_hint is False and not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
         else:
-            assert t.annotations.read_only_hint is True, t.name
+            assert t.annotations.read_only_hint is (t.name != "get_run"), t.name      # ruling R2: get_run queues a read of the site for a lost run
 
 
 def test_tc074_every_automatic_test_case_is_named_in_a_comment_of_this_file():
