@@ -3,3 +3,4 @@ ts	phase	decision	why	evidence	result
 2026-11-05	GREEN	擁有者欄存環境擁有者 id；讀取不建表，寫入才建	讀不得寫(TC-067)、終端機要看得到全部	platform/abf_platform/actions/registrations.py	378 passed (相關檔)
 2026-11-05	FIX	改 test_k8s_launch 的動作數與雜湊 53→57	全套紅：該測試釘住 actions 公開函式清單，新增四個必然改變；計畫未點名此檔，回報給 developer-agent	platform/tests/test_k8s_launch.py:1437	57 個名稱確認
 2026-11-05	DECIDE	依裁決R放行兩支環境紅，不重跑全套	裁決R第1、4條	plan.md 裁決 R	寫 GREEN
+2026-11-05	FIX	補強 TC-069（用甲乙真實 token 值與雜湊比對，並查 SQL、路徑）與 TC-065（逐列比對三張組合管線表的結構與資料）；TESTING.md 步驟 (a) 的清單補 test_k8s_launch.py	驗證者指出兩測試強度低、(a) 清單漏列裁決R已認可的檔	platform/tests/test_pipeline_registrations.py test_no_token_in_any_answer、test_composed_pipeline_tables_unaffected；docs/TESTING.md (a)	39 passed (該檔)；test-case.md 為受保護合約，不改，TC-029 例外交人決定

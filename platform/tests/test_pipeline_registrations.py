@@ -302,12 +302,30 @@ def test_each_user_sees_only_their_own(w):
     assert [i["revision"] for i in listing(w, ce=None, caller=w.bob)["items"]] == [R2]
 
 
+def refusal(fn, w, **kw):
+    """The text a refused call ends with: its answer, or the message of the exception it raises."""
+    try:
+        return fn(w, **kw)
+    except Exception as e:      # noqa: BLE001 (the test only needs what the caller would be shown)
+        return {"raised": type(e).__name__, "message": str(e)}
+
+
 def test_no_token_in_any_answer(w):
     # TC-069
     from abf_platform import store
-    assert not store.__dict__.get("TOKEN_MARK")
-    text = json.dumps([propose(w, caller=w.bob), remove(w, caller=w.bob), listing(w, caller=w.bob)])
+    # the real token values of both users are known; none may appear in any answer (accepted or refused)
+    tokens = [store.create_token(w.ip.tokens, kind="pat", user_id=u.user_id, label="t") for u in (w.ann, w.bob)]
+    assert all(isinstance(t, str) and len(t) > 20 for t in tokens)
+    answers = [propose(w, caller=w.bob), remove(w, caller=w.bob), listing(w, caller=w.bob),
+               propose(w, pipeline="bad name"), propose(w, revision="main"), refusal(propose, w, by="nobody"),
+               refusal(remove, w, by="nobody"), remove(w, ce="nope"), remove(w), listing(w, ce="nope", caller=w.bob),
+               propose(w), propose(w), remove(w), listing(w, ce=None)]
+    text = json.dumps(answers, ensure_ascii=False)
+    for t in tokens:
+        assert t not in text and store.token_hash(t) not in text
     assert "Traceback" not in text and "token" not in text.lower()
+    for leak in ("SELECT ", "INSERT ", "UPDATE ", "sqlite", ".db", str(w.db), str(PLATFORM_DIR)):
+        assert leak not in text
 
 
 # ---- 7 remove -------------------------------------------------------------------------------------------------------------
@@ -438,8 +456,28 @@ def test_table_constraints(w):
 def test_composed_pipeline_tables_unaffected(w):
     # TC-065
     from abf_platform.actions import pipelines
-    propose(w)
+    names = ("pipelines", "pipeline_versions", "pipeline_validations")
+
+    def snapshot():
+        con = sqlite3.connect(str(w.db))
+        try:
+            return {n: (con.execute("SELECT sql FROM sqlite_master WHERE name = ?", (n,)).fetchone(),
+                        con.execute("PRAGMA table_info(%s)" % n).fetchall(),
+                        con.execute("SELECT * FROM %s ORDER BY 1" % n).fetchall()) for n in names}
+        except sqlite3.OperationalError:
+            return None
+        finally:
+            con.close()
+
     con = sqlite3.connect(str(w.db))
     pipelines._table(con)
     con.close()
+    before = snapshot()
+    assert before and all(before[n][0] and before[n][1] and before[n][2] == [] for n in names)
+    propose(w)
+    propose(w, revision=R2)
+    remove(w, revision=R2)
+    listing(w)
+    after = snapshot()
+    assert after == before     # structure and data identical, row by row
     assert count(w, "pipelines") == 0 and count(w, "pipeline_versions") == 0 and count(w, "pipeline_validations") == 0

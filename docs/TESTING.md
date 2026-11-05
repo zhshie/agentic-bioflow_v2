@@ -1067,7 +1067,7 @@ For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrn
 ### (a) The diff stays inside the scope
 
 1. Run `git diff --stat origin/v3...HEAD`.
-2. It lists only `platform/abf_platform/actions/registrations.py`, `platform/abf_platform/actions/__init__.py`, `platform/tests/test_pipeline_registrations.py`, `platform/tests/test_actions_layer.py`, `platform/tests/test_owner_guard.py`, `platform/tests/test_web_parity.py`, `docs/TESTING.md` and files under `specs/pipe-reg-store/`. None of `compute_envs.py`, `store.py`, `abf_station/`, `web*.py`, `mcp_server.py`, `cli.py`, `jobs.py` appears.
+2. It lists only `platform/abf_platform/actions/registrations.py`, `platform/abf_platform/actions/__init__.py`, `platform/tests/test_pipeline_registrations.py`, `platform/tests/test_actions_layer.py`, `platform/tests/test_owner_guard.py`, `platform/tests/test_web_parity.py`, `platform/tests/test_k8s_launch.py` (one line: the pinned action count 53 to 57 and its new hash, plan ruling R point 2), `docs/TESTING.md` and files under `specs/pipe-reg-store/`. None of `compute_envs.py`, `store.py`, `abf_station/`, `web*.py`, `mcp_server.py`, `cli.py`, `jobs.py` appears.
 
 ### (b) The three list tests only gained lines
 
