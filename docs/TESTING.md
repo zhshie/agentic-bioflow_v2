@@ -1039,6 +1039,15 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
 4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
 
+## CI security checks
+
+The `security` workflow (`.github/workflows/security.yml`) has two jobs, `gitleaks` and `pip-audit`. Neither is a required check. Static checks live in `tests/ci_security_workflow_test.sh`.
+
+Manual case, done by the developer-agent on a temporary draft-PR branch (never on the feature branch):
+1. Commit a fake secret (an `AKIA`-shaped fake key, as in gitleaks' own test data). Note the run link. Confirm the `gitleaks` job turns red and the log shows the value redacted.
+2. Confirm the `run_all` status is not affected.
+3. Delete the temporary branch when done. The fake secret must never reach the merged history.
+
 ### Head job ended by the scheduler (manual, on nano4)
 
 1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.

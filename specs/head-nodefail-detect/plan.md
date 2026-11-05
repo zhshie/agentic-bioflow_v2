@@ -5,7 +5,7 @@ tier: C
 kinds: backend
 risk: L
 lane: L45-head-nodefail-detect
-branch: fix/head-nodefail-detect
+branch: fix/head-nodefail-giveup
 base: v3
 source: 桌機 session 7j5l5bj 10-31 在 nano4 實測：t1（平台 job 78、Slurm 654018）head job 整個消失，站台 log 只寫 "job 78: done"，平台沒有任何失敗訊號；見 memory/handoff/2026-11-01-2104.md 待辦第 2 點
 ---
@@ -122,6 +122,32 @@ O. 對抗審修正（11-03，Opus 審查，三項已重現）：
  (4) `.nextflow.log` 超過 20 MB 被截斷時，不可當作「已有完成行」：截斷＝完成行未知，仍要問排程器（排程器回 COMPLETED 之類就維持原顯示）。
  新增測試案例 TC-026～TC-029 對應 (1)～(4)，已寫進 test-case.md；實作不得改弱既有測試。
 
+P. （11-04，濃縮重寫：原文曾被 build-dev-plans.py 洗掉）最新一筆真實排程器答案為準；None 不覆蓋較早的結束事實；已結束的 head 不重問；沒有呼叫者就不做事；輪轉日誌缺開始標記時問排程器；第一步 `git merge origin/v3`；測試 TC-030 起。
+Q. /code-review 第二次裁決（11-04）：(1) 壞結束事實不是永久的：每 10 分鐘最多再問一次（事實年齡超過 6 小時不再問），最新一筆真實排程器答案為準，答案是 RUNNING／PENDING 時覆蓋層撤掉（修改 P3），須有測試 NODE_FAIL 後 RUNNING → 不再顯示 Failed、不提供 resume／relaunch。(2) 被覆蓋層顯示成 Failed 的 run 沒有 ended_at：web_board 的 _duration 與所有 Ended 欄位要用與失敗通知相同的備用時間。(3) 其餘列 C 級後續。(4) 註解中 TC-035／036 改標，測試編號從 TC-037 起（已實作為 ADV-4／ADV-5，維護者端接受）。
+R. /code-review 第三次對 PR #318 的裁決（11-04，只收兩項，其餘進 backlog 列 C 級）：
+ 1. 沒有任何可用事實時也要有放棄上限：run 失聯超過 6 小時（以最後訊息時間或建立時間算）且仍沒有事實，就不再每分鐘問排程器；須有測試（失聯 7 小時、事實 None → 不再排新的 fetch_run_records）。
+ 2. get_run 的 MCP 標註不再是純唯讀（會排一個站台讀取工作、寫 platform.db）：read_only_hint 改為 false（保留 idempotent），工具說明加一句「失聯的 run 會觸發一次唯讀的站台查詢」；既有 MCP 合約測試若釘死該標註，同步改並在 ledger 說明。
+ 3. 其餘六項（NODE_FAIL 重排風險、kept_fact_sql 效能、symlink 日誌、list_runs 多餘查詢、狀態表重複、區域 import）進 backlog，不擋這支 PR。
+ 4. 第一步仍是 git merge origin/v3；測試編號從 TC-044 起。
+
+## 裁決 R4（11-04，developer-agent，Opus 對抗審後）
+
+對抗審對：6 小時放棄上限只能在「至少問過一次卻沒答案」之後生效；從未被問過的失聯 run，有人第一次打開時要問一次（隔夜才看的 t1 NODE_FAIL 才顯示原因）。合約 TC-044 的 [no_fetch] 變體已由我改成「恰好排一筆，之後不再排」，[only_none] 不變。改 `jobs.ask_head_state`：放棄條件加上「已有至少一筆抓取列」。先寫 RED 再改。
+
+## 裁決 R5（11-04，developer-agent）
+
+程式已 GREEN（HEAD 986c6c35），工作樹我已清乾淨。剩：`git merge origin/v3`（會在 docs/PLATFORM.md、platform/abf_platform/actions/chat_tools.py 衝突，兩邊都要保留：v3 新增的內容＋本案的 QUERY_TOOLS／get_run 說明），解完跑全套、寫 GREEN、提交。不要用 rm/git clean；有暫存檔放 $TMPDIR。
+
+## 裁決 R6（11-05，developer-agent）
+`test_no_schema_change` 的舊基準 e428661b 已過期（v3 自己改過 store.py），我已把基準改成 origin/v3（commit 8ac934e1，與 launch-test-profile 同一修法）。其他 143 個測試已綠；不要再因這條 BLOCKED，直接跑全套交閱卷。
+
+## 裁決 R7（11-05，developer-agent）
+`platform_upgrade_test.sh` 的 TC-U28 只在本機鏡像的 origin/v3 夠新時才觸發；GitHub CI（#359 等動 platform/ 的 PR 都綠）不受影響，以 CI 為準。所以：
+1. **不要同步鏡像的 origin/v3**（那是造成 TC-U28 與 test_no_schema_change 互相打架的原因）；TC-U28 在本機紅 = 已知環境假紅，不計入失敗，不改該測試。
+2. test_no_schema_change 已改對 origin/v3；若鏡像過期導致它紅，同樣視為環境假紅。
+3. 其餘測試（143 項）全綠即可交閱卷；在報告列出這兩條假紅，由 CI 做最後裁判。
+4. 不要再因這兩條 BLOCKED。
+
 ## 專長守則（backend）
 
 ### executor
@@ -147,17 +173,5 @@ O. 對抗審修正（11-03，Opus 審查，三項已重現）：
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
 
-P. /code-review 對 PR #318 的裁決（11-04，高信心項目必須在修正輪處理，每項先寫會失敗的測試）：
- 1. head_state 只認「有問過排程器的 fetch」（結果帶 scheduler 鍵，且是這個 run 的）中最新的一筆；沒問排程器的普通 fetch 不得蓋掉較早的 NODE_FAIL 事實。
- 2. 站台這次問不到（squeue／sacct 都失敗、查無、SSH 斷線）= 沒有新事實，不得以 scheduler=None 覆蓋先前已有的終結壞狀態事實；run 不可在 Failed 與 lost 之間來回。
- 3. get_run 對已知有事實的 lost run 不再每分鐘排新的 fetch（已有終結事實就不再問）；caller 為 None 時也不得因此替任何人排站台工作。
- 4. 日誌輪替檔缺 _STARTED 標記時，不得把第一次嘗試的 NODE_FAIL 靜默丟掉（寧可問排程器）。
- 其餘（SLURM 狀態表重複、_no_resume 鍵洩漏、函式內 import、scheduler 欄位補 None）列為 C 級後續，不擋這支 PR。
- 5. 修正輪第一步：在 worktree 執行 `git merge origin/v3`（PR #318 與 v3 有衝突），手動解掉衝突、全套測試先綠，再做 1–4。不要 rebase、不要 force push。
- 6. 驗收合約補充：1–4 每項至少一個新測試（TC-030 起），合約若沿用舊 test-case.md，由 verifier 在閱卷時逐項對照裁決 P 判 PASS/FAIL。
-
-Q. /code-review 第二次對 PR #318 的裁決（11-04，只收兩項，其餘進 backlog）：
- 1. 壞結束事實不是永久的：Slurm 可能把 NODE_FAIL 的任務重新排隊而再度 RUNNING。有壞結束事實的 run，每 10 分鐘最多再問排程器一次（事實年齡超過 6 小時就不再問）；最新一筆真實排程器答案為準，答案是 RUNNING／PENDING 時覆蓋層撤掉、run 回到「失聯」顯示。此項修改裁決 P3 的「已有終結事實就不再問」為「10 分鐘一次、6 小時封頂」。須有測試：先 NODE_FAIL、後 RUNNING → 不再顯示 Failed、不提供 resume／relaunch。
- 2. 被覆蓋層顯示成 Failed 的 run 沒有 ended_at：web_board 的 _duration 與所有「Ended」欄位要用與失敗通知相同的備用時間（last_message_at 或事實時間），耗時不得持續增加、Ended 欄不得顯示「—」。須有測試。
- 3. 其餘（輕量專用工作、list_runs 的多餘查詢、pruning 無上限、覆蓋邏輯五處複製、_no_resume 洩漏、SQL NULL 寫法、節流被普通抓取干擾、續跑第一次嘗試缺完成行）一律列 C 級後續，不擋這支 PR。
- 4. 測試編號從 TC-037 起，避免與合約的 TC-035（合併 origin/v3）撞名；程式碼中已標 TC-035／TC-036 的兩處註解改成 TC-037／TC-038 對應的新編號（同步改測試名稱）。
+## 裁決（2026-11-05 下午，developer-agent；對抗審 FAIL 後）
+對抗審實跑證明：`test_tc044_a_run_lost_for_seven_hours_with_no_fact_is_not_asked_again`（platform/tests/test_head_nodefail.py 約 :173）的「時鐘往後移再問」那幾步會空過——時鐘一移，rig 的 agent 變離線，enqueue 被拒（JobRefused→False），不是 6 小時放棄在起作用；關掉放棄機制它們仍是 False。產品程式碼沒問題（真實時鐘那幾步會正確失敗）。要求：這個測試在移動時鐘的每一步，先讓 agent 保持線上（在移動後的時間點補一筆新的 heartbeat，或改成把 jobs 的時間往回挪而不是把時鐘往前移），使「後續呼叫」真的只受 6 小時放棄影響；然後比照 verifier 的實跑：用 monkeypatch 關掉 `jobs.BAD_END_GIVE_UP_SECONDS` 的放棄，這幾步必須轉成 True（測試轉紅），ledger 記下這個變異證明。不改產品程式碼、不改其他測試。

@@ -14,6 +14,8 @@ import re
 from .. import mcp_server
 
 REQUEST_TOOLS = frozenset({"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"})
+# a query that needs no yes but is not marked read-only: for a lost run it queues one read of the site (ruling R2)
+QUERY_TOOLS = frozenset({"get_run"})
 
 CHAT_SYSTEM_PROMPT = """你是這個分析平台裡的小助理，幫實驗室成員查他們的 Nextflow 分析跑得怎麼樣。你只能用下面這些工具。
 
@@ -42,7 +44,7 @@ _cache = {}
 
 
 def _is_read_only(tool):
-    return bool(tool.annotations is not None and tool.annotations.read_only_hint is True)
+    return bool(tool.annotations is not None and tool.annotations.read_only_hint is True) or tool.name in QUERY_TOOLS
 
 
 def classify_check(tools):
