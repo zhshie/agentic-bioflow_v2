@@ -190,6 +190,21 @@ source: 維護者 11-06 對費用頁 v4（Version 6）答「好的可以」；DE
 - 本任務的範圍多加兩處：`DESIGN.md` 第 11 項把「never converted」改為「SU 旁可顯示依 su_rates.json 的概略美元，標明不是帳單；不跨環境相加」；`platform/tests/test_cost_docs_spec.py` 釘死 "never converted" 的那一條同步改成新句（這是本任務明示要改的既有測試，不算放寬）。
 - 不同環境的數字仍不相加。
 
+## 裁決（自動補，2026-11-06）
+
+驗證者退回的六點，逐項定案（依本計畫既有條文與 repo 的 DESIGN.md 第 11 項、test_cost_docs_spec.py:33）：
+
+1. **範圍矛盾**：以上方「裁決（11-06 追進度）」為準，它晚於並取代「不准碰」「不做」「完成標準 2」的相反字句。
+   - 「範圍：檔案」的只准改清單加入 `DESIGN.md`（只改第 11 項的 "never converted" 那半句，改為「SU 旁可顯示依 su_rates.json 的概略美元，標明不是帳單；不跨環境相加」，其餘文字含 "Action-needed" 句、分析頁費用列句一字不動）與 `platform/tests/test_cost_docs_spec.py`（只把 L33 清單中的 "never converted" 換成新句的關鍵字；其餘釘點不動，不放寬）。
+   - 「不准碰」與「不做」中的 DESIGN.md 一律刪除；PLATFORM.md、CLOUD.md 仍不准碰。
+   - 完成標準 2 改為：`git diff --stat` 只含「範圍：檔案」所列（含 DESIGN.md、test_cost_docs_spec.py）；PLATFORM／CLOUD 未動；DESIGN.md 的 diff 只有第 11 項那一句。閱卷者核對這三點。
+   - TC 預期：DESIGN.md 第 11 項不再含 "never converted"，含「不是帳單」之意的新句；test_cost_docs_spec 綠。
+2. **截圖張數**：「只有一個環境」那一組算必附，只拍費用頁（env01 的畫面）。必附共 12 張：費用頁多環境 4（1440／390 x zh／en）＋分析頁費用列 4（1440／390 x zh／en）＋費用頁單一環境 4。完成標準 3 照此改。
+3. **沒有 hand-off 紀錄的 run（本機非平台 run）**：照作法 3 表格與作法 4 辦理，歸入 `unit: None` 的環境列，`name` 可為 None（網頁顯示 `—`），用量 None 加原因，不進任何 SU 或 USD 總數、不算 0。作法 1 的「v3 跳過不計」只描述 v3 現況（它不誤計），不是新行為的要求。TC-022 照作法 3、4 出題，不需改。
+4. **DESIGN 第 11 項的「本月費用提醒額度會超過時的行動提示」**：確認留給 cost-reminder-quota，本任務不做；只保留舊的上限那一行（待決 1）。TC-078 照計畫列為不在範圍。DESIGN.md 該句不改。
+5. **範圍字句**：executor 先讀 `su.py` 與 `cloud_cost.run_tasks_cost` 確認不依狀態過濾；字句寫「整個分析（含失敗的步驟）」時失敗 task 用量必須算進去（TC-047 條件式寫法成立）；若有過濾，改寫字句並在 ledger 寫明，TC-046／047 照改後字句比對。測試一律用 STRINGS key 斷言。
+6. **spec.md**：本計畫沒有 spec.md，合約「對應需求」欄引用 plan.md 段落（作法 N、env01–env14、裁決、待決、不做、專長守則）。不需改計畫本文。
+
 ## 專長守則（ui）
 
 ### executor
