@@ -1,3 +1,4 @@
+# Nothing existing: tests of the web-bugs-a batch (confirm page in English, tasks tab note, run menu, placeholder stages, left-column groups); ours.
 """web-bugs-a: #335 #336 #337 #339 #340 (TC ids in the comments)."""
 import re
 import sqlite3
