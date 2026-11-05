@@ -121,7 +121,5 @@ source: developer-agent 11-05：head-nodefail-detect 的 ledger（specs/head-nod
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
 
-## 裁決（2026-11-05 預檢後，developer-agent）
-1. 「允許的斷言」補一條：`platform/tests/test_chat_tools.py:14` 的 `BANNED_WORDS`（:85-87 會掃工具描述）。新加的 pipeline 說明必須避開禁字；executor 加完後跑該測試確認；不得改 BANNED_WORDS。
-2. launch 工具位置以 `platform/abf_platform/mcp_server.py:192-202` 為準（範圍與環境事實裡的行號都讀成這個）；「一處 pipeline 改動」一律指「把 `pipeline: str` 改成 `Annotated[str, Field(description=...)]` 這一處」。
-3. 不需要 migration（不動 store.py）。
+## 裁決（2026-11-06 凌晨，developer-agent）
+TC-U28 已由維護者核可刪除並合併（PR #369，他 11-05 回「刪」）。前一輪卡在 TC-U28 的紅燈解除。開工第一步：`git fetch origin && git merge origin/v3`（衝突時兩邊意圖都保留，工具數／唯讀數斷言照合併後總數重算，絕不弱化）；然後跑全套直到乾淨全綠，才寫 GREEN。逾時的 shard 只重跑逾時那片一次。不需要改任何測試來迴避 TC-U28（它已不存在）。
