@@ -210,7 +210,7 @@ def test_every_zh_table_is_covered():
     real = {path.stem: path.read_text(encoding="utf-8") for path in sorted(PKG.glob("web*.py"))}
     found = scan_web_sources(real)
     assert found == set(tables()), (found ^ set(tables()))
-    assert len(found) == 8
+    assert len(found) == 9
     # TC-078: a fake module with one more dictionary that holds Chinese shows up as one more table, so the comparison above would turn red
     fake = dict(real, web_fake='NEW_STRINGS = {"zh": {"hello": "你好"}, "en": {"hello": "hi"}}\nPLAIN = {"a": "b"}\n')
     more = scan_web_sources(fake)

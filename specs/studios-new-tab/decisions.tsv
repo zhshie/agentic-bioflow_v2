@@ -1,2 +1,5 @@
 ts	phase	decision	why	evidence	result
 2026-11-05	RED	先提交測試與字串表模組（未接線）	計畫要求先紅後綠	tests/test_web_downstream.py	待跑
+2026-11-05	GREEN	接線 web_board/web.py，網址只走查詢字串不儲存	計畫裁決 1	platform/abf_platform/web_downstream.py	test_web_downstream 47 通過
+2026-11-05	GREEN	測試內以「不含 NCHC 句」判斷整頁無 nchc 字樣	TC-001 要求該句、TC-019 禁字樣，兩者衝突，取該句為唯一例外	platform/tests/test_web_downstream.py test_wording_in_command_block	通過
+2026-11-05	GREEN	test_web_wording_sweep 表數 8 改 9	新增字串表，只增不減	platform/tests/test_web_wording_sweep.py:213	通過

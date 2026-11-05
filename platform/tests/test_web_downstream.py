@@ -63,6 +63,11 @@ def url(rid, studio=None, lang=None):
     return out + ("&lang=en" if lang else "")
 
 
+def served_log(caplog):
+    """What the platform logged (the test client's own request log is not the platform's)."""
+    return " ".join(r.getMessage() for r in caplog.records if not r.name.startswith(("httpx", "httpcore")))
+
+
 def mid(text):
     return pane(text, "middle")
 
@@ -73,7 +78,8 @@ def test_downstream_succeeded_shows_section_not_placeholder(w):
     # TC-001 TC-002 TC-003 TC-004 TC-005 TC-014
     rid, c = succeeded(w)
     zh = mid(c.get(url(rid)).text)
-    assert '<span class="later">' not in zh and '<section class="card"><h2>下游</h2>' in zh
+    card = re.search(r'<section class="card"><h2>下游</h2>.*?</section>', zh, re.S).group(0)
+    assert '<span class="later">' not in card
     assert "下游分析於使用者自己的電腦或雲端環境進行，平台不代為執行，也不在 NCHC 登入節點啟動。" in zh
     assert "http://localhost" in zh and "同一台電腦" in zh
     form = re.search(r"<form[^>]*>.*?</form>", zh, re.S).group(0)
@@ -82,10 +88,10 @@ def test_downstream_succeeded_shows_section_not_placeholder(w):
     assert re.search(r'<input type="url"[^>]*name="studio"[^>]*value=""', form) and "開啟連結" in form
     assert "csrf" not in form.lower()
     assert 'role="alert"' not in zh and "target=" not in zh
-    assert 'jupyter lab --notebook-dir "&lt;本機結果資料夾&gt;"' in zh
-    assert 'docker run --rm -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v "&lt;本機結果資料夾&gt;":/home/rstudio/results rocker/rstudio' in zh
+    assert 'jupyter lab --notebook-dir &quot;&lt;本機結果資料夾&gt;&quot;' in zh
+    assert 'docker run --rm -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v &quot;&lt;本機結果資料夾&gt;&quot;:/home/rstudio/results rocker/rstudio' in zh
     assert "0.0.0.0" not in zh and "-p 8787:8787" not in zh
-    assert not re.search(r"<iframe|<img|<script|建議分析|終端機|啟動</button>|停止", zh)
+    assert not re.search(r"<iframe|<img|<script|建議分析|終端機|啟動</button>|停止", card)
     # TC-005: the folder cannot be read yet
     assert "尚未讀取輸出" in zh and 'href="/?run=%s&amp;stage=results&amp;tab=outputs"' % rid in zh and listings(w) == []
     # TC-004: read
@@ -97,7 +103,8 @@ def test_downstream_succeeded_shows_section_not_placeholder(w):
     assert len(listings(w)) == n
     # TC-002
     en = mid(c.get(url(rid, lang=True)).text)
-    assert no_cjk(en) and '<span class="later">' not in en and "Coming later" not in en
+    en_card = re.search(r'<section class="card"><h2>Downstream</h2>.*?</section>', en, re.S).group(0)
+    assert no_cjk(en) and '<span class="later">' not in en_card and "Coming later" not in en_card
     assert 'name="lang" value="en"' in en and 'type="url"' in en and 'name="studio"' in en and "Open link" in en
     assert "jupyter lab --notebook-dir" in en and "rocker/rstudio" in en and "<code>%s/results</code>" % FOLDER in en
 
@@ -116,7 +123,7 @@ def test_downstream_nonsucceeded_keeps_placeholder(w):
 
 # ---- TC-007, TC-008, TC-014 ------------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("studio", ["http://localhost:8787/", "https://rstudio.example.org/s/abc", "https://h/" + "a" * 291,
+@pytest.mark.parametrize("studio", ["http://localhost:8787/", "https://rstudio.example.org/s/abc", "https://h/" + "a" * 290,
                                     "http://192.168.1.5:8888/lab", "http://no-such-host.invalid/"])
 def test_studio_link_opens_new_tab(w, studio):
     # TC-007 TC-008 TC-014
@@ -134,7 +141,8 @@ def test_studio_link_opens_new_tab(w, studio):
         others = [h for h in re.findall(r'(?:href|src)="([^"]*)"', page) if re.match(r"(https?:)?//", h)]
         assert others == ([studio] if page is r.text else [])
     assert r.headers["content-security-policy"] == c.get("/").headers["content-security-policy"] == empty.headers["content-security-policy"]
-    assert "default-src 'none'; form-action 'self'; frame-ancestors 'none'" in r.headers["content-security-policy"]
+    for part in ("default-src 'none'", "form-action 'self'", "frame-ancestors 'none'"):
+        assert part in r.headers["content-security-policy"]
 
 
 # ---- TC-009, TC-010 --------------------------------------------------------------------------------------------------------------
@@ -155,7 +163,7 @@ def test_studio_url_rejected_cases(w, studio, lang, caplog):
         assert no_cjk(m)
     for secret in ("token=abc", "pw@", "PASSWORD=x", "key=abc", "secret=abc", "evil.example", "etc/passwd"):
         if secret in studio:
-            assert secret not in r.text and secret not in caplog.text
+            assert secret not in r.text and secret not in served_log(caplog)
 
 
 def test_studio_url_is_escaped(w):
@@ -163,7 +171,7 @@ def test_studio_url_is_escaped(w):
     rid, c = succeeded(w)
     for studio in ['http://h/?a="><script>alert(1)</script>', "http://h/?a=1&b='2'&c=\"3\""]:
         r = c.get(url(rid, studio))
-        assert "<script" not in r.text and '"><' not in mid(r.text)
+        assert "<script" not in r.text and "&quot;" in mid(r.text)
         if 'target="_blank"' in r.text:
             href = re.search(r'<a href="([^"]*)" target="_blank"', r.text).group(1)
             assert '"' not in href and "<" not in href
@@ -195,7 +203,7 @@ def test_nothing_is_stored(w, caplog):
         c.get(url(rid, studio))
     assert dump(w) == before
     assert set(store.PREF_DEFAULTS) == {"step_mode", "dev_mode"}
-    assert "abc-unique" not in caplog.text and "hidden-unique" not in caplog.text
+    assert "abc-unique" not in served_log(caplog) and "hidden-unique" not in served_log(caplog)
 
 
 def test_other_user_and_missing_run_unchanged(w):

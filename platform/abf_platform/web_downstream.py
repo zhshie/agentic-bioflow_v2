@@ -25,7 +25,7 @@ STRINGS = {
         "own_url": "此網址由使用者自行提供，平台不儲存、不檢查其內容。",
         "bad_scheme": "請輸入以 http:// 或 https:// 開頭的網址。",
         "bad_host": "網址缺少主機名稱，請輸入完整的網址，例如 http://localhost:8787/。",
-        "bad_long": "網址超過 300 個字元，請改貼較短的網址。",
+        "bad_long": "網址長度已逾 300 個字元，請改貼較短的網址。",
         "bad_space": "網址不得含空白或換行，請重新複製網址。",
         "bad_secret": "網址不得含帳號、密碼或 token；請改貼不含這些內容的位址。",
     },
@@ -58,7 +58,7 @@ def studio_url(raw):
     """(accepted address, None), (None, None) for an empty value, or (None, the key of the reason in STRINGS). Pure: trims, then checks length,
     blanks, scheme, host and secrets."""
     if not isinstance(raw, str):
-        return None, "bad_scheme"
+        return None, None
     text = raw.strip()
     if not text:
         return None, None
