@@ -4,3 +4,4 @@ ts	phase	decision	why	evidence	result
 2026-11-05T10:10	測試	逾時用直接改 DB 的 expires_at 與直接呼叫 confirm.approve 帶 clock 來測	World.mcp 不傳 w.clock，工具用 time.time	platform/tests/human_harness.py:99-108	採用
 2026-11-05T12:00	green	CHAT 核准放在 confirm.approve 前段，並把 request_id/user_confirmed 接到四個工具	同一條動作層路徑，順序 not_found>not_yours>confirmed>void>expired>changed	platform/abf_platform/confirm.py	test_chat_confirm.py 38 全過
 2026-11-05T13:05	收尾	各項已由前次 commit 完成，只更新 ledger 並跑全套	分支上 RED/GREEN 已齊	667eeb06	待全套
+2026-11-05T13:40	測試	全套紅兩處：test_oauth_mcp tcf07 與 skill_runs TC-012 允許集合加 CHAT 參數	plan 規則 A 與 TC-012 行	platform/tests/test_oauth_mcp.py:331	改後單檔綠

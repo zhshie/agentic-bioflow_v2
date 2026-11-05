@@ -7,7 +7,7 @@ import time
 import httpx
 import pytest
 
-from helpers import tool_json
+from helpers import CHAT_ARGS, tool_json
 from human_harness import PASSWORD, World, csrf_of, form_answer
 from oauth_harness import BASE, Rig, Served, dump, http_calls, pat_of, tokens_rows, tokens_sql
 
@@ -329,7 +329,7 @@ def test_tcf07_the_tools_are_the_same_ten_and_none_can_say_yes(w, rig):
     assert names == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
     assert not [n for n in names if re.search(r"approve|confirm|oauth|login|consent", n)]
     for t in tools:
-        props = " ".join((t.input_schema or {}).get("properties", {}).keys())
+        props = " ".join(set((t.input_schema or {}).get("properties", {}).keys()) - (CHAT_ARGS if t.name in ("launch", "cancel", "resume", "relaunch") else set()))
         assert not re.search(r"confirm|approve|consent|agree|yes|oauth|token", props), (t.name, props)
 
 
