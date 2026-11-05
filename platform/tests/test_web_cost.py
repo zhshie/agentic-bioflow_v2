@@ -46,8 +46,9 @@ def epoch_of(iso):
     return calendar.timegm(time.strptime(iso, "%Y-%m-%dT%H:%M:%SZ"))
 
 
-def seed(w, name, owner, where="nchc", status="succeeded", hours=1.0, started=None, cpus=1, tasks=None, ce=None):
-    """One run in index.db with its task rows, and the hand-off record naming `owner` and the environment (where: nchc, cloud or None)."""
+def seed(w, name, owner, where="nchc", status="succeeded", hours=1.0, started=None, cpus=1, tasks=None, ce=None, platform=None, config=None):
+    """One run in index.db with its task rows, and the hand-off record naming `owner` and the environment (where: nchc, cloud or None).
+    `platform` is the environment's type (default Slurm, or Google Batch for cloud); `config` is its config (for example suSite)."""
     from abf_platform import store
     started = int(started if started is not None else time.time() - 600)
     rid = "id-" + name
@@ -73,7 +74,8 @@ def seed(w, name, owner, where="nchc", status="succeeded", hours=1.0, started=No
         con = store.connect_state(w.ip.state_db)
         with con:
             con.execute("INSERT OR IGNORE INTO compute_envs (name, platform, status, is_primary, config_json, created_at, updated_at) "
-                        "VALUES (?, ?, 'ready', 0, '{}', 1, 1)", (ce, GCB if where == "cloud" else "slurm-platform"))
+                        "VALUES (?, ?, 'ready', 0, ?, 1, 1)",
+                        (ce, platform or (GCB if where == "cloud" else "slurm-platform"), json.dumps(config or {})))
             at = time.time() + w.n_launch()
             con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES (?,?,?,?,?,?)",
                         (name, "/f/" + name, ce, "a1", at, owner.user_id))
