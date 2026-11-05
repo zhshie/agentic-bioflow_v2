@@ -787,6 +787,7 @@ The automatic tests are in `platform/tests/test_web_finished.py`. The steps belo
 1. **Open it by clicking.** From the run list click the run, then "完成" in the stage strip. Check: the page shows "來源紀錄" and "交付包" with no extra download step or input.
 2. **390 px.** Narrow the browser to 390 px wide (developer tools, device mode) and open the stage of a run with a long parameter value. Check: there is no horizontal scroll bar and the long value wraps inside its column.
 3. **Tab key.** On the finished stage press Tab repeatedly. Check: every link (stage strip, "查看輸出", previous stage) shows a visible focus outline in turn; the grey "之後開放" lines are never focused.
+4. **Download a result file.** On the finished stage of a run whose outputs you have read in "結果 → 輸出", find "下載結果檔" under the package rows and click one file link, then the "MultiQC 報告" link. Check: the browser receives the file (or the existing loading page, then the file); a file over 25 MB shows "大於 25 MB" without a link; no AI tool or terminal is needed.
 
 ## Analysis state squares (status-squares-3): the maintainer and the reviewer check
 
@@ -1090,3 +1091,15 @@ For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrn
 
 1. Run `git diff origin/v3...HEAD -- platform/tests/test_actions_layer.py platform/tests/test_owner_guard.py platform/tests/test_web_parity.py`.
 2. Every changed line begins with `+` (apart from the file headers); no line begins with `-`.
+
+## 390 px 手動檢查 (web-bugs-b): the reviewer checks
+
+Needs a browser: `scripts/dev/ui_check.py --start` starts a temporary platform with one succeeded run and takes the screenshots and the axe scan (1440 and 390 wide, zh and en; pages include `results` and `usage`). CI has no Chromium, so this is by hand.
+
+1. Right column: at 1440 px the right column is 360 px and the left 272 px; make the window 1100 px: right 300 px, left 232 px. Write the measured numbers in the ledger.
+2. At 390 px open `/?run=<id>&stage=results&tab=outputs`, zh and en. Measure every link and button (the language switch, the tabs, the folder links and "下載", the report links, "重新讀取", "← 上一階段" and "下一階段 →", "開啟確認頁"): each is at least 24 x 24 CSS px. "← 上一階段" stays at the left end and "下一階段 →" at the right end.
+3. In the output table a file name such as `cutadapt`, `phyloseq`, `pipeline_info`, `overall_summary.tsv` shows as one piece, never cut into one or two characters; a name too long for the width scrolls the table sideways.
+4. In the console `document.documentElement.scrollWidth === document.documentElement.clientWidth` (the page itself does not scroll sideways; the output table may).
+5. Also open another run page (running, failed), `/usage` and `/usage?month=<a past month>`: the links ("中／EN", the tabs, "← 上一月", "下一月 →") are at least 24 x 24 px; the cards of a past month are titled with that month, not "本月".
+6. The title row of a run page has one line "pipeline revision · site · started · last update" under the name; the Info tab shows the same four fields.
+7. The axe scan reports nothing serious or critical. Keep the screenshots outside the repository.
