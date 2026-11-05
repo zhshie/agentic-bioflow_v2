@@ -397,7 +397,12 @@ def test_tcm_50_descriptions_and_fixed_sentence(w):
     ts = tools(w)
     for name in FOUR:
         d = ts[name].description
-        assert "user_confirmed" in d and "request_id" in d
+        if name == "launch":
+            # test_launch_profiles TC-017 pins launch's description free of the word "confirm", so it says
+            # "the flag" (named in the user_confirmed parameter doc) and "after they answer".
+            assert "request_id" in d and "after they answer" in d
+        else:
+            assert "user_confirmed" in d and "request_id" in d
     for name in ("launch", "cancel", "resume", "relaunch"):
         assert "you cannot say it for them" in ts[name].description or "you cannot answer" in ts[name].description
     s = guidance.FIXED_SENTENCE
