@@ -11,3 +11,6 @@ ts	phase	decision	why	evidence	result
 2026-11-05T17:00	測試	全套紅 TC-U28，不改測試	測試假設分支不動 platform/，與本任務範圍衝突，計畫未列	tests/platform_upgrade_test.sh:232	卡住回報
 2026-11-06T09:00	測試	TC-050 對 launch 只驗 request_id 與「after they answer」，其餘三個仍驗 user_confirmed	test_launch_profiles TC-017 釘住 launch 描述不得含 confirm 字樣；參數說明已寫 user_confirmed，意思相同	platform/tests/test_chat_confirm.py:test_tcm_50	待跑
 2026-11-06T09:00	測試	TC-050 對 launch 只驗 request_id 與 after they answer，其餘三個仍驗 user_confirmed	test_launch_profiles TC-017 釘住 launch 描述不得含 confirm 字樣；參數說明已寫 user_confirmed	platform/tests/test_chat_confirm.py:test_tcm_50	待跑
+2026-11-06T12:00	修正	重產工具快照 tools.json	新增 request_id/user_confirmed 後快照未更新	platform/tests/mcp/snapshots/tools.json	tests/mcp 72 passed
+2026-11-06T12:10	修正	改寫 resume、relaunch、cancel 描述至 600 字內，不改 OVER_LIMIT	既有 lint 上限 600，不增加技術債	platform/abf_platform/mcp_server.py	tests/mcp 72 passed
+2026-11-06T12:20	測試	TC-026 599 秒改為斷言核可並排出 job	原測試容許離線拒絕，弱於 TC 預期	platform/tests/test_chat_confirm.py:test_tcm_26	38 passed

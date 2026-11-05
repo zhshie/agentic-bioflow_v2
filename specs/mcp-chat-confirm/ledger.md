@@ -22,3 +22,9 @@
 ## 第三次：合併 origin/v3 (b3ec5b32，TC-U28 已刪) 後
 - 合併乾淨，HEAD 8ca9459a。修 test_tcm_50（launch 描述不含 confirm 字樣，TC-017 釘住）。鏡像的 origin/v3 過舊，已手動 fetch 更新（環境，非程式碼）。
 - 全套 150/150 全綠，在 81983198 跑的（之後只改本 ledger）。
+
+## 修正輪（verifier 退回）
+- TC-083：以 ABF_UPDATE_MCP_SNAPSHOT=1 重產 platform/tests/mcp/snapshots/tools.json（加入 request_id、user_confirmed）。
+- 描述長度：cancel 610→低於 600；resume、relaunch 改寫為不超過 600（內含 request_id 與 user_confirmed 一句）。tests/mcp 全過（72 passed）。
+- TC-026：test_tcm_26 改為 599 秒必須核可並排出 job（offline_after 放寬以免假時鐘造成離線）。
+- 注意：tests/platform_test.sh 只列舉 tests/test_*.py，platform/tests/mcp/ 不在全套分片內；已另跑 tests/mcp。

@@ -230,8 +230,8 @@ def _add_write_tools(server, platform_path, index_path):
 
     @server.tool(name="cancel", annotations=_STOPS,
                  description="Ask to stop one run that this platform launched. This does NOT stop anything: it writes a request and shows "
-                             "the person which Slurm job would be cancelled. The person says yes in their own client's form or on a "
-                             "page whose address this returns; you cannot say it for them. After they pressed send, call cancel again "
+                             "the person which Slurm job would be cancelled. The person says yes in their own client's form or on the "
+                             "page this returns; you cannot say it for them. After they pressed send, call cancel again "
                              "with the same run_name to get the job number. " + _CHAT_SENTENCE)
     async def cancel_tool(ctx: Context, run_name: str,
                           request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
@@ -252,13 +252,13 @@ def _add_write_tools(server, platform_path, index_path):
 
 
     @server.tool(name="resume", annotations=_WRITES,
-                 description="Ask to resume one failed or cancelled run: the same folder, Nextflow reuses the finished tasks. Optional params "
-                             "(only keys to change, laid over the first launch's) and extra_config (resource settings, e.g. "
-                             "`process.memory = '16 GB'`); pipeline, version, samples and environment stay as launched (to change them, "
-                             "make a new launch). This does NOT start anything: it only writes a request. The person "
-                             "says yes in their own form or on a page this returns; you cannot say it for them. It does not "
-                             "start anything until the person says yes. Then call resume again with the same "
-                             "run_name for the job number. " + _CHAT_SENTENCE)
+                 description="Ask to resume one failed or cancelled run in the same folder; finished tasks are reused. Optional params "
+                             "(only keys to change) and extra_config (resource settings, e.g. "
+                             "`process.memory = '16 GB'`); pipeline, version, samples and environment stay (to change them, "
+                             "make a new launch). This only writes a request; it does not start anything until the person says "
+                             "yes, in their own form or on the page this returns; you cannot say it for them. Then call resume again "
+                             "with the same run_name for the job number, or, after they answered in this chat, with request_id and "
+                             "user_confirmed=true.")
     async def resume_tool(ctx: Context, run_name: str, params: dict | None = None, extra_config: str | None = None,
                           request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
                           user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
@@ -267,12 +267,12 @@ def _add_write_tools(server, platform_path, index_path):
                                             request_id=request_id, user_confirmed=user_confirmed)
 
     @server.tool(name="relaunch", annotations=_WRITES,
-                 description="Ask to start one run of this platform that failed or was cancelled again from the start, in a new folder: the same "
-                             "pipeline, samples and parameters as the first launch, which cannot be changed here (a different analysis is a "
-                             "new launch). This does NOT start anything: it writes a request and shows the person what would run. The person "
-                             "says yes in their own client's form or on a page whose address this returns; you cannot say it for them. It "
-                             "does not start anything until the person says yes. After they pressed send, call relaunch again with the same "
-                             "run_name to get the job number. " + _CHAT_SENTENCE)
+                 description="Ask to start one failed or cancelled run again from the start, in a new folder: the same pipeline, samples and "
+                             "parameters as the first launch, which cannot be changed here (a different analysis is a new launch). This "
+                             "only writes a request and shows what would run; it does not start anything until the person says yes, in "
+                             "their own form or on the page this returns; you cannot say it for them. Then call relaunch again with the "
+                             "same run_name for the job number, or, after they answered in this chat, with request_id and "
+                             "user_confirmed=true (never before they answer).")
     async def relaunch_tool(ctx: Context, run_name: str,
                             request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
                             user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:

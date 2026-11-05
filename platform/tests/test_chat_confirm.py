@@ -226,13 +226,11 @@ def test_tcm_26_timeout_boundary(w):
     assert w.jobs() == []
     o2 = pending(w, ann, run="run-two")
     r2 = row(w, o2["id"])
-    # 599 s is inside the window: whatever else may refuse (the fake clock makes the agent look offline), it is not "expired"
-    try:
-        confirm.approve(db, o2["id"], "CHAT", ann.user_id, lambda: r2["created_at"] + 599,
-                        expected_sha=r2["sha256"], expected_kind="launch")
-    except confirm.NotApproved as e:
-        assert e.status != "expired" and "offline" in str(e)
-    assert "expired" not in (row(w, o2["id"])["void_reason"] or "")
+    # 599 s is inside the window: it approves and queues the job (offline_after is widened so the fake clock does not make the agent look offline)
+    assert w.jobs() == []
+    rid2, job2 = confirm.approve(db, o2["id"], "CHAT", ann.user_id, lambda: r2["created_at"] + 599,
+                                 offline_after=100000, expected_sha=r2["sha256"], expected_kind="launch")
+    assert rid2 == o2["id"] and job2 and row(w, o2["id"])["state"] == "confirmed" and len(w.jobs()) == 1
     o3 = pending(w, ann, run="run-three")
     r3 = row(w, o3["id"])
     with pytest.raises(confirm.NotApproved) as e:
