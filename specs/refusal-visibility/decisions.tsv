@@ -9,3 +9,4 @@ ts	phase	decision	why	evidence	result
 2026-11-05	FIX	補 TC-065 的 axe：TESTING.md 加第 7 步並真的跑一次，結果寫進 ledger 第 9 項	閱卷指出 TESTING.md 沒有 axe 步驟也沒有結果；確認頁中英各 0 筆違規，看板的 critical meta-refresh 是既有標籤，不算本片	docs/TESTING.md 第 7 步；ledger.md 第 9 項	確認頁 0 violations，待全套
 2026-11-05	GREEN	依裁決 R3：error 狀態改顯示「結果不明可能已送出」；valid_open_command 加字元與 -o 白名單（A、K 因合約 TC-010/011/013/019 用為合法例而補）；STRINGS 雜湊再更新	防止使用者重送造成重複執行；收緊安全網	jobs.py:valid_open_command; web_board.py:refusal_block; test_refusal_visibility_error_state.py	相關測試 84 綠，待全套
 2026-11-05	FIX	「東西」是字詞掃描禁用字，改「留在站台上的檔案與資料夾」並再更新雜湊	test_web_wording_sweep 紅	web_board.py refusal_error_left	待全套
+2026-11-05T12:08:35+08:00	merge	兩邊都保留，STRINGS 雜湊重設為合併後的值	web_board 兩邊都有新增字串，分支原本就是這樣更新雜湊	test_web_settings_ce_mobile.py:101	待測

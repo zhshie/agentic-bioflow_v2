@@ -206,7 +206,7 @@ def test_the_launch_tool_has_two_more_properties_and_the_tools_are_the_same(d):
     launch = [t for t in tools if t.name == "launch"][0]
     props = set(launch.input_schema["properties"])
     today = {"pipeline", "revision", "run_name", "samplesheet", "samplesheet_text", "ce_name", "params", "path_columns"}
-    assert props == today | {"dataset", "dataset_version"}
+    assert props == today | {"dataset", "dataset_version", "profiles"}      # launch-test-profile: plus the optional profiles
     assert launch.input_schema["required"] == ["pipeline", "revision", "run_name"]
     assert not [p for p in props if re.search(r"confirm|approve|yes|send|force|skip|accept|送出|void", p)]
     assert "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used." in launch.description

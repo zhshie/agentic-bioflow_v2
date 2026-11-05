@@ -1402,6 +1402,46 @@ def read_confined_samplesheet(platform_path, caller, samplesheet):
 _MAX_SAMPLESHEET_TEXT = 1024 * 1024        # bytes of UTF-8
 
 
+def _preview_refusal(kind, text):
+    r = build.Refusal(text)
+    r.kind = kind       # "big", "text", "empty" or "unreadable": the launch page says each in its own fixed sentence
+    return r
+
+
+def preview_samplesheet(platform_path, caller, samplesheet, *, limit=5):
+    """Read-only (012b-2): the first `limit` rows of the caller's own samplesheet for the launch page. The file is read as read_confined_samplesheet
+    reads it (the caller's own upload folder only, no link followed). {"columns", "rows", "total", "truncated", "paired"}: `total` counts every
+    data row, `paired` the rows with both fastq_1 and fastq_2 filled (None when the file has not both columns). build.Refusal (with `.kind`)
+    when the file cannot be read, is over 1 MiB, is not UTF-8 text, or is empty."""
+    import csv
+    import io
+    try:
+        raw = read_confined_samplesheet(platform_path, caller, samplesheet)
+    except build.Refusal as e:
+        raise _preview_refusal("unreadable", str(e))
+    if len(raw) > _MAX_SAMPLESHEET_TEXT:
+        raise _preview_refusal("big", "samplesheet 超過 1 MiB (the samplesheet is over 1 MiB)")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise _preview_refusal("text", "samplesheet 不是 UTF-8 文字 (the samplesheet is not UTF-8 text)")
+    if chr(0) in text:
+        raise _preview_refusal("text", "samplesheet 含有 NUL 字元 (the samplesheet contains a NUL character)")
+    delimiter = "\t" if str(samplesheet).lower().endswith(".tsv") else ","
+    table = [r for r in csv.reader(io.StringIO(text, newline=""), delimiter=delimiter) if any(c.strip() for c in r)]
+    if not table:
+        raise _preview_refusal("empty", "samplesheet 是空的 (the samplesheet is empty)")
+    columns, data = table[0], table[1:]
+    width = len(columns)
+    padded = [r + [""] * (width - len(r)) for r in data]
+    paired = None
+    if "fastq_1" in columns and "fastq_2" in columns:
+        i, j = columns.index("fastq_1"), columns.index("fastq_2")
+        paired = sum(1 for r in padded if r[i].strip() and r[j].strip())
+    limit = max(int(limit), 0)
+    return {"columns": columns, "rows": padded[:limit], "total": len(padded), "truncated": len(padded) > limit, "paired": paired}
+
+
 def _samplesheet_text_problem(samplesheet, samplesheet_text):
     """Why the way the samplesheet was given cannot be used (exactly one of the file path and the CSV text, the text a non-empty str of at
     most 1 MiB without a NUL), else None. The words are said to the person as they are."""
@@ -1424,12 +1464,65 @@ def _samplesheet_text_problem(samplesheet, samplesheet_text):
     return None
 
 
+def _site_profile_names(platform_path, env_name, pipeline, revision):
+    """The Config profile names the newest pre-use check of the environment read from the installed pipeline's own nextflow.config, or None
+    when no check has carried them (no check yet, or one from before profiles were read). Reads only."""
+    con = store.open_readonly(platform_path)
+    if con is None:
+        return None
+    try:
+        rows = con.execute("SELECT result_json FROM jobs WHERE compute_env = ? AND kind = 'preflight' AND state = 'done' AND result_json IS NOT NULL "
+                           "ORDER BY finished_at DESC, id DESC LIMIT 50", (env_name,)).fetchall()
+    finally:
+        con.close()
+    for row in rows:
+        try:
+            listed = json.loads(row["result_json"]).get("site_profiles")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(listed, dict):
+            names = listed.get("%s %s" % (pipeline, revision))
+            return names if isinstance(names, list) else None
+    return None
+
+
+def _profile_list_problem(platform_path, ce_name, pipeline, revision, names):
+    """Why these names cannot be used against the list the environment's last check read (a sentence to say as it is), else None."""
+    have = _site_profile_names(platform_path, ce_name, pipeline, revision)
+    if have is None:
+        return ("平台還沒讀過 %s %s 在站台上有哪些 Config profiles；請先到環境頁對這個環境跑一次檢查，再送一次 "
+                "(run the environment check once so the profiles can be read)" % (pipeline, revision))
+    bad = [n for n in names if n not in have]
+    if bad:
+        return ("%s %s 沒有名為 %s 的 Config profile；它有的是：%s (unknown profile; the ones it has are listed)"
+                % (pipeline, revision, "、".join(bad), "、".join(have) if have else "（沒有）"))
+    return None
+
+
+def _profiles_problem(platform_path, ce, bundle):
+    """Why the Config profiles of a launch cannot be used (a sentence to say as it is), else None. Only a pipeline installed on the site
+    is allowed them, and each name must be one that pipeline's own config has, as the last check of the environment read it."""
+    names = bundle.get("profiles") or []
+    if not names:
+        return None
+    if (bundle.get("pipeline_source") or {}).get("kind") != "site-module":
+        return ("這個 pipeline 不是站台上安裝的模組，還不能指定 Config profiles；請用站台已安裝的版本 "
+                "(profiles are only for a pipeline installed on the site)")
+    return _profile_list_problem(platform_path, ce, bundle["pipeline"], bundle["revision"], names)
+
+
 async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet=None, samplesheet_text=None, ce_name=None, params=None,
-                         path_columns=None, dataset=None, dataset_version=None, caller=None, person=None, clock=time.time, remote=False):
+                         path_columns=None, dataset=None, dataset_version=None, profiles=None, caller=None, person=None, clock=time.time,
+                         remote=False):
     """Ask for a launch the way the terminal command does: same choices, same bundle, same screen, same refusals. Writes a pending
     request and asks the person; the answer says whether a job exists. Nothing is queued without a person's yes. The samplesheet is
     given as a file (`samplesheet`) or as the CSV itself (`samplesheet_text`, read from memory, never written), exactly one of the two - or
-    as the name (and optionally the version) of a dataset of the caller's, whose samplesheet then goes the same way as `samplesheet_text`."""
+    as the name (and optionally the version) of a dataset of the caller's, whose samplesheet then goes the same way as `samplesheet_text`.
+    `profiles` are Nextflow Config profiles of the pipeline (site pipelines on Slurm only); one that brings its own data (test, test_full,
+    test_*) lets the launch go without any samplesheet. It is a choice of what to run, not a yes: the person still answers the question."""
+    if profiles is not None and (not isinstance(profiles, list) or not all(isinstance(p, str) for p in profiles)):
+        return _no("未送出：profiles 必須是名稱清單，例如 [\"test\"] (profiles must be a list of names)")
+    no_sheet = bool(profiles and samplesheet is None and samplesheet_text is None and dataset is None and dataset_version is None)
     if dataset is not None or dataset_version is not None:
         if dataset is None:
             return _no("未送出：dataset_version 要和 dataset 一起給 (dataset_version needs dataset)")
@@ -1443,7 +1536,7 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
         if not got.get("found"):
             return _no("未送出：%s" % got["message"])
         samplesheet_text = got["samplesheet"]
-    problem = _samplesheet_text_problem(samplesheet, samplesheet_text)
+    problem = None if no_sheet else _samplesheet_text_problem(samplesheet, samplesheet_text)
     if problem:
         return _no("未送出：%s" % problem)
     if params is not None and not isinstance(params, dict):
@@ -1451,23 +1544,31 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
     if path_columns is not None and (not isinstance(path_columns, list) or not all(isinstance(c, str) for c in path_columns)):
         return _no("path_columns 必須是文字清單 (path_columns must be a list of names)")
     try:
-        raw, area = _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller)
+        raw, area = _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller, need_sheet=not no_sheet)
         ce, bundle = build.prepare_launch(platform_path, ce=ce_name, pipeline=pipeline, revision=revision, run_name=run_name,
                                           samplesheet=samplesheet, params=params, path_columns=path_columns, check_name=False,
-                                          samplesheet_raw=raw, owner=_caller_id(caller), area=area)
+                                          samplesheet_raw=raw, owner=_caller_id(caller), area=area, profiles=profiles)
+        problem = _profiles_problem(platform_path, ce, bundle)
+        if problem:
+            return _no("未送出：%s" % problem)
     except build.Refusal as e:
+        if no_sheet and str(e).startswith("samplesheet:"):      # well-formed names but no data: say first if the pipeline has no such profile
+            ce_n = ce_name or build.primary_environment(platform_path, _caller_id(caller))
+            listed = ce_n and _profile_list_problem(platform_path, ce_n, pipeline, revision, profiles)
+            if listed:
+                return _no("未送出：%s" % listed)
         return _no("未送出：%s" % e)
     return await _finish_launch(platform_path, ce, bundle, caller, person, clock, remote)
 
 
-def _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller):
+def _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller, need_sheet=True):
     """(the samplesheet as bytes or None, the caller's upload area or None) for a launch of either kind. build.Refusal when the file
     is not the caller's own."""
     raw = area = None
     if samplesheet_text is not None:
         raw = samplesheet_text.encode("utf-8")      # no file: the rows come from the text, and the cells are judged as for a file
     if caller is not None:         # over HTTP the file must be the caller's own, and is read once; stdio and the terminal read the path as given
-        if raw is None:
+        if raw is None and need_sheet:
             raw = read_confined_samplesheet(platform_path, caller, samplesheet)
         area = caller_area(platform_path, caller)      # a path cell in the upload area must be in it (116); the environment must be the caller's too
     return raw, area

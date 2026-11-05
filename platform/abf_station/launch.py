@@ -460,11 +460,43 @@ def _yaml_scalar(value):
     return "".join(out)
 
 
-def _params_yaml(params, run_folder):
+def _params_yaml(params, run_folder, with_input=True):
     merged = dict(params)
-    merged["input"] = run_folder + "/samplesheet.csv"
+    if with_input:      # a launch on a profile that brings its own `input` has no samplesheet, so it writes none
+        merged["input"] = run_folder + "/samplesheet.csv"
     merged["outdir"] = run_folder + "/results"
     return "".join("%s: %s\n" % (k, _yaml_scalar(merged[k])) for k in sorted(merged))
+
+
+PROFILE_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z")
+MAX_PROFILES = 8
+
+
+def _brings_data(name):
+    """A Config profile that sets `input` itself (the nf-core convention): test, test_full and test_<anything>."""
+    return name in ("test", "test_full") or name.startswith("test_")
+
+
+brings_input = _brings_data      # the name the tests and the plan use
+
+
+def _check_profiles(profiles):
+    """The profile names of a launch as a clean list ([] when none). Raises BundleError."""
+    if profiles is None:
+        return []
+    if not isinstance(profiles, (list, tuple)):
+        raise BundleError("profiles: 必須是名稱清單 (a list of names)")
+    if len(profiles) > MAX_PROFILES:
+        raise BundleError("profiles: 最多 %d 個 (at most %d)" % (MAX_PROFILES, MAX_PROFILES))
+    out = []
+    for name in profiles:
+        if not isinstance(name, str) or not PROFILE_NAME.match(name):
+            raise BundleError("profiles: 名稱 %r 只能含英文字母、數字、_、. 與 -，不能以 . 或 - 開頭，最長 64 字元 (a plain profile name)"
+                              % str(name)[:70])
+        if name in out:
+            raise BundleError("profiles: 名稱 %r 重複了 (a profile is named twice)" % name)
+        out.append(name)
+    return out
 
 
 def _csv_text(rows):
@@ -474,7 +506,7 @@ def _csv_text(rows):
 
 
 def _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower, resume_session=None, site=None,
-                 source=None, params_file="params.yaml", extra_file=None):
+                 source=None, params_file="params.yaml", extra_file=None, profiles=()):
     q = shlex.quote
     site = site or {"modules": [], "siteConfigVars": []}
     source = source or REMOTE
@@ -523,15 +555,20 @@ def _head_script(run_name, run_folder, pipeline, revision, queue, options, accou
         return "\n".join(lines) + "\n"
     target = '"$%s"' % source["home"] if local else "%s -r %s" % (q(pipeline), q(revision))
     extra = "" if extra_file is None else " -c %s" % extra_file      # a resume with extra settings: read after nextflow.config, so it is the last word
-    lines.append("exec nextflow run %s%s -name %s -params-file %s%s -c nextflow.config%s -with-tower %s"
-                 % (target, resume, q(run_name), params_file, site_c, extra, endpoint))
+    prof = " -profile %s" % ",".join(profiles) if profiles else ""      # after every -c, so the site's settings and ours stay; names are checked
+    lines.append("exec nextflow run %s%s -name %s -params-file %s%s -c nextflow.config%s%s -with-tower %s"
+                 % (target, resume, q(run_name), params_file, site_c, extra, prof, endpoint))
     return "\n".join(lines) + "\n"
 
 
-def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samplesheet, params, path_columns=None, composed=None):
+def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samplesheet, params, path_columns=None, composed=None,
+                  profiles=None):
     """The launch bundle: everything that is shown, hashed, written and run. Raises BundleError, naming the field. `composed`
     ({"pipeline_id", "version", "project"}) makes it the launch of a composed pipeline: the bundle then carries the project and starts it
-    from the run's own folder; with None the bundle is exactly what it always was."""
+    from the run's own folder; with None the bundle is exactly what it always was. `profiles` (Nextflow Config profiles, Slurm only) adds
+    ` -profile a,b`; a profile that brings its own `input` (test, test_full, test_*) makes `samplesheet` optional (None)."""
+    if isinstance(ce, dict) and ce.get("platform") in (GCB, AWS, AZURE, K8S) and profiles:
+        raise BundleError("profiles: 這種環境還不支援 Config profiles，只有 Slurm 站台上的 pipeline 可以 (profiles are not supported here)")
     if isinstance(ce, dict) and ce.get("platform") == GCB:      # a Google Batch environment has its own bundle, below
         if composed is not None:
             raise BundleError("環境: Google Batch 環境還不能送出自訂組合 (a composed pipeline cannot be sent to a Google Batch environment yet)")
@@ -569,7 +606,15 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
         raise BundleError("帳號: 部署設定的 slurm_account 含不允許的字元 (the account has characters that are not allowed)")
     options = _parse_options(ce.get("headJobOptions") or "", account)
     tower = _tower(facts, run_name)
-    sheet = _check_samplesheet(samplesheet, path_columns, roots)
+    profiles = _check_profiles(profiles)
+    if profiles and composed is not None:
+        raise BundleError("profiles: 自訂組合還不支援 Config profiles (a composed pipeline takes no profiles)")
+    if samplesheet is None and any(_brings_data(n) for n in profiles):
+        sheet = None
+    elif samplesheet is None and profiles:
+        raise BundleError("samplesheet: 這些 profile 不自帶測試資料，要給樣本表 (these profiles bring no data of their own; a samplesheet is needed)")
+    else:
+        sheet = _check_samplesheet(samplesheet, path_columns, roots)
     user_params = _check_params(params)
     run_folder = "%s/runs/%s" % (work, run_name)
     ce_out = {"name": ce.get("name"), "platform": ce.get("platform"), "workDir": work, "launchDir": ce.get("launchDir"),
@@ -579,17 +624,20 @@ def render_bundle(*, ce, agent, facts, roots, run_name, pipeline, revision, samp
               "modules": list(site["modules"]), "siteConfigVars": list(site["siteConfigVars"]),
               "sitePipelines": copy.deepcopy(site["sitePipelines"])}
     files = {
-        "samplesheet.csv": _csv_text(sheet),
-        "params.yaml": _params_yaml(user_params, run_folder),
+        "samplesheet.csv": _csv_text(sheet) if sheet is not None else None,
+        "params.yaml": _params_yaml(user_params, run_folder, with_input=sheet is not None),
         "nextflow.config": ((config if config.endswith("\n") else config + "\n") if config.strip()
                             else "// the compute environment carries no Nextflow config\n") + OVERWRITE_BLOCK,
         "head.sh": _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower, site=site,
-                                source=source),
+                                source=source, profiles=profiles),
     }
+    if sheet is None:
+        del files["samplesheet.csv"]
     return {"version": BUNDLE_VERSION, "agent": agent, "ce": ce_out, "run_name": run_name, "run_folder": run_folder,
             "pipeline": pipeline, "revision": revision, "samplesheet": sheet, "params": user_params,
             "path_columns": sorted(set(path_columns or [])), "account": account, "tower": tower, "files": files,
-            "pipeline_source": source, **({"project": composed["project"]} if composed is not None else {})}
+            "pipeline_source": source, **({"project": composed["project"]} if composed is not None else {}),
+            **({"profiles": profiles} if profiles else {})}
 
 
 # ---- Google Cloud Batch: the head process runs on the platform host, the compute on Batch (gcb-launch) ----------------------
@@ -1573,15 +1621,16 @@ def render_resume(*, origin, run_name, attempt, session_id, overrides=None):
         raise BundleError("tower: 不是合法的連線方式 (not a way back to the platform)")
     options = _parse_options(ce.get("headJobOptions") or "", account)
     changes, merged = _normalize_overrides(overrides, origin.get("params"))
+    profiles = _check_profiles(origin.get("profiles"))      # a bundle from before profiles existed has none
     if not changes:
         return {"head-%d.sh" % attempt: _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower,
-                                                      resume_session=session_id, site=site, source=source)}
+                                                      resume_session=session_id, site=site, source=source, profiles=profiles)}
     extra = changes.get("extra_config")
     files = {"head-%d.sh" % attempt: _head_script(run_name, run_folder, pipeline, revision, queue, options, account, env, tower,
                                                    resume_session=session_id, site=site, source=source,
                                                    params_file="params-%d.yaml" % attempt,
-                                                   extra_file=None if extra is None else "extra-%d.config" % attempt),
-             "params-%d.yaml" % attempt: _params_yaml(merged, run_folder)}
+                                                   extra_file=None if extra is None else "extra-%d.config" % attempt, profiles=profiles),
+             "params-%d.yaml" % attempt: _params_yaml(merged, run_folder, with_input=origin.get("samplesheet") is not None)}
     if extra is not None:
         files["extra-%d.config" % attempt] = "// added by the platform: extra settings of resume %d\n%s" % (attempt, extra)
     return files
@@ -1839,7 +1888,7 @@ def run_launch(job, ctx, preflight):
         rebuilt = render_bundle(ce=bundle["ce"], agent=bundle["agent"], facts=facts, roots=rules.allowed_roots(env, ctx.settings_file),
                                 run_name=bundle["run_name"], pipeline=bundle["pipeline"], revision=bundle["revision"],
                                 samplesheet=bundle["samplesheet"], params=bundle["params"], path_columns=bundle["path_columns"],
-                                composed=composed)
+                                composed=composed, profiles=bundle.get("profiles"))
     except (BundleError, KeyError, TypeError) as e:
         raise rules.Refusal("內容不合規則：%s" % e)
     if rebuilt != {k: v for k, v in bundle.items() if k not in RECORDS}:      # the records of the upload-area paths and of a relaunch are the platform's; the first is checked below
@@ -1852,7 +1901,7 @@ def run_launch(job, ctx, preflight):
     res = site.call(["mkdir -p %s" % quote(work + "/runs")])
     if res.rc != 0:
         return "error", {"ok": False, "message": "站台上建不起 %s/runs（結束碼 %d）；沒有建立專屬資料夾 (nothing was made)" % (work, res.rc)}
-    files = [(name, bundle["files"][name].encode("utf-8")) for name in FILE_NAMES] + [("tower.token", token.encode("utf-8"))]
+    files = [(name, bundle["files"][name].encode("utf-8")) for name in _present(bundle["files"])] + [("tower.token", token.encode("utf-8"))]
     if composed is not None:      # the project goes below the run's own folder, in the same unpack: no shared folder, nothing skipped for an equal copy
         files += [("pipeline/" + rel, bundle["project"][rel].encode("utf-8")) for rel in sorted(bundle["project"])]
     res = site.call(["umask 077; mkdir %s && tar -x --no-same-owner -C %s" % (quote(folder), quote(folder))],
@@ -1926,7 +1975,12 @@ def _site_user(settings_file):
     return user
 
 
-def _probe(folder, of_run, user, script, others=()):
+def _present(files):
+    """The files of FILE_NAMES a bundle carries (a launch on a profile with its own data has no samplesheet.csv)."""
+    return tuple(n for n in FILE_NAMES if n in files)
+
+
+def _probe(folder, of_run, user, script, others=(), names=FILE_NAMES):
     """ONE question to the site about the folder of a resume. Every line of the answer is `key=value`; nothing is written or run."""
     f, s = quote(folder), quote(script)
     more = "".join('if [ -e "$f"/%s ] || [ -L "$f"/%s ]; then echo exists=%s; fi; ' % (quote(n), quote(n), n) for n in others)
@@ -1938,7 +1992,7 @@ def _probe(folder, of_run, user, script, others=()):
             'echo session=$(cut -f6 "$f"/.nextflow/history 2>/dev/null | grep -m1 -E %s); '
             '(cd "$f" 2>/dev/null && sha256sum -- %s 2>/dev/null | sed %s); '
             'q=$(squeue -h -n %s -u %s 2>&1); echo squeue_rc=$?; echo alive=$(printf "%%s\\n" "$q" | grep -c .)'
-            % (f, s, s, more, quote("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"), " ".join(FILE_NAMES), quote("s/^/sha=/"),
+            % (f, s, s, more, quote("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"), " ".join(names), quote("s/^/sha=/"),
                quote("nf-" + of_run), quote(user)))
 
 
@@ -1967,7 +2021,7 @@ def _check_folder(folder, answer, resume, origin, script):
     for entry in values.get("sha", []):
         digest, _, name = entry.partition("  ")
         seen[name.strip()] = digest.strip()
-    for name in FILE_NAMES:
+    for name in _present(origin["files"]):
         if seen.get(name) != hashlib.sha256(origin["files"][name].encode("utf-8")).hexdigest():
             return stop("裡的 %s 和第一次送出時寫下的不一樣，或不見了 (%s is not what the first launch wrote)" % (name, name))
     if one("squeue_rc") != "0":
@@ -2020,7 +2074,8 @@ def run_resume(job, ctx, preflight, bundle):
     try:
         rebuilt = render_bundle(ce=origin["ce"], agent=origin["agent"], facts=own_facts(ctx), roots=rules.allowed_roots(env, ctx.settings_file),
                                 run_name=origin["run_name"], pipeline=origin["pipeline"], revision=origin["revision"],
-                                samplesheet=origin["samplesheet"], params=origin["params"], path_columns=origin["path_columns"])
+                                samplesheet=origin["samplesheet"], params=origin["params"], path_columns=origin["path_columns"],
+                                profiles=origin.get("profiles"))
     except (BundleError, KeyError, TypeError) as e:
         raise rules.Refusal("內容不合規則：%s" % e)
     if rebuilt != {k: v for k, v in _as_current(origin).items() if k not in RECORDS}:
@@ -2043,7 +2098,7 @@ def run_resume(job, ctx, preflight, bundle):
     user = _site_user(ctx.settings_file)
     _prechecks(job, ctx, preflight, env, bundle, rebuilt)
     site = ctx.site
-    res = site.call([_probe(folder, resume["of_run"], user, script, new_files[1:])])
+    res = site.call([_probe(folder, resume["of_run"], user, script, new_files[1:], _present(origin["files"]))])
     if res.rc != 0:
         raise rules.Refusal("續跑的專屬資料夾 %s 查不了（結束碼 %d）；沒有改動任何東西 (the folder could not be looked at)" % (folder, res.rc))
     refusal = _check_folder(folder, res.out.decode("utf-8", errors="replace"), resume, origin, script)

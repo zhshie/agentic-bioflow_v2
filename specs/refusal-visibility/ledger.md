@@ -65,3 +65,5 @@ on_site.sh 印出的那一行 : ssh -o ControlMaster=auto -o ControlPath=/.ssh/c
 - `/c/<id>` 英文：violations 0 筆，passes 19，incomplete 0。
 - `/` 看板中文與英文（附帶掃）：3 筆，全不在退回區塊內：`meta-refresh`（critical，目標 `meta[http-equiv="refresh"]`，看板自動更新標籤，`origin/v3` 的 web_board.py 本來就有，本片沒動）、`landmark-unique`（moderate，`.side`）、`page-has-heading-one`（moderate，`html`），後兩者也是看板既有結構。本片要求的確認頁沒有 serious 或 critical。
 - 看板那筆既有的 critical `meta-refresh` 不是本片造成，也不在本片範圍；留給 maintainer 另案決定。
+
+- Merge v3 into feat/refusal-visibility: conflicts in jobs.py (kept both host_of/valid_open_command and v3 _clean_site_profiles), web.py (imports of BuildRefusal and web_refusal), test_web_settings_ce_mobile.py (STRINGS hash re-pinned to merged value 8a178acb..., includes this branch refusal_* strings plus v3 g_pv_*). No test removed.
