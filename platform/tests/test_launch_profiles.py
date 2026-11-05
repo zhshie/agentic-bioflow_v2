@@ -689,34 +689,7 @@ def test_tc069_the_web_launch_page_has_no_test_data_option(w):
         assert "Use the pipeline's test data" not in page.text and "profile test" not in page.text
     for mod in (web, web_board, web_launch):
         assert "(profile test)" not in inspect.getsource(mod)
-    # TC-069: web.py, web_board.py and static/ are not modified by this branch (either base clean: a mirror clone keeps a stale origin/v3)
-    import subprocess, pathlib
-    root = pathlib.Path(__file__).resolve().parent.parent
-    paths = ["abf_platform/web.py", "abf_platform/web_board.py", "abf_platform/static"]
-    pinned = "780b70472882a0d97e99f5c7ad4aa9a454d32d58"
-
-    def git(*args):
-        return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True)
-
-    def diffs():
-        outs = []
-        for base in ("origin/v3", pinned):
-            r = git("diff", "--stat", base, "--", *paths)
-            if r.returncode == 0:
-                outs.append(r.stdout.strip())
-        return outs
-
-    outs = diffs()
-    if not outs:
-        # Fallback for a shallow CI checkout (merge ref) where neither base resolves: fetch v3 once
-        # (failure ignored) and retry. If still unresolved, the source-text asserts above are the check
-        # (the test is not skipped); the strict diff stays whenever a base resolves.
-        git("fetch", "--depth=1", "origin", "v3")
-        outs = diffs()
-    if outs:
-        assert "" in outs, outs
-    else:
-        assert git("cat-file", "-e", pinned + "^{commit}").returncode != 0, "pinned sha exists but diff failed"
+    # The git-diff half of TC-069 only held while launch-test-profile was the branch under test; once merged, later PRs legitimately change web.py (012b-2), so only the source/page asserts above remain.
 
 
 def ann_proposes_and_bob_exists(w):

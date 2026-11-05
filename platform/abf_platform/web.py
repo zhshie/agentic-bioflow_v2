@@ -65,7 +65,7 @@ from starlette.requests import ClientDisconnect
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from abf_launch.build import CONFIG_LIMIT       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
+from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
 from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
 from . import uploads_web, web_upload
 
@@ -751,6 +751,13 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             reuse = actions.list_used_pipelines(platform_path, caller=caller, pipeline=pipeline, revision=revision)["pipelines"]
         return used, reuse
 
+    def launch_preview(caller, name):
+        """Step 4: the first rows of the caller's own chosen samplesheet, or the kind of reason it cannot be read (nothing is written)."""
+        try:
+            return dict(actions.preview_samplesheet(platform_path, caller, name), state="ok")
+        except BuildRefusal as e:
+            return {"state": "error", "kind": getattr(e, "kind", "unreadable")}
+
     def launch_files(caller, full, revision, ce_name, src, enqueue=True):
         """The pipeline's own files for the guided page (guided-launch-2): on the new-pipeline tab the list of releases (the version drop-down; when
         no revision is chosen yet its newest one is the revision, guided-launch-2d), then what pipeline_files answers for the pair, then (only when
@@ -773,9 +780,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         sheets, envs = await run_in_threadpool(launch_choices, caller)
         names = [e["name"] for e in envs]
         values = dict(values)
+        chosen_sheet = values.get("samplesheet") if values.get("samplesheet") in sheets else None
         values.setdefault("samplesheet", sheets[0] if sheets else None)
         values.setdefault("ce_name", names[0] if names else None)
         guide = dict(guide or {})
+        if chosen_sheet:
+            guide["preview"] = await run_in_threadpool(launch_preview, caller, chosen_sheet)
         pipeline = (values.get("pipeline") or "").strip()
         revision = (values.get("revision") or "").strip()
         full = pipeline if "/" in pipeline else ("nf-core/" + pipeline if pipeline else "")
