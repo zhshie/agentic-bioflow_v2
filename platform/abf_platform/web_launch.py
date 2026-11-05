@@ -286,6 +286,48 @@ def samplesheet_block(t, lang, files, quiet=False):
             % (esc(t["g_legend"]), heads, rows))
 
 
+# ---- samplesheet preview, under the chooser of the samplesheet step (012b-2) ------------------------------------------------------------------------------
+
+PREVIEW_CELL = 60
+PREVIEW_ERRORS = {"big": "g_pv_big", "text": "g_pv_text", "empty": "g_pv_empty"}
+
+
+def _cell(text):
+    text = str(text)
+    return esc(text[:PREVIEW_CELL] + "…" if len(text) > PREVIEW_CELL else text)
+
+
+def preview_block(t, lang, preview, files):
+    """The first rows of the chosen samplesheet, then (when the pipeline's schema_input is read) the role of every column of the file and the
+    required columns it lacks, then the paired count. `preview` is None (nothing chosen), {"state": "error", "kind": ...} or {"state": "ok",
+    **preview_samplesheet}. Only information: nothing here blocks the send. The read state and the failure of schema_input are already said
+    by samplesheet_block, above."""
+    if not isinstance(preview, dict):
+        return '<p class="muted">%s</p>' % esc(t["g_pv_pick"])
+    if preview.get("state") != "ok":
+        return _line("✗", "bad", t[PREVIEW_ERRORS.get(preview.get("kind"), "g_pv_unread")])
+    columns, rows, total = preview["columns"], preview["rows"], preview["total"]
+    heads = "".join("<th>%s</th>" % esc(c) for c in columns)
+    body = "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % _cell(c) for c in r) for r in rows)
+    out = '<h4>%s</h4><table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>' % (esc(t["g_pv_title"]), heads, body)
+    count = t["g_pv_total1"] if total == 1 and "g_pv_total1" in t else t["g_pv_total"] % total
+    out += '<p class="muted">%s</p>' % esc(count)
+    if preview.get("truncated"):
+        out += '<p class="muted">%s</p>' % esc(t["g_pv_first"])
+    kind, si = _part(files, "schema_input")
+    if kind != "part" or si.get("status") != "ok":
+        return out
+    known = {c.get("name"): c for c in si.get("columns") or []}
+    roles = [(n, t["g_pv_none"] if n not in known else t["g_pv_req"] if known[n].get("required") else t["g_pv_opt"], False) for n in columns]
+    roles += [(c.get("name"), t["g_pv_miss"], True) for c in si.get("columns") or [] if c.get("required") and c.get("name") not in columns]
+    trs = "".join('<tr><td>%s</td><td%s>%s</td></tr>' % (esc(n), ' class="bad"' if bad else "", esc(r)) for n, r, bad in roles)
+    out += ('<h4>%s</h4><table class="tbl"><thead><tr><th>%s</th><th>%s</th></tr></thead><tbody>%s</tbody></table>'
+            % (esc(t["g_pv_roles"]), esc(t["g2_th_col"]), esc(t["g_pv_th_role"]), trs))
+    if preview.get("paired") is not None and "fastq_1" in known and "fastq_2" in known:
+        out += '<p>%s</p>' % esc(t["g_pv_paired"] % (preview["paired"], total))
+    return out
+
+
 # ---- parameter step -----------------------------------------------------------------------------------------------------------------------------
 
 def _shown(value):
