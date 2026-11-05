@@ -1043,6 +1043,15 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
 2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.
 
+<<<<<<< HEAD
+## Guided launch step 4, samplesheet preview and column roles (012b-2-guided-launch): the maintainer checks
+
+`platform/tests/test_web_guided_launch_preview.py` covers the wording and the shapes; what only a person can see is below. Use an account with an uploaded samplesheet and an environment that is `available`.
+
+1. **The preview.** Open `/launch`, pick a pipeline and press the samplesheet's button. Check: step 4 shows the heading 樣本表預覽, a table with the file's first five rows, the line 共 N 列, and 僅顯示前 5 列 when the file is longer; the column-role table marks each column `✓ 必填`, `✓ 選填` or `— 管線無此欄`, and the paired count appears when both `fastq_1` and `fastq_2` are columns of the pipeline.
+2. **A missing required column.** Choose a samplesheet that lacks a column the pipeline requires. Check: the role table shows `✗ 缺少必填欄` in red with the symbol and the words, and the send button still works.
+3. **A file that cannot be read.** Choose a samplesheet that is over 1 MiB, or delete the file after choosing it. Check: step 4 gives one sentence of the reason with `✗`, and the send button still works.
+=======
 ## nano4 test profile 驗收 (launch-test-profile): the maintainer checks
 
 Run on nano4 after the platform with this change is installed. A launch may now carry `profiles=["test"]`; with a `test`, `test_full` or `test_*` profile no samplesheet is needed, and the pipeline runs on its own test data. The person still says yes on the confirmation page.
@@ -1061,3 +1070,4 @@ For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrn
 2. The answer is "pending" with a page address. Open it: the screen says `Config profiles: test` and `Samplesheet: from the pipeline's test profile`, and head.sh has ` -profile test` after the site `-c` lines and before `-with-tower`. Say yes there.
 3. Wait until the run ends. It must reach SUCCEEDED; write the run name and its final status in the ledger.
 4. Also try `profiles=["nope"]`: nothing is sent and the answer lists the names the site has.
+>>>>>>> origin/v3

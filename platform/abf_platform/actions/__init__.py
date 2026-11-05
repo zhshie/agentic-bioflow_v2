@@ -1402,6 +1402,46 @@ def read_confined_samplesheet(platform_path, caller, samplesheet):
 _MAX_SAMPLESHEET_TEXT = 1024 * 1024        # bytes of UTF-8
 
 
+def _preview_refusal(kind, text):
+    r = build.Refusal(text)
+    r.kind = kind       # "big", "text", "empty" or "unreadable": the launch page says each in its own fixed sentence
+    return r
+
+
+def preview_samplesheet(platform_path, caller, samplesheet, *, limit=5):
+    """Read-only (012b-2): the first `limit` rows of the caller's own samplesheet for the launch page. The file is read as read_confined_samplesheet
+    reads it (the caller's own upload folder only, no link followed). {"columns", "rows", "total", "truncated", "paired"}: `total` counts every
+    data row, `paired` the rows with both fastq_1 and fastq_2 filled (None when the file has not both columns). build.Refusal (with `.kind`)
+    when the file cannot be read, is over 1 MiB, is not UTF-8 text, or is empty."""
+    import csv
+    import io
+    try:
+        raw = read_confined_samplesheet(platform_path, caller, samplesheet)
+    except build.Refusal as e:
+        raise _preview_refusal("unreadable", str(e))
+    if len(raw) > _MAX_SAMPLESHEET_TEXT:
+        raise _preview_refusal("big", "samplesheet 超過 1 MiB (the samplesheet is over 1 MiB)")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise _preview_refusal("text", "samplesheet 不是 UTF-8 文字 (the samplesheet is not UTF-8 text)")
+    if chr(0) in text:
+        raise _preview_refusal("text", "samplesheet 含有 NUL 字元 (the samplesheet contains a NUL character)")
+    delimiter = "\t" if str(samplesheet).lower().endswith(".tsv") else ","
+    table = [r for r in csv.reader(io.StringIO(text, newline=""), delimiter=delimiter) if any(c.strip() for c in r)]
+    if not table:
+        raise _preview_refusal("empty", "samplesheet 是空的 (the samplesheet is empty)")
+    columns, data = table[0], table[1:]
+    width = len(columns)
+    padded = [r + [""] * (width - len(r)) for r in data]
+    paired = None
+    if "fastq_1" in columns and "fastq_2" in columns:
+        i, j = columns.index("fastq_1"), columns.index("fastq_2")
+        paired = sum(1 for r in padded if r[i].strip() and r[j].strip())
+    limit = max(int(limit), 0)
+    return {"columns": columns, "rows": padded[:limit], "total": len(padded), "truncated": len(padded) > limit, "paired": paired}
+
+
 def _samplesheet_text_problem(samplesheet, samplesheet_text):
     """Why the way the samplesheet was given cannot be used (exactly one of the file path and the CSV text, the text a non-empty str of at
     most 1 MiB without a NUL), else None. The words are said to the person as they are."""
