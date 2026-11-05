@@ -787,6 +787,7 @@ The automatic tests are in `platform/tests/test_web_finished.py`. The steps belo
 1. **Open it by clicking.** From the run list click the run, then "完成" in the stage strip. Check: the page shows "來源紀錄" and "交付包" with no extra download step or input.
 2. **390 px.** Narrow the browser to 390 px wide (developer tools, device mode) and open the stage of a run with a long parameter value. Check: there is no horizontal scroll bar and the long value wraps inside its column.
 3. **Tab key.** On the finished stage press Tab repeatedly. Check: every link (stage strip, "查看輸出", previous stage) shows a visible focus outline in turn; the grey "之後開放" lines are never focused.
+4. **Download a result file.** On the finished stage of a run whose outputs you have read in "結果 → 輸出", find "下載結果檔" under the package rows and click one file link, then the "MultiQC 報告" link. Check: the browser receives the file (or the existing loading page, then the file); a file over 25 MB shows "大於 25 MB" without a link; no AI tool or terminal is needed.
 
 ## Analysis state squares (status-squares-3): the maintainer and the reviewer check
 

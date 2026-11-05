@@ -319,7 +319,7 @@ def test_fs13_multiqc_links_to_the_report_file(w):
     assert 'href="/run/file?run=%s&amp;path=multiqc/multiqc_report.html">MultiQC 報告</a>' % rid in sec
     for i, entries in enumerate(([e for e in ENTRIES if e["name"] != "multiqc"],
                                  [dict(e, type="file") if e["name"] == "multiqc" else e for e in ENTRIES])):
-        ann, c, rid = world(w, name="neg%d" % i)
+        ann, c, rid = world(w, name="neg%d" % i, who="neg%d" % i)
         read_outputs(w, rid, c, entries)
         assert "multiqc_report.html" not in c.get(url(rid)).text
 
@@ -339,10 +339,10 @@ def test_fs15_no_block_before_outputs_are_read(w):
     c.get("/?run=%s&stage=results&tab=outputs" % rid)
     finish(w, listings(w)[-1]["id"], ok=False, message="no")
     assert "下載結果檔" not in c.get(url(rid)).text
-    ann, c, rid = world(w, name="empty-one")
+    ann, c, rid = world(w, name="empty-one", who="u2")
     read_outputs(w, rid, c, [])
     assert "下載結果檔" not in c.get(url(rid)).text
-    ann, c, rid = world(w, name="unread-one")
+    ann, c, rid = world(w, name="unread-one", who="u3")
     n = len(listings(w))
     assert "下載結果檔" not in c.get(url(rid)).text and len(listings(w)) == n
 
@@ -367,7 +367,7 @@ def test_fs17_more_than_twenty_files_are_capped(w):
     read_outputs(w, rid, c, [{"name": "f%02d.txt" % i, "type": "file", "size": 5, "modified": ""} for i in range(25)])
     sec = section(c.get(url(rid)).text, "交付包")
     assert len(re.findall(r'<a href="/run/file\?', sec)) == 20
-    assert "其餘檔案請至「查看輸出」。" in plain(sec)
+    assert re.search(r"其餘檔案請至「<a [^>]*>查看輸出</a>」。", sec)
     assert re.search(r'<a href="/\?run=%s&amp;stage=results&amp;tab=outputs">查看輸出</a>' % rid, sec)
 
 
