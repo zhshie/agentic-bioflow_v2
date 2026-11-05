@@ -143,7 +143,6 @@ sys.path.insert(0, ".")
 import methods_text as m
 d = tempfile.mkdtemp()
 open(os.path.join(d, "CITATIONS.md"), "w").write("# Citations\n")
-m.assets_dir = lambda base, name: d
 m.rendered_methods = lambda q: "<p>Data was processed.</p>"
 run = {"run_dir": d, "workflow": {}, "tools": {}, "citable_tools": [],
        "notes": ["no hand-written params.yaml beside results/"]}
