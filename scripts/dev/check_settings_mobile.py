@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 # Nothing existing: drives the platform's own settings page in a real Chrome (settings-ce-table-mobile); Playwright is only the browser driver.
-"""Manual check: the compute-environment table and the personal section on /settings, at 1440 px and at 390 px (device emulation), in zh and en.
+"""Purpose: manual check of the compute-environment table and the personal section on /settings, at 1440 px and at 390 px (device emulation), in zh and en.
 
-The driver turns development mode on first (clicks the real switch), so the banner is in every screenshot. Writes four screenshots to the folder
-given as argv[1] (default specs/settings-ce-table-mobile/screenshots) and prints document.documentElement.scrollWidth vs clientWidth for each, the
+How to run: from the repo root, in WSL or Linux (the platform side is Unix-only): `cd platform && python ../scripts/dev/check_settings_mobile.py [screenshot-dir]`.
+Needs playwright + Chrome in the Python named by ABF_PLAYWRIGHT_PYTHON (default: this Python, if it has playwright). See docs/TESTING.md.
+The driver turns development mode on first (clicks the real switch), so the banner is in every screenshot. It starts a throwaway platform, writes four
+screenshots to argv[1] (default specs/settings-ce-table-mobile/screenshots) and prints document.documentElement.scrollWidth vs clientWidth for each, the
 height of the two personal switch buttons against the shortest other button on the page, and whether the banner and both rows are there.
-Exit 0 = no sideways scroll, switch buttons not shorter than the other buttons, banner and two rows present, in all four; 1 = a check failed; 77 = no playwright/Chrome.
-Not part of pytest or CI. Unix-only platform side: run in WSL. See docs/TESTING.md."""
+Exit 0 = no sideways scroll, switch buttons not shorter than the other buttons, banner and two rows present, in all four; 1 = a check failed; 77 = no playwright/Chrome (skipped, nothing checked).
+It takes no options: argv[1] is always the output folder.
+One-off: not completely. Written for settings-ce-table-mobile, but kept as the reviewer's re-runnable look at that page; not part of pytest or CI
+(tests/check_settings_mobile_smoke_test.sh only checks that it imports and skips loudly without playwright)."""
 import importlib.util
 import os
 import subprocess
