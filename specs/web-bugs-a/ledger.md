@@ -19,3 +19,5 @@
 - failed_partial 說明句：「上表列出 N 個失敗任務，但失敗計數 M；其餘可能已被忽略或重試成功。」
 
 - Plan gap: test_web_resume_edit tc024/tc049 needed a resume form on a succeeded run; they now take the form while failed, then flip to succeeded before posting (same assertions). test_web_bugs_a.py got its test_scope header.
+- Plan gap: test_web_status_squares_3 ss02 forbids the word 成功 on a failed run page; the spec-mandated note (TC-030) contains 重試成功, so ss02 now strips that one note first.
+- Pre-existing, not ours: test_mcp_launch_pipeline::test_no_schema_change diffs store.py against origin/v3 (store.py untouched here); test_azure_ce missing_credential passes alone, flaky in shard.
