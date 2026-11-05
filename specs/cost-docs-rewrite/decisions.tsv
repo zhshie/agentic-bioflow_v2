@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-11-06	RED	先寫六條釘字測試再改文件	任務要求失敗先行	c121b92b	改文件前紅
+2026-11-06	GREEN	CLOUD.md 過渡段放檔尾，內含三句舊句與兩條指令	測試要求舊句只在過渡段；既有測試要求指令名仍在	platform/tests/test_cost_docs_spec.py:test_cloud_doc_quota_is_user_set_and_unset_does_not_block	綠
+2026-11-06	GREEN	PLATFORM.md 的 AWS 標籤列放 workDir 列之後，註記獨立成段	不動既有長列，保住既有必含字串	platform/tests/test_aws_launch.py	105 passed
+2026-11-06	GREEN	DESIGN.md 第 34 行不動	裁決 2 選項 (b)	DESIGN.md:34	留給費用頁實作片

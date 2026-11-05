@@ -33,8 +33,11 @@ DETAIL_LIMIT = 300
 _NEEDS_CONNECTION = "needs a working connection to the site (未檢查)"
 
 
-def _refused(text):
-    return "refused", {"ok": False, "message": text[:600]}
+def _refused(text, open_command=None):
+    out = {"ok": False, "message": text[:600]}
+    if open_command:      # only the line on_site.sh printed for a missing shared connection; no other refusal carries the key
+        out["open_command"] = open_command
+    return "refused", out
 
 
 def handle(job, ctx):
@@ -95,7 +98,7 @@ def handle(job, ctx):
             return "done", preflight(env, ctx, inventory=True)      # only the check the person asks for also reads the site list; a launch's gate does not
         return listing(env, args.get("path"), ctx)
     except rules.Refusal as e:
-        return _refused(str(e))
+        return _refused(str(e), getattr(e, "open_command", None))
 
 
 # ---- what the site script said ---------------------------------------------------------------

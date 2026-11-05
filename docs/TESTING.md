@@ -1039,6 +1039,7 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
 4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
 
+<<<<<<< HEAD
 ## 組合的 lint (017c2a): the maintainer checks
 
 Needs an agent that is online on a host with `nf-core` tools (the platform never installs it). Run in an MCP client or the terminal.
@@ -1047,6 +1048,17 @@ Needs an agent that is online on a host with `nf-core` tools (the platform never
 2. Call `validate_pipeline(pipeline_id, lint=True)`: the answer holds the static check and `lint` with `state: queued`. Wait about a minute, then call `get_validation(pipeline_id)`: `lint` has `status` (`passed` or `failed`), a first line `通過 X／警告 Y／失敗 Z` and the first checks as `name：message`.
 3. Take `nf-core` off the agent's PATH and ask again: `lint.status` is `unavailable` and says nothing was installed for you.
 4. Ask with `lint=True` while the agent is stopped: `lint.state` is `refused` in plain words; the static check is still saved.
+=======
+### A refused launch shows why (refusal-visibility): the maintainer checks by hand
+
+1. Close the shared connection to the site (`ssh -O exit ...`), then ask for a launch and press 送出 on `/c/<id>`.
+2. The page must say the connection is not open and nothing was submitted, name the platform host, and show one line in a box. It must not say 已送出.
+3. Paste the line into a WSL terminal, log in, and call launch again; the new request must go through.
+4. The page has no password, passphrase or OTP input box anywhere; the person types them only in the WSL terminal of step 3. If you see one, stop: that is a failure (RV-12).
+5. Screenshots: `/c/<id>` at 1440 and 390 px wide, zh and en (four files named `confirm-<width>-<lang>.png`), into `specs/refusal-visibility/screens/`. A headless Chrome works: save the page, then `chrome --headless=new --window-size=1440,900 --screenshot=<file> <page>`. For 390 put the page in an `<iframe width=390>`, because headless Chrome will not make a window narrower than about 500 px. Check that none of the four shows 已送出 and that the 390 ones do not scroll sideways (`document.documentElement.scrollWidth` equals 390).
+6. Evidence for the reviewer, pasted into `specs/refusal-visibility/ledger.md` under "閱卷證據" (TC-086): (a) the line `scripts/on_site.sh` prints (fake ssh through `ON_SITE_SSH_BIN`, as `tests/on_site_test.sh` does) beside the line shown on the page; (b) a grep of `platform/` (not tests) for `ControlMaster=yes`, `ControlPersist`, `nchc_t3c4`, `u9613010`, `site_login_command` that finds nothing; (c) the PITFALLS re-check: entries that touch ssh, `on_site.sh`, `ControlPath`, `wsl.exe`, `web.py`, `jobs.py` and the tests that guard them; (d) each screenshot, one line with its file name and the words seen. Also paste the checks for TC-076, TC-078 and TC-085: `git diff origin/v3 --name-only` against the plan's file list, no no-touch file in it, and no `CREATE TABLE`, `ALTER TABLE` or migration in the diff of `platform/`.
+7. Accessibility (TC-065): with the page of step 2 open, run axe (the axe DevTools browser extension, or `axe.run(document)` from axe-core in the console; for a saved page, `npm pack axe-core`, add a `<script>` with `axe.min.js` and a call to `axe.run`, and read the result with `chrome --headless=new --dump-dom`). Do it on `/c/<id>` in zh and en. The list `violations` must have no entry with impact `serious` or `critical`. Paste the result into `specs/refusal-visibility/ledger.md` under "閱卷證據". On the board `/`, a `meta-refresh` finding comes from the page's older auto-refresh tag, not from the refusal block: note it, do not count it.
+>>>>>>> origin/v3
 
 ## CI security checks
 
