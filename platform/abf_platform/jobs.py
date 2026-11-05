@@ -498,7 +498,7 @@ def ask_head_state(state_path, run_name, clock=time.time, last_message_at=None):
         rows = _fetches_of(con, launch)
         known, known_row = _newest_fact_row(rows, launch)
         wait = HEAD_STATE_FRESH_SECONDS
-        if known is None and rows:      # rulings R1/R4: asked at least once and still no fact is not asked for ever; a run never asked is asked once. Silent since its newest sign of life
+        if known is None:      # ruling R1: no fact at all is not asked about for ever; the run has been silent since its newest sign of life
             signs = [t for t in (last_message_at, _col(launch, "submitted_at")) if isinstance(t, (int, float))]
             if signs and now - max(signs) > BAD_END_GIVE_UP_SECONDS:
                 return False
