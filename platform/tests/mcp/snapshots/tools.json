@@ -267,6 +267,88 @@
   },
   {
     "inputSchema": {
+      "properties": {
+        "ce_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ce Name"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Params"
+        },
+        "pipeline_id": {
+          "title": "Pipeline Id",
+          "type": "integer"
+        },
+        "run_name": {
+          "title": "Run Name",
+          "type": "string"
+        },
+        "samplesheet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samplesheet"
+        },
+        "samplesheet_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samplesheet Text"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "pipeline_id",
+        "run_name"
+      ],
+      "title": "launch_pipeline_toolArguments",
+      "type": "object"
+    },
+    "name": "launch_pipeline"
+  },
+  {
+    "inputSchema": {
       "properties": {},
       "title": "list_agentsArguments",
       "type": "object"

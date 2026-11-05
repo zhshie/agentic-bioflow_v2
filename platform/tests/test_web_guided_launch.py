@@ -360,7 +360,7 @@ def test_gl10_no_samplesheet_notice(rig):
     area_sheet(rig.w, bob, "bob-sheet.csv")
     rig.w.env_for(bob)
     s = steps(c.get(SEL).text)
-    assert "ann-sheet.csv" in s[4]["html"] and "bob-sheet.csv" not in s[4]["html"] and "尚未開放" in s[4]["html"]
+    assert "ann-sheet.csv" in s[4]["html"] and "bob-sheet.csv" not in s[4]["html"] and "選定樣本表後顯示預覽。" in s[4]["html"]      # 012b-2: was 尚未開放 (g_preview)
     assert re.search(r'<option value="lab-a"[^>]*>[^<]*✓', s[2]["html"]) and "lab-bob" not in s[2]["html"]      # guided-launch-2d: the environment is step 2 (was 6)
 
 

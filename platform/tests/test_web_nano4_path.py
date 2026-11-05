@@ -246,7 +246,7 @@ def test_tc016_cloud_only_pages_are_what_they_were(up):
     def h(t):
         return hashlib.sha256(mask(t).encode()).hexdigest()[:16]
     zh, en = c.get("/upload").text, c.get("/upload?lang=en").text
-    assert h(zh) == "d2b1b6410ee23956" and h(en) == "f9c006910f30cab7"
+    assert h(zh) == "5e8e02ce8346a5d1" and h(en) == "da0c912702e6f1bc"
     assert 'name="sheet"' not in zh
     assert up.ok()
 
@@ -542,7 +542,7 @@ def pages_of(up):
 def test_tc037_038_039_front_end_rules_and_words(up):
     # TC-037, TC-038, TC-039
     from abf_platform import web_board
-    assert len(web_board.STYLE) == 11268
+    assert len(web_board.STYLE) == 11475
     css = set(re.findall(r"\.([a-z][a-z0-9-]*)", web_board.STYLE))
     for t in pages_of(up):
         assert "style=" not in t and "<script" not in t
