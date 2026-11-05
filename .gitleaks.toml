@@ -1,0 +1,4 @@
+# Keep gitleaks' built-in rules. Only precise allowlist entries may be added below; each needs a
+# comment line directly above it giving the reason (commit, exact file, or exact regex).
+[extend]
+useDefault = true
