@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-11-05	red	先寫 fs12-fs19 測試	計畫要求先紅	test_web_finished.py fs12-fs19	6 紅
+2026-11-05	green	新增 _downloads，MultiQC 算在 20 項內並排第一	計畫最多 20 項	web_finished.py _downloads	22 通過
