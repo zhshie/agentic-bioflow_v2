@@ -16,6 +16,7 @@ import re
 import urllib.parse
 
 from . import web_devmode
+from . import web_downstream
 from . import web_finished
 
 STAGES = ("launch", "running", "results", "downstream", "finished")
@@ -495,7 +496,9 @@ def _task_card(t, run):
     return out
 
 
-def _stage_card(t, run, stage, lang="zh", outputs=None, finished=None, user_name=""):
+def _stage_card(t, run, stage, lang="zh", outputs=None, finished=None, user_name="", studio=None):
+    if stage == "downstream" and run["status"] == "succeeded":
+        return web_downstream.render_downstream(lang, run, outputs, studio, t["stage_downstream"])
     if stage == "finished" and run["status"] == "succeeded":
         return web_finished.render_finished(lang, run, finished, outputs, user_name)
     if stage == "finished":
@@ -795,7 +798,7 @@ def _running_body(t, selected, lang, tab_param, stage_param, now, acts=None):
     return '%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), _tasks_bar(t, selected), links, tab_body(t, lang, selected, tab))
 
 
-def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None, finished=None, user_name=""):
+def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None, finished=None, user_name="", studio=None):
     own = stage_of(selected["status"])
     current = pick_stage(stage_param, own)
     explicit = pick_stage(stage_param, None)
@@ -829,7 +832,7 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     elif current == "results" and status == "succeeded":
         inner = _results_body(t, lang, selected, pick_results_tab(tab_param), now, outputs)
     else:
-        inner = _stage_card(t, selected, current, lang, outputs, finished, user_name)
+        inner = _stage_card(t, selected, current, lang, outputs, finished, user_name, studio)
     note = '<p class="bad" role="alert">%s</p>' % esc(flash) if flash else ""
     views = '<nav class="views"><a href="%s" aria-current="page">%s</a>%s</nav>' % (_url(lang, selected["id"]), esc(t["main_window"]), _grey(t, "terminal"))
     return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s<p class="meta">%s</p></div>%s%s'
@@ -888,7 +891,7 @@ def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, pa
     return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)
 
 
-def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None):
+def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None, studio=None):
     """GET /: the page of a logged-in user. `runs` are newest first (as list_runs gives them, with their `failure`); `selected` is the
     detail of one run (get_run, with its `failure`), or None for the empty page of a person with no run. `act_csrf(run_id)` gives the CSRF
     token of that run's buttons (spec 012b); without it no button is drawn. `flash` is one plain line of refusal shown at the top of the
@@ -904,9 +907,10 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
         if tab == "outputs":      # the page reloads itself to the address without `relist`, so a Read-again click is not repeated every 15 seconds
             refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs", sub=(outputs or {}).get("sub"))
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
-    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
+    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name, studio)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
     return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_), lang_), run_id, stage,
-                  refresh=not flash, tab=tab, refresh_url=refresh_url)
+                  refresh=not flash and not (selected is not None and selected["status"] == "succeeded" and stage == "downstream"),
+                  tab=tab, refresh_url=refresh_url)
 
 
 # ---- spec 012b: the launch form -----------------------------------------------------------------------------------------------------------
