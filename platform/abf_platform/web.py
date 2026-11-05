@@ -148,11 +148,11 @@ def _esc(text):
     return html.escape(str(text), quote=True)
 
 
-def _page(title, body, status=200, form_action=None):
+def _page(title, body, status=200, form_action=None, lang="zh"):
     headers = _HEADERS
     if form_action:        # the consent form ends in a redirect to the connector, which a form-action rule also covers
         headers = dict(_HEADERS, **{"Content-Security-Policy": _HEADERS["Content-Security-Policy"].replace("form-action 'self'", "form-action 'self' " + form_action)})
-    return HTMLResponse(web_board.document(title, "<h1>%s</h1>%s" % (_esc(title), body)), status_code=status, headers=headers)
+    return HTMLResponse(web_board.document(title, "<h1>%s</h1>%s" % (_esc(title), body), lang=lang), status_code=status, headers=headers)
 
 
 def _login_form(next_path="", message="", status=200):
@@ -383,12 +383,16 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         response.delete_cookie(COOKIE, path="/")
         return response
 
-    def view_of(rid, user):
+    def view_of(rid, user, lang="zh"):
         """(response or None, request description) for a logged-in user and an address."""
         req = actions.describe_request(platform_path, rid, clock=clock)
         if req is None:
+            if lang == "en":
+                return _page("Not found", "<p>No such request.</p>", 404, lang="en"), None
             return _page("找不到 (not found)", "<p>無此申請。</p>", 404), None
         if req["caller_user_id"] != user["user_id"]:
+            if lang == "en":
+                return _page("Not yours", "<p class=\"bad\">That request was not sent by you, so it cannot be viewed or acted on here.</p>", 403, lang="en"), None
             return _page("非您的申請 (not yours)", "<p class=\"bad\">該申請並非由您送出，無法在此檢視或操作。</p>", 403), None
         return None, req
 
@@ -436,19 +440,25 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     def state_page(req, sid, rid, lang="zh"):
         clean = req["kind"] == "clean_work"
-        title = "清理確認" if clean else ("送出確認" if req["kind"] == "launch" else "取消確認")
+        en = lang == "en"
+        if en:
+            title = "Confirm clean-up" if clean else ("Confirm launch" if req["kind"] == "launch" else "Confirm cancel")
+        else:
+            title = "清理確認" if clean else ("送出確認" if req["kind"] == "launch" else "取消確認")
         shown = "<details><summary>%s</summary><pre>%s</pre></details>" % (_PLAIN[lang]["full"], _esc(req["summary"] or ""))
         if req["state"] in ("pending", "confirmed"):
             shown = plain_block(rid, lang) + changes_block(req, lang) + shown
         if req["state"] == "pending":
             if clean:
-                intro = "<p>以下為將被刪除的全部內容。確認無誤後，請按「確認刪除」；按下後才會排入佇列。</p>"
-                button = "Confirm delete" if lang == "en" else "確認刪除"
+                intro = ("<p>Everything that will be deleted is shown below. If it is correct, press \"Confirm delete\"; nothing is queued until you press it.</p>" if en else
+                         "<p>以下為將被刪除的全部內容。確認無誤後，請按「確認刪除」；按下後才會排入佇列。</p>")
+                button = "Confirm delete" if en else "確認刪除"
             else:
-                intro = "<p>以下為將被%s的全部內容。確認無誤後，請按「送出」；按下後才會排入佇列。</p>" % ("送出" if req["kind"] == "launch" else "取消")
-                button = "送出"
+                intro = ("<p>Everything that will be sent is shown below. If it is correct, press \"Send\"; nothing is queued until you press it.</p>" if en else
+                         "<p>以下為將被%s的全部內容。確認無誤後，請按「送出」；按下後才會排入佇列。</p>" % ("送出" if req["kind"] == "launch" else "取消"))
+                button = "Send" if en else "送出"
             return _page(title, "%s%s<form method=\"post\" action=\"/c/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
-                         "<button type=\"submit\">%s</button></form>" % (intro, shown, rid, _esc(csrf(sid, rid)), button))
+                         "<button type=\"submit\">%s</button></form>" % (intro, shown, rid, _esc(csrf(sid, rid)), button), lang=lang)
         if req["state"] == "confirmed":
             refused = None
             if req["kind"] == "launch" and req["job_id"] is not None:
@@ -457,36 +467,45 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 except sqlite3.Error:
                     refused = None
             if refused:
-                return _page(title, web_board.refusal_block(refused, lang) + shown)
-            return _page(title, "<p class=\"ok\">已送出。工作編號 %s。</p>%s" % (_esc(req["job_id"]), shown))
+                return _page(title, web_board.refusal_block(refused, lang) + shown, lang=lang)
+            line = "Sent. Job number %s." if en else "已送出。工作編號 %s。"
+            return _page(title, "<p class=\"ok\">%s</p>%s" % (line % _esc(req["job_id"]), shown), lang=lang)
         if req["state"] == "expired":
             if clean:
-                return _page(title, "<p class=\"bad\">該申請已逾時（7 天），不會自動重新提出。</p>")
-            return _page(title, "<p class=\"bad\">該申請已逾時（10 分鐘）。請重新送出。</p>")
+                return _page(title, "<p class=\"bad\">%s</p>" % ("This request has expired (7 days) and will not be raised again." if en else "該申請已逾時（7 天），不會自動重新提出。"), lang=lang)
+            return _page(title, "<p class=\"bad\">%s</p>" % ("This request has expired (10 minutes). Please send it again." if en else "該申請已逾時（10 分鐘）。請重新送出。"), lang=lang)
+        reason = _esc(req["void_reason"] or "-")
         if clean:
-            return _page(title, "<p class=\"bad\">該申請已作廢：%s。</p>" % _esc(req["void_reason"] or "-"), 409)
-        return _page(title, "<p class=\"bad\">該申請已作廢：%s。請重新送出。</p>" % _esc(req["void_reason"] or "-"), 409)
+            return _page(title, "<p class=\"bad\">%s</p>" % (("This request was voided: %s." if en else "該申請已作廢：%s。") % reason), 409, lang=lang)
+        return _page(title, "<p class=\"bad\">%s</p>" % (("This request was voided: %s. Please send it again." if en else "該申請已作廢：%s。請重新送出。") % reason), 409, lang=lang)
+
+    def no_address(lang):
+        if lang == "en":
+            return _page("Not found", "<p>No such address.</p>", 404, lang="en")
+        return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
 
     async def confirm_get(request):
         rid = request.path_params["rid"]
+        lang = web_board.pick_lang(request.query_params.get("lang"))
         if not RID.match(rid):
-            return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
+            return no_address(lang)
         sid, user = user_of(request)
         if user is None:
             return to_welcome(request) or _login_form("/c/" + rid)
-        answer, req = view_of(rid, user)
-        return answer or state_page(req, sid, rid, web_board.pick_lang(request.query_params.get("lang")))
+        answer, req = view_of(rid, user, lang)
+        return answer or state_page(req, sid, rid, lang)
 
     async def confirm_post(request):
         if not same_origin(request):
             return foreign(request)
         rid = request.path_params["rid"]
+        lang = web_board.pick_lang(request.query_params.get("lang"))
         if not RID.match(rid):
-            return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
+            return no_address(lang)
         sid, user = user_of(request)
         if user is None:
             return to_welcome(request) or _login_form("/c/" + rid, "請先登入 (log in first)", 401)
-        answer, req = view_of(rid, user)
+        answer, req = view_of(rid, user, lang)
         if answer is not None:
             return answer
         form = await body_of(request)
@@ -532,6 +551,11 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         ce = actions.run_environment(actions.platform_path_for(index_path, platform_path), view["name"])
         if ce:        # the Compute card: the environment the newest hand-off record names (the page's own addition; the action's answer is unchanged)
             view["compute_env"] = ce
+        sent = actions.launch_prefill(platform_path, view["name"], caller=caller)        # the title row's pipeline, revision and site (a run the platform never sent has none: a dash)
+        if sent.get("found") and sent.get("kept"):
+            view["pipeline"], view["revision"] = sent.get("pipeline"), sent.get("revision")
+            if not view.get("compute_env") and sent.get("ce_name"):
+                view["compute_env"] = sent["ce_name"]
         return view
 
     def read_outputs(run_id, caller, outputs_tab, relist, subpath=None):
@@ -653,7 +677,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         lang = web_board.pick_lang(form.get("lang"))
         run_id = str(form.get("run", ""))[:200]
         if verb not in ("resume", "relaunch", "cancel"):
-            return _page("找不到 (not found)", "<p>無此網址。</p>", 404)
+            return no_address(lang)
         if not _same(form.get("csrf", ""), csrf(sid, "act:" + run_id)):
             return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(web_board.STRINGS[lang]["r_form"]), 403)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
