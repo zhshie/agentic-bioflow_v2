@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-11-04T00:00	GREEN	_report_cell 加 reading 參數，只在輸出分頁第一層 loading 時寫讀取中	其他分頁不排工作，寫讀取中會永遠不變	980a44df	待整套測試
+2026-11-04T01:00	FIX	重新釘 test_clean_page 的 succeeded 兩個板面雜湊；測試檔補 Nothing existing 標頭	成功板預設開輸出分頁，讀取中文字合法改變；test_scope tc070 要求標頭	test_clean_page.py:162; test_scope.py:76	整套第一次紅兩支，修後待重跑

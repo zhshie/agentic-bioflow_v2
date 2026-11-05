@@ -15,7 +15,7 @@ from test_web_board import login, pane
 from test_web_settings import make_agent, make_env, sql
 
 PKG = PLATFORM_DIR / "abf_platform"
-BASE_STYLE_SHA = "6b2683ae09caee2a0e66778f2cde00e56e9ab500413829cf531c5c27ce8742f3"      # sha256 of web_board.STYLE before this task
+BASE_STYLE_SHA = "0b5b317c1dab4ca0f958e92cd6a0fb7b03185461f29854ea4f6f83531823ae00"      # sha256 of web_board.STYLE before this task
 GOOD = {"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}
 OTHER_OLD = {"pipeline": "nf-core/rnaseq", "revision": "3.14.0", "module": "biology/nf-core-rnaseq/3.14.0", "home": "NFCORE_RNASEQ_HOME"}
 FORBIDDEN = ["用過", "選好", "寫死", "自己填", "自己調整", "你還沒", "還沒有", "還不能", "這個", "這份", "這條", "這一版", "一下", "弄", "搞", "東西",
@@ -805,9 +805,9 @@ def test_d05_button_words(w, ann):
     zh = c.get("/settings").text
     buttons = {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(zh), re.S)}
     # settings-pick-installed: the Slurm block also has the button that reloads the site list (the register button now sits in the folded advanced form)
-    assert buttons <= {"登記", "移除", "重新讀取站台清單"} and {"登記", "移除"} <= buttons
+    assert buttons <= {"登記", "移除", "重新讀取站台清單", "開啟", "關閉"} and {"登記", "移除"} <= buttons
     en = {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(c.get("/settings?lang=en").text), re.S)}
-    assert en == {"Register", "Remove", "Reload site list"}
+    assert en - {"Turn on", "Turn off"} == {"Register", "Remove", "Reload site list"}      # 012a: the two switches of the personal section
     page = step1(c, fields("remove")).text
     assert {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(page), re.S)} == {"確認"} and ">返回</a>" in page
 
@@ -902,7 +902,7 @@ def test_d16_only_this_task_has_forms(w, ann):
     r = c.get("/settings")
     mid = mid_of(r.text)
     actions = re.findall(r'<form[^>]*action="([^"]+)"', mid)
-    assert actions and set(actions) == {"/settings/pipelines", "/settings/inventory"}      # settings-pick-installed adds the reload button's form
+    assert actions and set(actions) - {"/settings/personal"} == {"/settings/pipelines", "/settings/inventory"}      # settings-pick-installed adds the reload button's form
     assert r.text.count('action="/logout"') == 1
     assert c.post("/settings", data={"x": "1"}).status_code == 405
     assert w.web().get("/settings").headers["location"].startswith("/login")
