@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-11-05T18:00	green	資訊行只放值不放標籤，管線與版本合成一格	計畫 2.2 與 DESIGN.md 行文	web_board.py _meta_line	測試綠
+2026-11-05T18:10	repin	test_su_usd 假資料月份改為目前月份	寫死 2026-10 在 11 月起被視為過去月份而失敗，非行為改變	test_su_usd.py:416	40 綠
+2026-11-05T18:15	repin	test_web_results_outputs.py:401 預期改成新的 .otbl code 規則	#343 4.2 要求拿掉 anywhere	test_web_results_outputs.py:401	22 綠
