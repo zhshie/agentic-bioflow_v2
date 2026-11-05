@@ -12,11 +12,12 @@ Default: board,launch,settings,results,usage. `results` needs a finished run: --
 Writes <out>/<page>-<width>-<lang>.png (4 per page) and <out>/summary.md. Screenshots stay out of the repository.
 
 Needs: pip install playwright axe-playwright-python, and a Chromium (python -m playwright install chromium, or
-PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers with the same Playwright version). --start also needs abf_platform importable
-(pip install ./platform).
+PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers with the same Playwright version). On a box that cannot reach the Playwright
+download but has Chrome or Chromium installed, point --chromium-path at it (default: $CHROME_PATH when set). --start also
+needs abf_platform importable (pip install ./platform).
 
 Exit 0 = no serious/critical violation, 1 = at least one (or a page could not be checked), 2 = bad arguments,
-3 = playwright / axe / Chromium missing (nothing was checked)."""
+3 = playwright / axe / Chromium missing, or --chromium-path is not a file (nothing was checked)."""
 import argparse
 import datetime
 import os
@@ -46,6 +47,8 @@ def parse(argv):
     ap.add_argument("--user", default=os.environ.get("ABF_UI_USER", DEMO_USER), help="login name (default alice, or $ABF_UI_USER)")
     ap.add_argument("--password-env", default="ABF_UI_PASSWORD", help="environment variable holding the password (not used with --start)")
     ap.add_argument("--run", help="a succeeded run id for the results page (not needed with --start)")
+    ap.add_argument("--chromium-path", default=os.environ.get("CHROME_PATH") or None,
+                    help="Chrome/Chromium executable to drive instead of Playwright's own download (default $CHROME_PATH if set)")
     a = ap.parse_args(argv)
     if not a.start and not a.base_url:
         ap.error("give --base-url or --start")
@@ -118,9 +121,13 @@ def start_platform(tmp):
 
 def run_checks(a, base, user, password, run_id, sync_playwright, Axe, out):
     rows, shots = [], []
+    if a.chromium_path and not os.path.isfile(a.chromium_path):
+        print("ui_check: --chromium-path / $CHROME_PATH is not a file: %s" % a.chromium_path)
+        sys.exit(3)
+    launch_args = {"executable_path": a.chromium_path} if a.chromium_path else {}
     with sync_playwright() as p:
         try:
-            browser = p.chromium.launch()
+            browser = p.chromium.launch(**launch_args)
         except Exception as e:
             print("ui_check: Chromium would not start (%s); install it or set PLAYWRIGHT_BROWSERS_PATH" % str(e).splitlines()[0])
             sys.exit(3)
