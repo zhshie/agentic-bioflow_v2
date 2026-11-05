@@ -197,10 +197,12 @@ def test_343_otbl_filename_not_anywhere():  # TC-042 .. TC-045
     assert "overflow-wrap:anywhere" in re.search(r"\.tbl th,\.tbl td\{([^}]*)\}", css).group(1)
 
 
+BASE_COLOURS = frozenset("#0b5aa8 #101214 #14291c #15171a #15263a #1a2c3a #1b6837 #1c5d8a #1e2125 #1f2328 #33270e #33373d #3a1916 #575e66 #646a73 #78c792 #7db8e2 #80b6f2 #865700 #8f8b82 #9cccf0 #a2a8b0 #b0261d #d6d3cc #e2b35e #e2edf5 #e2f0e6 #e3edf9 #e9e7e2 #ecebe6 #f28b81 #f6f5f2 #f7edd6 #fae6e3 #ffffff".split())  # colours of web_board.STYLE at 86363c0b, kept as data: the test needs no git history (CI checks out depth 1)
+
+
 def test_style_colours_are_not_new():  # TC-053
-    base = subprocess.run(["git", "show", "86363c0b:platform/abf_platform/web_board.py"], capture_output=True, text=True, encoding="utf-8").stdout
     hexes = lambda s: set(re.findall(r"#[0-9a-fA-F]{3,8}\b", s))
-    assert hexes(web_board.STYLE) <= hexes(base)
+    assert hexes(web_board.STYLE) <= BASE_COLOURS
 
 
 def test_style_no_inline_no_script(w):  # TC-050
