@@ -509,9 +509,9 @@ def test_tc049_tc050_an_old_database_gets_the_column_once(tmp_path):
     old_db(p)
     st().connect_tokens(p).close()
     c = cols(p)
-    assert c[-1][1] == "temp_until" and c[-1][2].upper() == "REAL"
+    assert c[-3][1] == "temp_until" and c[-3][2].upper() == "REAL"      # 012a adds step_mode and dev_mode after it
     d = dump(p)
-    assert d["users"] == [(1, "ann", "lab-x", 1.0, None, None, None)] and d["web_sessions"] == [("h", 1, 1.0, 99.0)]
+    assert d["users"] == [(1, "ann", "lab-x", 1.0, None, None, None, None, None)] and d["web_sessions"] == [("h", 1, 1.0, 99.0)]
     st().connect_tokens(p).close()
     assert dump(p) == d
 
@@ -540,7 +540,7 @@ def test_tc052_tc053_a_database_with_only_password_hash_upgrades_to_the_same_sha
     a, b = tmp_path / "a" / "tokens.db", tmp_path / "b" / "tokens.db"
     old_db(a, with_password=True)
     st().connect_tokens(a).close()
-    assert cols(a)[-1][1] == "temp_until"
+    assert cols(a)[-3][1] == "temp_until"
     b.parent.mkdir()
     st().connect_tokens(b).close()
     assert cols(a) == cols(b)

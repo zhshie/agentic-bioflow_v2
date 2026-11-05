@@ -1,0 +1,9 @@
+ts	phase	decision	why	evidence	result
+2026-11-04	RED	先寫 platform/tests/test_cli_flags.py 涵蓋 TC-001..062，再動實作	規則：先紅後綠	a769edaf	紅（旗標尚不存在）
+2026-11-04	GREEN	三個旗標用不同的 dest（product_version／json_mode／debug_mode）	子指令的 namespace 會蓋過根的，dataset register/show 另有自己的 --version	platform/abf_platform/cli.py build_parser	通過
+2026-11-04	GREEN	--json 的外殼與狀態放進新檔 cliout.py，_err 增加 why／next（純文字模式仍只印原句）	不改既有純文字輸出，v3 文字逐字保留	platform/abf_platform/cliout.py	test_cli_flags 全過
+2026-11-04	GREEN	--json 拒絕 serve／web／mcp／user passwd 與 abf_launch 的指令	它們不會結束或要真終端機；abf_launch/cli.py 受保護不能改	cli.py JSON_REFUSED／_json_refusal	通過
+2026-11-04	GREEN	版本只讀 .claude-plugin/plugin.json，讀不到就失敗，不退回 0.1.0	計畫規定	cliout.read_version	通過
+2026-11-04	TEST-FIX	測試端正規化：token 用 abf_[A-Za-z0-9_-]+，時間戳另外遮蔽	原正規式吃掉 JSON 標點，兩個資料庫的建立時間不同；非實作缺陷	test_cli_flags.py TOKEN／STAMP	145 通過
+2026-11-04	GREEN	更新 test_documented_gaps 與 cli_help_top 黃金檔	計畫指名只有這兩處可改	test_cli_contract.py test_documented_gaps；__golden__/cli_help_top.txt	通過
+2026-11-04	GREEN	把 runs assign 的 next 文字改成不含 --force 字樣	受保護測試 test_tcg02 禁止原始碼出現該旗標字串（全套唯一紅）	platform/abf_platform/cli.py:680	test_confirm_page 通過

@@ -381,7 +381,7 @@ def test_tcb10_stdio_needs_no_token_and_no_user(tmp_path):
     plat, _ = _three_runs(tmp_path)
     assert not plat.tokens.exists() or _rows(plat.tokens, "SELECT COUNT(*) FROM tokens WHERE kind = 'pat'")[0][0] == 0
     tools, outs = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [("list_runs", {})])
-    assert len(tools) == 21 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch; run-diag-tools: plus read_task_log; results-outputs: plus run_outputs; guided-launch-1: plus list_used_pipelines; cost-page: plus my_usage
+    assert len(tools) == 22 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch; run-diag-tools: plus read_task_log; results-outputs: plus run_outputs; guided-launch-1: plus list_used_pipelines; cost-page: plus my_usage
 
 
 def test_tcb11_without_users_http_starts_says_so_and_answers_401(tmp_path):
@@ -699,7 +699,7 @@ def test_tcf03_f04_the_users_table_has_no_role_and_both_labs_see_the_same(tmp_pa
     p1 = st.create_token(t, kind="pat", user_id=st.create_user(t, "alice", "lab-a"))
     p2 = st.create_token(t, kind="pat", user_id=st.create_user(t, "bob", "lab-b"))
     assert [r[1] for r in _rows(t, "PRAGMA table_info(users)")] == ["id", "name", "lab", "created_at", "disabled_at",
-                                                                  "password_hash", "temp_until"]    # 009c: the web password hash; temp-password: when a temporary password ends; still no role
+                                                                  "password_hash", "temp_until", "step_mode", "dev_mode"]    # 009c: the web password hash; temp-password: when a temporary password ends; still no role
     plat, _ = _three_runs(tmp_path / "x")
     t2 = plat.tokens
     ua, ub = st.create_user(t2, "alice", "lab-a"), st.create_user(t2, "bob", "lab-b")
