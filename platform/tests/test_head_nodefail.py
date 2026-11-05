@@ -703,3 +703,124 @@ def test_adv7_a_new_streak_after_an_alive_answer_gets_its_own_six_hours(rig):
     n = len(fetch_jobs(rig))
     assert get(rig, rid)["status"] == "failed"
     assert len(fetch_jobs(rig)) == n + 1
+
+
+# ---- ruling R1: a give-up limit when there is no fact at all ---------------------------------------------------------------------
+
+def _lost_for(rig, hours):
+    """lost_run, but silent for `hours`: the last message and the hand-over are both that long ago."""
+    rid = lost_run(rig)
+    t = time.time() - hours * 3600
+    rig.sql("SELECT 1")
+    con = sqlite3.connect(str(rig.index))
+    with con:
+        con.execute("UPDATE runs SET last_message_at = ? WHERE run_name = 'x'", (t,))
+    con.close()
+    con = sqlite3.connect(str(rig.state))
+    with con:
+        con.execute("UPDATE launches SET submitted_at = ?, confirmed_at = ? WHERE run_name = 'x'", (t, t))
+    con.close()
+    return rid
+
+
+@pytest.mark.parametrize("how", ["no_fetch", "only_none"])
+def test_tc044_a_run_lost_for_seven_hours_with_no_fact_is_not_asked_again(rig, how):
+    # TC-044 (R1)
+    from abf_platform import jobs
+    rid = _lost_for(rig, 7)
+    if how == "only_none":
+        add_fetch(rig, "x", None, age=7 * 3600)
+    n = len(fetch_jobs(rig))
+    for step in range(3):
+        v = get(rig, rid)
+        assert v["status"] == "lost" and v["failure"]["failure_reason"] is None
+        later = time.time() + 120 * (step + 1)
+        _agent_online_at(rig, later)      # the agent is online at the moved time, so only the 6-hour limit can say no
+        assert jobs.ask_head_state(rig.state, "x", clock=lambda t=later: t, last_message_at=time.time() - 7 * 3600) is False
+    assert len(fetch_jobs(rig)) == n
+
+
+def _agent_online_at(rig, t):
+    con = sqlite3.connect(str(rig.state))
+    with con:
+        con.execute("UPDATE agents SET last_seen_at = ?", (t,))
+    con.close()
+
+
+@pytest.mark.parametrize("how", ["no_fetch", "only_none"])
+def test_tc044_mutation_without_the_give_up_the_later_steps_ask_again(rig, how, monkeypatch):
+    # TC-044 mutation proof (ruling of 11-05): with the 6-hour limit switched off, the moved-clock calls queue a fetch (True),
+    # so the steps of the test above really exercise the limit and not an offline agent
+    from abf_platform import jobs
+    _lost_for(rig, 7)
+    if how == "only_none":
+        add_fetch(rig, "x", None, age=7 * 3600)
+    monkeypatch.setattr(jobs, "BAD_END_GIVE_UP_SECONDS", 10 ** 12)
+    later = time.time() + 120
+    _agent_online_at(rig, later)
+    assert jobs.ask_head_state(rig.state, "x", clock=lambda: later, last_message_at=time.time() - 7 * 3600) is True
+
+
+def test_tc045_a_run_lost_for_five_hours_is_still_asked_once(rig):
+    # TC-045 (R1): the contrast of TC-044
+    rid = _lost_for(rig, 5)
+    get(rig, rid)
+    get(rig, rid)
+    assert len(fetch_jobs(rig)) == 1
+    assert json.loads(fetch_jobs(rig)[0]["args_json"])["slurm_job_id"] == str(SLURM)
+
+
+# ---- ruling R2: get_run is no longer marked read-only (it may queue one read of the site) ------------------------------------------
+
+def _mcp_tools(rig):
+    import asyncio
+    from abf_platform.mcp_server import build_server
+    return {t.name: t for t in asyncio.run(build_server(str(rig.index), str(rig.state)).list_tools())}
+
+
+def test_tc046_get_run_is_marked_not_read_only_and_nothing_else_changed(rig):
+    # TC-046 (R2)
+    tools = _mcp_tools(rig)
+    a = tools["get_run"].annotations
+    assert a.read_only_hint is False and a.idempotent_hint is True and a.destructive_hint is False and a.open_world_hint is False
+    for name in ("list_runs", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log", "run_outputs"):
+        assert tools[name].annotations.read_only_hint is True, name
+    for name in ("cancel", "forget", "launch", "relaunch", "resume"):
+        assert tools[name].annotations.read_only_hint is False, name
+    assert tools["cancel"].annotations.destructive_hint is True
+
+
+def test_tc047_get_run_description_says_a_lost_run_triggers_one_site_query(rig):
+    # TC-047 (R2)
+    d = _mcp_tools(rig)["get_run"].description
+    assert re.search(r"lost", d) and re.search(r"read-only", d) and re.search(r"site", d) and re.search(r"quer", d)
+    assert "failure_reason" in d and "failed tasks" in d and "cancel_requested_at" in d
+
+
+def test_tc048_get_run_stays_a_query_that_needs_no_yes(rig):
+    # TC-048 (R2)
+    import asyncio
+    import importlib
+    from helpers import tool_json
+    run_id = lost_run(rig, "q48")
+    hits = []
+    for mod, name in [("abf_platform.confirm", "approve"), ("abf_platform.actions", "approve"), ("abf_platform.actions", "launch"),
+                      ("abf_platform.actions", "cancel"), ("abf_platform.actions", "forget"), ("abf_platform.jobs", "enqueue_confirmed"),
+                      ("abf_platform.jobs", "enqueue_launch"), ("abf_platform.jobs", "enqueue_cancel")]:
+        m = importlib.import_module(mod)
+        assert hasattr(m, name), "write point %s.%s is gone" % (mod, name)
+        rig.w.monkeypatch.setattr(m, name, lambda *a, _n=name, **k: hits.append(_n))
+    before = len(rig.sql("SELECT id FROM jobs"))
+    # (a) over MCP with the SDK's in-memory Client (no form support, nobody says yes): the run comes back at once, no write point is reached
+    _, outs = rig.w.mcp([("get_run", {"run_id": run_id})], caller=owner(rig))
+    assert not outs[0].is_error
+    out = tool_json(outs[0])
+    assert out.get("id") == run_id and out.get("name") == "q48", out
+    assert "confirm" not in json.dumps(out).lower() and "not sent" not in json.dumps(out).lower()      # not the write tools' "asked, waiting for a yes" answer
+    assert hits == []
+    new = rig.sql("SELECT kind FROM jobs ORDER BY id")[before:]
+    assert len(new) <= 1 and all(r["kind"] == "fetch_run_records" for r in new), [r["kind"] for r in new]
+    from abf_platform.actions import chat_tools
+    assert "get_run" not in chat_tools.REQUEST_TOOLS and chat_tools.REQUEST_TOOLS == {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"}
+    names = {s["name"] for s in asyncio.run(chat_tools.tool_specs(str(rig.index), str(rig.state)))}
+    assert "get_run" in names
