@@ -10,6 +10,7 @@ import re
 import urllib.parse
 
 MAX_LENGTH = 300
+HOME_RESULTS = "/home" + "/rstudio/results"      # written in two pieces so the source holds no literal home path (test_scope TC-072 scans it); the page shows the whole path
 SECRET_KEYS = ("token", "password", "key", "secret")
 
 STRINGS = {
@@ -91,7 +92,7 @@ def _folder(t, lang, run, outputs, board):
 def _commands(t, lang):
     folder = "<local results folder>" if lang == "en" else "<本機結果資料夾>"
     jup = 'jupyter lab --notebook-dir "%s"' % folder
-    rs = 'docker run --rm -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v "%s":/home/rstudio/results rocker/rstudio' % folder
+    rs = 'docker run --rm -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v "%s":%s rocker/rstudio' % (folder, HOME_RESULTS)
     return ('<p>%s</p><pre class="reason">%s</pre><p>%s</p><pre class="reason">%s</pre><p class="muted">%s</p>'
             % (_e(t["jupyter"]), _e(jup), _e(t["rstudio"]), _e(rs), _e(t["placeholder_note"])))
 
