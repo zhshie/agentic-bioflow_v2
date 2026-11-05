@@ -398,7 +398,7 @@ def test_ro11b_long_names_wrap_and_no_new_colour(w):
     finish(w, listings(w)[0]["id"], entries=[{"name": "x" * 200, "type": "file", "size": 1, "modified": "2026-10-20T08:00:00Z"}])
     t = c.get(url(rid)).text
     assert "x" * 200 in t and 'class="tbl otbl"' in t
-    assert ".otbl code{overflow-wrap:anywhere}" in t
+    assert ".otbl code{overflow-wrap:normal;word-break:keep-all}" in t
     from abf_platform import web_board
     new = web_board.STYLE.split(".otbl", 1)[1]
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb|hsl", new)

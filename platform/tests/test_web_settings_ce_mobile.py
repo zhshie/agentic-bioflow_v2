@@ -98,7 +98,7 @@ def test_ce08_no_new_strings():
     from abf_platform import web_board, web_settings
     got = [hashlib.sha256(json.dumps(m.STRINGS, sort_keys=True, ensure_ascii=False).encode()).hexdigest() for m in (web_settings, web_board)]
     assert got == ["82228e36c502def9667ae1c87a618f96b4b53baa811f2bfa4338621cb081094b",
-                   "56a58cb0aa6c80bdd5d303773c100470be697f3825d87e4ded2f8dcb9b223adb"]      # 012b-2 adds g_pv_* guided preview strings; resume-edit-web merges RESUME_EDIT into web_board.STRINGS
+                   "fb0c2cb9390a814042e9a963e78c4be322303fc66d548308b119c62485bcd2f1"]      # web-bugs-a adds failed_unlisted/failed_partial and placeholder strings; 012b-2 adds g_pv_* guided preview strings; resume-edit-web merges RESUME_EDIT into web_board.STRINGS; web-bugs-b adds the title-row meta labels
 
 
 def test_ce09_no_inline_style(w):

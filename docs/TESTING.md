@@ -787,6 +787,7 @@ The automatic tests are in `platform/tests/test_web_finished.py`. The steps belo
 1. **Open it by clicking.** From the run list click the run, then "完成" in the stage strip. Check: the page shows "來源紀錄" and "交付包" with no extra download step or input.
 2. **390 px.** Narrow the browser to 390 px wide (developer tools, device mode) and open the stage of a run with a long parameter value. Check: there is no horizontal scroll bar and the long value wraps inside its column.
 3. **Tab key.** On the finished stage press Tab repeatedly. Check: every link (stage strip, "查看輸出", previous stage) shows a visible focus outline in turn; the grey "之後開放" lines are never focused.
+4. **Download a result file.** On the finished stage of a run whose outputs you have read in "結果 → 輸出", find "下載結果檔" under the package rows and click one file link, then the "MultiQC 報告" link. Check: the browser receives the file (or the existing loading page, then the file); a file over 25 MB shows "大於 25 MB" without a link; no AI tool or terminal is needed.
 
 ## Analysis state squares (status-squares-3): the maintainer and the reviewer check
 
@@ -1052,7 +1053,6 @@ Manual case, done by the developer-agent on a temporary draft-PR branch (never o
 1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.
 2. After about 3 minutes call `get_run(run_id)`: it says `lost` and queues one read-back. Ask again after 30 seconds: it says `failed` with `Slurm head job <id> ended as <STATE> (sacct)`, and `resume` is offered.
 
-<<<<<<< HEAD
 ## Guided launch step 4, samplesheet preview and column roles (012b-2-guided-launch): the maintainer checks
 
 `platform/tests/test_web_guided_launch_preview.py` covers the wording and the shapes; what only a person can see is below. Use an account with an uploaded samplesheet and an environment that is `available`.
@@ -1060,7 +1060,7 @@ Manual case, done by the developer-agent on a temporary draft-PR branch (never o
 1. **The preview.** Open `/launch`, pick a pipeline and press the samplesheet's button. Check: step 4 shows the heading 樣本表預覽, a table with the file's first five rows, the line 共 N 列, and 僅顯示前 5 列 when the file is longer; the column-role table marks each column `✓ 必填`, `✓ 選填` or `— 管線無此欄`, and the paired count appears when both `fastq_1` and `fastq_2` are columns of the pipeline.
 2. **A missing required column.** Choose a samplesheet that lacks a column the pipeline requires. Check: the role table shows `✗ 缺少必填欄` in red with the symbol and the words, and the send button still works.
 3. **A file that cannot be read.** Choose a samplesheet that is over 1 MiB, or delete the file after choosing it. Check: step 4 gives one sentence of the reason with `✗`, and the send button still works.
-=======
+
 ## nano4 test profile 驗收 (launch-test-profile): the maintainer checks
 
 Run on nano4 after the platform with this change is installed. A launch may now carry `profiles=["test"]`; with a `test`, `test_full` or `test_*` profile no samplesheet is needed, and the pipeline runs on its own test data. The person still says yes on the confirmation page.
@@ -1079,4 +1079,15 @@ For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrn
 2. The answer is "pending" with a page address. Open it: the screen says `Config profiles: test` and `Samplesheet: from the pipeline's test profile`, and head.sh has ` -profile test` after the site `-c` lines and before `-with-tower`. Say yes there.
 3. Wait until the run ends. It must reach SUCCEEDED; write the run name and its final status in the ledger.
 4. Also try `profiles=["nope"]`: nothing is sent and the answer lists the names the site has.
->>>>>>> origin/v3
+
+## 390 px 手動檢查 (web-bugs-b): the reviewer checks
+
+Needs a browser: `scripts/dev/ui_check.py --start` starts a temporary platform with one succeeded run and takes the screenshots and the axe scan (1440 and 390 wide, zh and en; pages include `results` and `usage`). CI has no Chromium, so this is by hand.
+
+1. Right column: at 1440 px the right column is 360 px and the left 272 px; make the window 1100 px: right 300 px, left 232 px. Write the measured numbers in the ledger.
+2. At 390 px open `/?run=<id>&stage=results&tab=outputs`, zh and en. Measure every link and button (the language switch, the tabs, the folder links and "下載", the report links, "重新讀取", "← 上一階段" and "下一階段 →", "開啟確認頁"): each is at least 24 x 24 CSS px. "← 上一階段" stays at the left end and "下一階段 →" at the right end.
+3. In the output table a file name such as `cutadapt`, `phyloseq`, `pipeline_info`, `overall_summary.tsv` shows as one piece, never cut into one or two characters; a name too long for the width scrolls the table sideways.
+4. In the console `document.documentElement.scrollWidth === document.documentElement.clientWidth` (the page itself does not scroll sideways; the output table may).
+5. Also open another run page (running, failed), `/usage` and `/usage?month=<a past month>`: the links ("中／EN", the tabs, "← 上一月", "下一月 →") are at least 24 x 24 px; the cards of a past month are titled with that month, not "本月".
+6. The title row of a run page has one line "pipeline revision · site · started · last update" under the name; the Info tab shows the same four fields.
+7. The axe scan reports nothing serious or critical. Keep the screenshots outside the repository.
