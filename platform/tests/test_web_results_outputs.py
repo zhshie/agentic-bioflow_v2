@@ -176,7 +176,7 @@ def test_ro04_empty_folder(w):
     c.get(url(rid))
     finish(w, listings(w)[0]["id"], entries=[])
     t = mid(c.get(url(rid)).text)
-    assert "— 此資料夾為空" in plain(t) and "<table" not in t and "讀取於" in t and "重新讀取" in t
+    assert "— 此資料夾為空" in plain(t) and "<table" not in re.sub(r'<table class="tbl"><thead><tr><th>(環境|Environment)</th>.*?</table>', "", t, flags=re.S) and "讀取於" in t and "重新讀取" in t
 
 
 def test_ro05_error_shows_reason_and_relist(w):

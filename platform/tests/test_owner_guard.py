@@ -128,6 +128,7 @@ TOOL_ACTION = {"launch": "request_launch", "cancel": "request_cancel", "forget":
 
 # actions with a `caller` that no tool is named after, each with the reason
 NO_TOOL = {
+    "run_usage": "web run page (cost-page-by-environment): the cost row of one run; read only; get_run already carries su",
     "get_my_settings": "web settings page (012a): the person's own two switches, read only",
     "set_my_setting": "web settings page (012a): the person's own two switches",
     "approve": "the person's yes on the web confirmation page",

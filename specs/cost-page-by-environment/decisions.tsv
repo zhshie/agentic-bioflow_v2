@@ -6,3 +6,4 @@ ts	phase	decision	why	evidence	result
 2026-11-06	design	run_usage 只給網頁（WEB_ONLY）	計畫說不是 MCP 工具	platform/tests/test_web_parity.py	通過
 2026-11-06	test	TC-071 把 run_usage 換成空替身，原斷言不動	新費用列合理地讀費率；原斷言守的是舊行為	platform/tests/test_su_usd.py	通過
 2026-11-06	GREEN	既有測試改成新形狀	只動允許清單	c03abe8e	209 個相關測試通過
+2026-11-06	fix	全套測試紅 8 條：run_usage 登錄進 NO_TOOL／ACTIONS 清單／k8s 動作雜湊、run_usage 內部用固定名呼叫 get_run、run 頁費用表從禁 table 斷言扣除、MCP 說明不提 Google	這些測試釘住動作名單、單次 get_run、頁面無 table、mcp_server 無 google 字樣；皆為新增 run_usage 與費用列的必然後果，性質保留	platform/tests/test_owner_guard.py;test_k8s_launch.py;test_web_board.py;test_web_results_outputs.py	單檔重跑全綠

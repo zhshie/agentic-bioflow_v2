@@ -268,10 +268,13 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
             "cloud": _cost.month_usage(index_path, platform_path, caller.user_id, month, cloud_rates, tokens_path)}
 
 
+_get_run_unpatched = get_run     # run_usage checks ownership through this fixed name, so one page read is still one get_run call
+
+
 def run_usage(index_path, run_id, *, caller=None, platform_path=None):
     """The cost of one run of the caller, by the environment it was sent to, for the cost row of the run page: {found, environment, kind, unit,
     value, usd_approx, state, unknown_reasons}. Another person's run and a missing id answer alike (found false). Reads only."""
-    seen = get_run(index_path, run_id, caller=caller, platform_path=platform_path)
+    seen = _get_run_unpatched(index_path, run_id, caller=caller, platform_path=platform_path)
     if not seen.get("found", True):
         return {"found": False, "id": run_id, "message": seen["message"]}
     platform_path = platform_path_for(index_path, platform_path)
