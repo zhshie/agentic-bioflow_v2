@@ -112,19 +112,10 @@ def usage(w, caller, **kw):
     return actions.my_usage(w.ip.index, w.ip.state_db, caller=caller, tokens_path=w.ip.tokens, **kw)
 
 
-def cards(text):
-    """[(class list, title, value, small text)] of the summary cards in the middle column."""
-    out = []
-    for m in re.finditer(r'<div class="(scard[^"]*)">(.*?)</div>', pane(text, "middle"), re.S):
-        title = re.search(r'<h2 class="ct">(.*?)</h2>', m.group(2), re.S).group(1)
-        value = re.search(r'<p class="cv">(.*?)</p>', m.group(2), re.S).group(1)
-        small = " ".join(re.findall(r"<small>(.*?)</small>", m.group(2), re.S))
-        out.append((m.group(1).split(), plain(title), plain(value), plain(small)))
-    return out
-
-
-def card(text, index):
-    return cards(text)[index]
+def cap_line(text):
+    """The one `<p class="muted">` at the top of the middle column (before the note): [its inner html, its plain text]."""
+    html = re.search(r'<h1>.*?</h1><p class="views">.*?</p>(?:<div class="notice".*?</div>)?<p class="muted">(.*?)</p>', pane(text, "middle"), re.S).group(1)
+    return html, plain(html)
 
 
 def table_rows(text):
@@ -156,7 +147,8 @@ def test_co01_page_has_two_cards_note_and_one_table_per_environment(w):
     seed(w, "run-a", ann)
     r = get(w, "ann")
     assert r.status_code == 200
-    assert [c[1] for c in cards(r.text)] == ["雲端上限", "雲端剩餘"]
+    assert cap_line(r.text)[1].startswith("雲端上限：") and "雲端剩餘：" in cap_line(r.text)[1]        # TC-071: one line, not cards
+    assert 'class="scard' not in pane(r.text, "middle")
     assert NOTE_ZH in plain(pane(r.text, "middle"))
     head = re.search(r"<thead>(.*?)</thead>", pane(r.text, "middle"), re.S).group(1)
     assert [plain(h) for h in re.findall(r"<th\b[^>]*>(.*?)</th>", head, re.S)] == ["分析名稱", "開始時間", "用量", "狀態"]
@@ -185,7 +177,7 @@ def test_co03_cloud_used_cap_remaining(w):
     cap(w, ann, 50)
     for url in ("/usage", "/usage?lang=en"):
         r = get(w, "ann", url)
-        assert [c[2] for c in cards(r.text)] == ["US$ 50.00", "US$ 37.66"], url
+        assert "US$ 50.00" in cap_line(r.text)[1] and "US$ 37.66" in cap_line(r.text)[1], url
         assert "US$ 12.34" in summaries(r.text)[0], url
         assert "NT$" not in r.text.replace("不換算新台幣", "")
     got = usage(w, ann)["cloud"]
@@ -249,8 +241,9 @@ def test_co04_no_cap(w):
     # co04: TC-012, TC-013, TC-014, TC-077, TC-079
     ann = w.user("ann")
     r = get(w, "ann")
-    assert card(r.text, 0)[2] == "未設定" and CAP_NOTE in card(r.text, 0)[3]
-    assert card(r.text, 1)[2] == "—"
+    line = cap_line(r.text)[1]
+    assert "雲端上限：未設定" in line and CAP_NOTE in line            # TC-072
+    assert "雲端剩餘：—" in line
     got = usage(w, ann)["cloud"]
     assert got["cap_usd"] is None and got["remaining_usd"] is None
 
@@ -261,11 +254,11 @@ def test_co05_over_cap_is_zero_remaining(w):
     seed(w, "cl-a", ann, "cloud", hours=61.7)
     cap(w, ann, 10)
     r = get(w, "ann")
-    c = card(r.text, 1)
-    assert c[2] == "US$ 0.00"
-    assert "state-failed" in c[0] and ".state-failed{" in style_of(r.text)        # a class the stylesheet already had
-    assert "⚠" in c[3] or "!" in c[3]                                              # a symbol and a word, not colour alone
-    assert "待處理" in c[3]
+    html, line = cap_line(r.text)
+    assert "雲端剩餘：US$ 0.00" in line
+    assert "state-failed" in html and ".state-failed{" in style_of(r.text)        # a class the stylesheet already had (TC-073)
+    assert "⚠" in line                                                             # a symbol and a word, not colour alone
+    assert "待處理" in line
     assert usage(w, ann)["cloud"]["remaining_usd"] == 0
     assert "待處理" not in pane(r.text, "right")                                   # TC-099: no notice in the right column
 
@@ -323,6 +316,23 @@ def test_where_and_amount_per_row(w, monkeypatch):
     assert 'href="/?run=%s&amp;lang=en"' % rid in get(w, "ann", "/usage?lang=en").text or 'href="/?run=%s&lang=en"' % rid in get(w, "ann", "/usage?lang=en").text
     by = {a["name"]: e["name"] for e in usage(w, ann)["environments"] for a in e["analyses"]}
     assert by == {"run-n": "nchc1", "run-c": "gcb1", "run-x": None, "run-cx": "gcb1"}
+
+
+def test_tc030_old_three_key_facts_do_not_crash(w, monkeypatch):
+    # TC-030: a `_launch_facts` stand-in that still answers only cloud/location/pipeline (no ce, no platform): the page is 200, the run is an unknown environment
+    from abf_platform import cloud_cost
+    monkeypatch.setattr(cloud_cost, "_launch_facts", lambda plat, name: {"cloud": False, "location": None, "pipeline": None})
+    ann = w.user("ann")
+    seed(w, "run-n", ann, "nchc", hours=5.10)
+    r = get(w, "ann")
+    assert r.status_code == 200
+    got = usage(w, ann)
+    assert [(e["name"], e["unit"], e["total"]) for e in got["environments"]] == [(None, None, None)]
+    assert got["environments"][0]["analyses"][0]["value"] is None
+    from abf_platform import actions
+    one = actions.run_usage(w.ip.index, "id-run-n", caller=ann, platform_path=w.ip.state_db)
+    assert one["found"] and one["unit"] is None and one["value"] is None and one["environment"] is None
+    assert get(w, "ann", "/?run=id-run-n").status_code == 200
 
 
 def test_newest_a_launch_decides_where(w):
@@ -436,8 +446,8 @@ def test_co09_english(w):
     mid = pane(r.text, "middle")
     seen = re.sub(r">run-[a-z]+<", "><", mid)
     assert cjk(seen) == []
-    titles = [c[1] for c in cards(r.text)]
-    assert titles == ["Cloud cap", "Cloud remaining"]
+    line = cap_line(r.text)[1]
+    assert line.startswith("Cloud cap: ") and "Cloud remaining: " in line
     note = [p for p in re.findall(r"<p[^>]*>(.*?)</p>", mid, re.S) if "convert" in p]
     assert note and "SU" in note[0]
     assert summaries(r.text) and all(cjk(x) == [] for x in summaries(r.text))

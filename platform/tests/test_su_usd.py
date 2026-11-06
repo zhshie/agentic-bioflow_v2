@@ -11,7 +11,7 @@ import pytest
 
 from helpers import PLATFORM_DIR, REPO_ROOT
 from test_web_board import no_cjk, pane, plain, style_of
-from test_web_cost import card, cards, env_of, get, seed, summaries, table_rows, usage, w  # noqa: F401  (w is the fixture)
+from test_web_cost import cap_line, env_of, get, seed, summaries, table_rows, usage, w  # noqa: F401  (w is the fixture)
 
 RATES_FILE = REPO_ROOT / "configs" / "sites" / "su_rates.json"
 PKG = PLATFORM_DIR / "abf_platform"
@@ -295,9 +295,9 @@ def test_tc039_tc040_cloud_unchanged(w):
     cap(w, ann, 50)
     r = get(w, "ann")
     assert rows_by_name(r.text)["cl-a"][2] == "US$ 12.34"                                         # TC-039
-    assert [c[2] for c in cards(r.text)] == ["US$ 50.00", "US$ 37.66"]                           # TC-040 (used is the cloud environment's line)
+    assert "雲端上限：US$ 50.00" in cap_line(r.text)[1] and "雲端剩餘：US$ 37.66" in cap_line(r.text)[1]      # TC-040 (used is the cloud environment's line)
     assert [x for x in summaries(r.text) if "gcb1" in x][0].count("US$ 12.34") == 1
-    assert all("約 US$" not in c[2] for c in cards(r.text)) and "約 US$" not in [x for x in summaries(r.text) if "gcb1" in x][0]
+    assert "約 US$" not in cap_line(r.text)[1] and "約 US$" not in [x for x in summaries(r.text) if "gcb1" in x][0]
 
 
 def test_tc041_tc042_small_amounts(w):
@@ -374,8 +374,8 @@ def test_tc053_used_up_still_shows_usd(w):
     seed(w, "run-a", ann, hours=5.10)
     cap(w, ann, 10)
     r = get(w, "ann")
-    left = card(r.text, 1)
-    assert "state-failed" in left[0] and "⚠" in left[3] and "待處理：本月雲端額度已用盡" in left[3]
+    html, line = cap_line(r.text)
+    assert "state-failed" in html and "⚠" in line and "待處理：本月雲端額度已用盡" in line
     assert "5.10 SU（約 US$0.01）" in su_line(r.text)
 
 
