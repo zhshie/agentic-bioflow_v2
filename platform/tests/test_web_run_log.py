@@ -127,6 +127,7 @@ def test_tc005_006_no_failed_tasks(w, stage):
     c = w.web()
     assert w.login(c, "ann").status_code == 303
     t = mid(c.get("/?run=%s%s&tab=logs" % (rid, stage)).text)
+    t = t.split('<nav class="rtabs">')[1].split("</nav>", 1)[1]      # what sits under the tab strip
     assert "目前沒有失敗任務" in t and "/run/log" not in t and "之後開放" not in t
 
 
@@ -135,8 +136,7 @@ def test_tc007_008_partial_and_unlisted_notes_match_the_tasks_tab(w):
     ann, c, rid = world(w, failed=3)
     note = lambda tab: re.findall(r'<p class="muted">(.*?)</p>', mid(c.get("/?run=%s&tab=%s" % (rid, tab)).text), re.S)
     assert note("logs") == note("tasks") and "失敗計數 3" in note("logs")[0]
-    ann2 = w.user("ann")
-    rid2 = seed(w, "ann-unl", "failed", ann2, started=NOW - 3 * HOUR, ended=NOW - 2 * HOUR, counts=dict(failed=2))
+    rid2 = seed(w, "ann-unl", "failed", ann, started=NOW - 3 * HOUR, ended=NOW - 2 * HOUR, counts=dict(failed=2))
     note2 = lambda tab: re.findall(r'<p class="muted">(.*?)</p>', mid(c.get("/?run=%s&tab=%s" % (rid2, tab)).text), re.S)
     assert note2("logs") == note2("tasks") and "失敗計數 2" in note2("logs")[0]
 
@@ -158,7 +158,7 @@ def test_tc010_011_012_019_020_first_request_queues_one_job_and_waits(w):
     [job] = log_jobs(w)
     args = json.loads(job["args_json"])
     assert args["file"] == ".command.err" and args["workdir"] == WD and job["state"] == "queued"
-    assert w.sql("SELECT user_id FROM jobs WHERE id = ?", (job["id"],)) is not None
+    assert job["compute_env"] == "lab-a"      # queued for the caller's own environment (enqueue_task_log refuses anybody else's)
     c.get(log_url(rid, which="out"))
     c.get(log_url(rid, which="log"))
     assert [json.loads(j["args_json"])["file"] for j in log_jobs(w)] == [".command.err", ".command.out", ".command.log"]

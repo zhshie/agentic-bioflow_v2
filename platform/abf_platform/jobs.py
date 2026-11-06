@@ -795,6 +795,31 @@ def latest_run_file(state_path, ce_name, run_name, path):
     return None
 
 
+def latest_task_log(state_path, ce_name, workdir, filename):
+    """The newest read_task_log job of this environment for exactly this task folder and file, as a dict (id, state, deadline_at, finished_at,
+    result), or None. It only reads: a page uses it to see what the agent already answered, and never waits."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        rows = con.execute("SELECT id, args_json, state, deadline_at, finished_at, result_json FROM jobs WHERE kind = 'read_task_log' "
+                           "AND compute_env = ? ORDER BY id DESC LIMIT 200", (ce_name,)).fetchall()
+        for row in rows:
+            try:
+                args = json.loads(row["args_json"])
+                result = json.loads(row["result_json"]) if row["result_json"] else None
+            except ValueError:
+                continue
+            if isinstance(args, dict) and args.get("workdir") == workdir and args.get("file") == filename:
+                return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
+                        "result": result}
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
+    return None
+
+
 def _col(row, name):
     """A column of a hand-off row, or None when the file is older than the column (a platform.db no command has opened since the upgrade)."""
     return row[name] if name in row.keys() else None
