@@ -711,6 +711,7 @@ def test_tce07_exactly_the_five_flow_prompts_on_the_server(tmp_path):
 # ---- settings-register-pipeline (K01): the two write actions of the settings page refuse without a person's channel, and are not tools ----
 
 PAGE_WRITE_NAMES = ["register_site_pipeline", "remove_site_pipeline", "set_my_setting"]      # written only from the settings page; no MCP tool (012a TC-049: set_my_setting flips the personal flags)
+PAGE_WRITE_NAMES += ["propose_pipeline_registration", "remove_pipeline_registration"]      # pipe-reg-store: written only after a person's yes; no tool, no page yet (pipe-reg-settings-ui connects them)
 
 
 @pytest.mark.parametrize("name", PAGE_WRITE_NAMES)

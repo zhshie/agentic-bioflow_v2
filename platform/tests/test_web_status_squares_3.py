@@ -95,7 +95,9 @@ def test_ss02_three_words_with_square(w):
             info = c.get(url % (ids[st], q(lang))).text                     # the info table
             assert re.search(r'<span class="chip state-%s"><span class="sq"></span> ?%s</span>' % (css, words[st]), info), (lang, st)
             for gone in (("失聯", "成功") if lang == "zh" else ("Lost", "Succeeded")):
-                assert gone not in text and gone not in info, (lang, st, gone)
+                # the tasks-tab note of web-bugs-a (#336) says "retried successfully" in its own words; it is not a status word
+                bare = lambda h: re.sub(r'<p class="muted">[^<]*(?:重試成功|retried successfully)[^<]*</p>', "", h)
+                assert gone not in bare(text) and gone not in bare(info), (lang, st, gone)
             launch = c.get("/launch?from=s-%s%s" % (st, q(lang))).text
             assert re.search(r'<span class="chip state-%s"><span class="sq"></span> ?%s</span>' % (css, words[st]), launch)
             seen = set(x.strip() for x in re.findall(r'class="(?:chip|badge)[^"]*"><span class="sq"></span>([^<]+)<', text + info + launch))
