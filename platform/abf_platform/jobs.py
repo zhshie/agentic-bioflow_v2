@@ -1,7 +1,7 @@
-# Not Celery or RQ: they need a separate broker process; ten job kinds in one SQLite table are enough, and the table is not a run state machine.
+# Not Celery or RQ: they need a separate broker process; eleven job kinds in one SQLite table are enough, and the table is not a run state machine.
 """The queue of jobs that agents poll for.
 
-Ten kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log`, `pipeline_files` and `read_run_file`
+Eleven kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log`, `pipeline_files`, `lint_pipeline` and `read_run_file`
 only read (`read_run_file` asks the agent to read one result file of a run, at most 25 MB, for the web download); `put_upload` asks the agent to write one file the user put in the uploads folder into the user's own cloud prefix, and needs no
 confirmation (the person pressing Upload is the yes; it is queued only by enqueue_put_upload); `launch_nextflow`, `cancel_run` and `clean_work` write on the site, so a job of those three kinds can only be queued with
 a confirmation: a row that a person's yes made (state confirmed: y at the terminal, a form in the MCP client, or the
@@ -29,7 +29,7 @@ from . import cloud_store, common, compute_envs, failures, records, releases, st
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
 DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60, "launch_nextflow": 300, "cancel_run": 90,
-                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600, "pipeline_files": 90, "read_run_file": 60}
+                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600, "pipeline_files": 90, "read_run_file": 60, "lint_pipeline": 300}
 _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES",
                  "launch_nextflow": "ABF_PLATFORM_DEADLINE_LAUNCH",
@@ -39,7 +39,8 @@ _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "clean_work": "ABF_PLATFORM_DEADLINE_CLEAN",
                  "put_upload": "ABF_PLATFORM_DEADLINE_PUT_UPLOAD",
                  "pipeline_files": "ABF_PLATFORM_DEADLINE_PIPELINE_FILES",
-                 "read_run_file": "ABF_PLATFORM_DEADLINE_READ_RUN_FILE"}
+                 "read_run_file": "ABF_PLATFORM_DEADLINE_READ_RUN_FILE",
+                 "lint_pipeline": "ABF_PLATFORM_DEADLINE_LINT_PIPELINE"}
 LOG_FILES = {"err": ".command.err", "out": ".command.out", "log": ".command.log"}      # the only three files read_task_log can name
 # The words D5 of run-diag-tools fixes. The package-source scan of test_scope (TC-061) forbids that whole word in this package's lines, so it is joined here.
 NO_AGENT_KNOWN = "no " + "sta" "tion agent is known for this run (這個 run 不是從這個平台送出的，不知道是哪個代理)"
@@ -58,6 +59,9 @@ _RUN_FILE_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 PF_PARTS = ("schema", "schema_input", "diagram", "image", "tags", "catalogue")      # the standard order of the parts of one job
 PF_STATUSES = ("ok", "not_found", "too_large", "bad_response", "rate_limited", "none")
 PF_RETRY_SECONDS = 60
+# lint_pipeline (017c2a): the five ends a lint can have, and the longest report the platform keeps
+LINT_STATUSES = ("passed", "failed", "unavailable", "error", "expired")
+LINT_REPORT_MAX = 8000
 TAGS_CACHE_SECONDS = 24 * 3600
 TAGS_CACHE_FILE = "release-tags.json"
 # nfcore-catalogue: nf-core's list of all pipelines is one more part of the same job; an answer is reused for a day from the job row
@@ -210,6 +214,8 @@ def _enqueue(state_path, ce_name, kind, listing_path, clock, deadline, offline_a
         raise JobRefused("a file upload is queued only through enqueue_put_upload (上傳只能走專用入口)")
     if kind == "pipeline_files":
         raise JobRefused("reading public files is queued only through enqueue_pipeline_files (讀公開檔只能走專用入口)")
+    if kind == "lint_pipeline":
+        raise JobRefused("a lint is queued only through enqueue_lint_pipeline (lint 只能走專用入口 enqueue_lint_pipeline)")
     if kind == "list_site_files":
         listing_path = check_listing_path(listing_path)
     now = clock()
@@ -349,19 +355,19 @@ def pf_arguments(repo, revision, parts):
     return repo, revision, ordered
 
 
-def pick_environment(con, caller_user_id, compute_env, now, offline_after):
+def pick_environment(con, caller_user_id, compute_env, now, offline_after, *, kind="pipeline_files"):
     """The compute environment row whose agent will read the files. This job never touches the cluster, so it only needs an
     agent that is online: an environment that was just made and not checked yet is as good as an available one. With a name, only that
     one; without, the caller's own environments by name, the first that passes. None for caller_user_id is the local terminal."""
     if compute_env is not None:
-        return _target(con, compute_env, "pipeline_files", now, offline_after, caller_user_id)
+        return _target(con, compute_env, kind, now, offline_after, caller_user_id)
     if caller_user_id is None:
         names = con.execute("SELECT name FROM compute_envs ORDER BY name").fetchall()
     else:
         names = con.execute("SELECT name FROM compute_envs WHERE owner_user_id = ? ORDER BY name", (caller_user_id,)).fetchall()
     for entry in names:
         try:
-            return _target(con, entry["name"], "pipeline_files", now, offline_after, caller_user_id)
+            return _target(con, entry["name"], kind, now, offline_after, caller_user_id)
         except JobRefused:
             continue
     raise JobRefused("no online agent of yours (沒有在線的代理): start your agent and add a compute environment for it first "
@@ -379,6 +385,21 @@ def enqueue_pipeline_files(state_path, repo, revision, parts, *, compute_env=Non
     def work(con):
         row = pick_environment(con, caller_user_id, compute_env, now, offline_after)
         return _insert_job(con, row, "pipeline_files", {"repo": repo, "revision": revision, "parts": parts}, now, seconds)
+
+    return transaction(state_path, work)
+
+
+def enqueue_lint_pipeline(state_path, name, version, project, *, compute_env=None, clock=time.time, deadline_seconds=None,
+                          offline_after=None, caller_user_id=None):
+    """Ask an agent of the caller to run nf-core's lint on the project files of one composed pipeline version (the agent's lint
+    module, on the agent's own host). The only way to queue this kind. It reads only and costs nothing, so it needs no confirmation;
+    the job holds the project text (already bounded by the caller), nothing secret."""
+    now = clock()
+    seconds = _seconds("lint_pipeline", deadline_seconds)
+
+    def work(con):
+        row = pick_environment(con, caller_user_id, compute_env, now, offline_after, kind="lint_pipeline")
+        return _insert_job(con, row, "lint_pipeline", {"name": name, "version": version, "project": project}, now, seconds)
 
     return transaction(state_path, work)
 
@@ -1214,6 +1235,37 @@ def _clean_inventory(raw):
     return out
 
 
+_OPEN_COMMAND = re.compile(r"(wsl\.exe -e )?s{2}h( -o [A-Za-z]+=[^\s;&|$`]+)+ [\w.@-]+ true")
+_OPEN_COMMAND_LIMIT = 600
+_OPEN_COMMAND_BAD_CHARS = frozenset("<>()'\"" + chr(92))
+_OPEN_COMMAND_OPTIONS = frozenset(("ServerAliveInterval", "ServerAliveCountMax", "ConnectTimeout", "StrictHostKeyChecking", "UserKnownHostsFile",
+                                   "ControlMaster", "ControlPath", "ControlPersist", "IdentitiesOnly", "IdentityFile", "Port", "User",
+                                   "A", "K"))  # A and K: the contract test cases TC-010, TC-011, TC-013, TC-019 use them as legal examples (ruling R3-3)
+
+
+def valid_open_command(value, host):
+    """The line to open the shared connection when it is the strict shape, at most 600 characters, and names the compute environment's own host
+    (the part after `user@`); anything else, and any value when the environment has no host on record, is None. Nothing else is trusted."""
+    if not isinstance(value, str) or not isinstance(host, str) or not host or len(value) > _OPEN_COMMAND_LIMIT:
+        return None
+    if _OPEN_COMMAND.fullmatch(value) is None or _OPEN_COMMAND_BAD_CHARS.intersection(value):
+        return None
+    for name in re.findall(r" -o ([A-Za-z]+)=", value):
+        if name not in _OPEN_COMMAND_OPTIONS:
+            return None
+    target = value[:-len(" true")].rsplit(" ", 1)[1]
+    return value if target.rsplit("@", 1)[-1] == host else None
+
+
+def host_of(config_json):
+    """hostName of a stored environment configuration, or None."""
+    try:
+        host = json.loads(config_json).get("hostName")
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return host if isinstance(host, str) and host else None
+
+
 _PROF_KEY = re.compile(r"[A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,64} [^\s]{1,60}\Z")
 _PROF_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\Z")
 
@@ -1230,8 +1282,9 @@ def _clean_site_profiles(raw):
     return out
 
 
-def clean_result(kind, result, stored=None):
-    """Only what the platform expects, with every text bounded; an agent cannot make the platform store more."""
+def clean_result(kind, result, stored=None, host=None):
+    """Only what the platform expects, with every text bounded; an agent cannot make the platform store more.
+    `host` is the hostName of the job's compute environment: a launch's `open_command` is kept only if it names that host."""
     if not isinstance(result, dict):
         return {"ok": False, "message": "the agent sent no result"}
     out = {"ok": bool(result.get("ok"))}
@@ -1265,6 +1318,23 @@ def clean_result(kind, result, stored=None):
                 if cleaned is not None:
                     parts[name] = cleaned
         out["parts"] = parts
+    elif kind == "lint_pipeline":
+        out.pop("message", None)
+        out.pop("error", None)
+        out.pop("note", None)
+        status = result.get("status")
+        out["status"] = status if status in LINT_STATUSES else "error"
+        if isinstance(result.get("reason"), str):
+            out["reason"] = _short(result["reason"], 200)
+        if isinstance(result.get("report"), str):
+            out["report"] = _short(result["report"], LINT_REPORT_MAX)
+        counts = {}
+        if isinstance(result.get("counts"), dict):
+            for key in ("passed", "warned", "failed"):
+                n = result["counts"].get(key)
+                if isinstance(n, int) and not isinstance(n, bool) and 0 <= n <= 100000:
+                    counts[key] = n
+        out["counts"] = counts
     elif kind == "put_upload":
         written = _int(result.get("bytes"), 0, cloud_store.UPLOAD_LIMIT)
         if written is not None:
@@ -1284,6 +1354,8 @@ def clean_result(kind, result, stored=None):
         for key, limit in (("run_name", 64), ("run_folder", 1100), ("left_on_site", 600)):
             if isinstance(result.get(key), str):
                 out[key] = _short(result[key], limit)
+        if kind == "launch_nextflow" and valid_open_command(result.get("open_command"), host) is not None:
+            out["open_command"] = result["open_command"]
     elif kind == "read_task_log":
         if isinstance(result.get("text"), str):
             out["text"], cut = cap_log(result["text"])
@@ -1361,6 +1433,68 @@ def _apply_handover(con, job, state, cleaned, now):
     return None
 
 
+_INTERNAL_WORDS = re.compile(r"Traceback|File \"|\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b|sqlite|args_json|deadline_at|result_json|"
+                             r"Exception|, line \d+")      # the same list as actions._outputs_reason; jobs does not import actions
+_NO_REASON = "the site did not say why (站台沒有說明原因)"
+REFUSAL_LIMIT = 300
+SITE_DOWN = "No open connection to the site"
+
+
+def _first_sentence(message):
+    """The first plain sentence of the site's message; a stack, SQL, an internal field name or a credential-looking text is never passed on."""
+    text = str(message or "")
+    line = next((x.strip() for x in text.splitlines() if x.strip()), "")
+    if not line or _INTERNAL_WORDS.search(text) or compute_envs.looks_like_credential(text):
+        return _NO_REASON
+    m = re.search(r"(?<=[。！？])|(?<=\.)(?=\s)", line)
+    return _short(line[:m.start()] if m else line, REFUSAL_LIMIT)
+
+
+def _refusal_of_row(con, row):
+    """{state, reason, site_down, open_command, host, ce, job_id} of a job row that is refused or error, else None. Read only."""
+    if row is None or row["state"] not in ("refused", "error"):
+        return None
+    try:
+        result = json.loads(row["result_json"] or "{}")
+    except ValueError:
+        result = {}
+    if not isinstance(result, dict):
+        result = {}
+    env_row = con.execute("SELECT config_json FROM compute_envs WHERE name = ?", (row["compute_env"],)).fetchone()
+    message = result.get("message")
+    return {"state": row["state"], "reason": _first_sentence(message), "site_down": isinstance(message, str) and SITE_DOWN in message,
+            "open_command": valid_open_command(result.get("open_command"), host_of(env_row[0]) if env_row else None),
+            "left": _short(result["left_on_site"], 600) if isinstance(result.get("left_on_site"), str) and not _INTERNAL_WORDS.search(result["left_on_site"])
+            and not compute_envs.looks_like_credential(result["left_on_site"]) else "",
+            "host": row["agent"] or row["compute_env"], "ce": row["compute_env"], "job_id": row["id"]}
+
+
+def refusal_of(state_path, job_id):
+    """Why this job was turned back: None unless it is refused or error. The stored command is checked again on the way out."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        return _refusal_of_row(con, con.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
+    finally:
+        con.close()
+
+
+def latest_refusal(state_path, user_id, now, max_age=3600):
+    """The refusal of this person's newest launch job when it is refused and finished at most `max_age` seconds ago, else None."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT j.* FROM jobs j JOIN confirmations c ON c.id = j.confirmation_id WHERE j.kind = 'launch_nextflow' "
+                          "AND c.caller_user_id = ? ORDER BY j.created_at DESC, j.id DESC LIMIT 1", (user_id,)).fetchone()
+        if row is None or row["state"] != "refused" or row["finished_at"] is None or now - row["finished_at"] > max_age:
+            return None
+        return _refusal_of_row(con, row)
+    finally:
+        con.close()
+
+
 def take_result(state_path, agent, job_id, state, result, clock, tokens_path=None, records_dir=None):
     """Record an agent's answer. Returns (http status, body).
 
@@ -1389,7 +1523,8 @@ def take_result(state_path, agent, job_id, state, result, clock, tokens_path=Non
             if job["agent"] != agent:
                 con.execute("ROLLBACK")
                 return 403, {"message": "This job belongs to another agent"}
-            cleaned = clean_result(job["kind"], result, stored)
+            env_row = con.execute("SELECT config_json FROM compute_envs WHERE name = ?", (job["compute_env"],)).fetchone()
+            cleaned = clean_result(job["kind"], result, stored, host=host_of(env_row[0]) if env_row else None)
             if job["state"] == "queued":
                 con.execute("ROLLBACK")
                 return 409, {"message": "This job was not handed out"}

@@ -25,10 +25,10 @@ ROUTES_V3 = [('/', ('GET', 'HEAD')), ('/.well-known/oauth-authorization-server',
              ('/upload/{batch}', ('GET', 'HEAD')), ('/usage', ('GET', 'HEAD')), ('/welcome', ('GET', 'HEAD')), ('/welcome', ('POST',))]
 ACTIONS_V3 = ['Caller', 'ConnectorCaller', 'approve', 'caller_area', 'cancel', 'check_site_pipeline_change', 'clean_requests', 'confined_samplesheet',
               'describe_request', 'estimate_su', 'find_approved', 'forget', 'forget_check', 'form_is_trusted', 'get_compute_env', 'get_my_settings',
-              'get_run', 'keep_screen', 'latest_release', 'launch', 'launch_prefill', 'list_agents', 'list_compute_envs', 'list_runs',
+              'get_run', 'keep_screen', 'latest_release', 'launch', 'launch_prefill', 'list_agents', 'list_compute_envs', 'list_pipeline_registrations', 'list_registered_pipelines', 'list_runs',
               'list_samplesheets', 'list_site_files', 'list_used_pipelines', 'my_usage', 'nfcore_catalogue', 'offer_cleanup', 'offer_cleanups',
-              'person_at', 'pipeline_files', 'platform_path_for', 'preview_samplesheet', 'read_confined_samplesheet', 'read_run_file', 'read_task_log',
-              'register_site_pipeline', 'reload_site_inventory', 'remove_site_pipeline', 'request_cancel', 'request_facts', 'request_forget',
+              'person_at', 'pipeline_files', 'platform_path_for', 'preview_samplesheet', 'propose_pipeline_registration', 'read_confined_samplesheet', 'read_run_file', 'read_task_log',
+              'register_site_pipeline', 'reload_site_inventory', 'remove_pipeline_registration', 'remove_site_pipeline', 'request_cancel', 'request_facts', 'request_forget',
               'request_launch', 'request_pipeline_launch', 'request_relaunch', 'request_resume', 'run_environment', 'run_file', 'run_outputs',
               'set_my_setting', 'site_pipeline_inventory', 'start_upload_batch', 'upload_batch_status', 'void_request']
 

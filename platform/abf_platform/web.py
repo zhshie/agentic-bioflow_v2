@@ -66,7 +66,7 @@ from starlette.responses import HTMLResponse, PlainTextResponse, RedirectRespons
 from starlette.routing import Route
 
 from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
-from . import actions, oauth, store, web_board, web_cost, web_launch, web_settings
+from . import actions, oauth, store, web_board, web_cost, web_launch, web_refusal, web_settings
 from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
@@ -460,6 +460,14 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return _page(title, "%s%s<form method=\"post\" action=\"/c/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
                          "<button type=\"submit\">%s</button></form>" % (intro, shown, rid, _esc(csrf(sid, rid)), button), lang=lang)
         if req["state"] == "confirmed":
+            refused = None
+            if req["kind"] == "launch" and req["job_id"] is not None:
+                try:
+                    refused = web_refusal.refusal_of(platform_path, req["job_id"])
+                except sqlite3.Error:
+                    refused = None
+            if refused:
+                return _page(title, web_board.refusal_block(refused, lang) + shown, lang=lang)
             line = "Sent. Job number %s." if en else "已送出。工作編號 %s。"
             return _page(title, "<p class=\"ok\">%s</p>%s" % (line % _esc(req["job_id"]), shown), lang=lang)
         if req["state"] == "expired":
@@ -592,8 +600,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 asked = (await run_in_threadpool(actions.clean_requests, platform_path, caller=caller, clock=clock)).get(selected["name"])
                 if asked:
                     selected["clean_request"] = asked
+        try:
+            refusal = await run_in_threadpool(web_refusal.latest_refusal, platform_path, user["user_id"], clock())
+        except sqlite3.Error:
+            refusal = None
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
-                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, studio=studio)
+                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     async def board(request):

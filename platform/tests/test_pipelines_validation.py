@@ -76,7 +76,7 @@ def test_validate_pipeline_stores_and_get_validation_returns_it(d):
     got = pl().get_validation(d.state, pid, caller=d.a)
     assert got["ok"] is True and got["validation"] == v and got["validation"]["stale"] is False
     cols = sorted(c["name"] for c in sql_rows(d.state, "PRAGMA table_info(pipeline_validations)"))
-    assert cols == ["catalogue_sha", "graph_sha256", "pipeline_id", "result_json", "validated_at", "version"]
+    assert cols == ["catalogue_sha", "graph_sha256", "lint_at", "lint_job_id", "lint_report", "lint_status", "pipeline_id", "result_json", "validated_at", "version"]      # 017c2a: four nullable lint columns
     row = rows(d)[0]
     assert row["catalogue_sha"] == SHA == json.loads(row["result_json"])["catalogue_sha"] and row["graph_sha256"]
 
@@ -207,7 +207,7 @@ def test_no_program_is_started_by_validation():
     src = MODULE.read_text(encoding="utf-8")
     start = src.index("CREATE TABLE IF NOT EXISTS pipeline_validations")
     mine = src[start:src.index(");", start)] + src[src.index("def validate_pipeline"):]
-    for word in ("subprocess", "os.system", "sbatch", "nextflow", "lint", "stub"):
+    for word in ("subprocess", "os.system", "sbatch", "nextflow", "stub"):
         assert word not in mine.lower(), word
 
 
@@ -240,3 +240,26 @@ def test_regex_dollar_newline_tc013_legal_names_are_created(d):
 def test_regex_dollar_newline_tc050_old_refused_names_stay_refused(d):
     # regex-dollar-newline TC-050
     assert make(d, d.a, name="a" * 41)["ok"] is False
+
+
+# ---- 017c2a: the optional lint leaves the static check as it was ---------------------------------------------------------------
+
+def test_017c2a_tc082_a_dropped_table_comes_back_with_the_lint_columns(d):
+    # 017c2a TC-082
+    from owner_harness import sql_exec
+    pid = pid_of(make(d, d.a))
+    sql_exec(d.state, "DROP TABLE pipeline_validations")
+    pl().validate_pipeline(d.state, pid, caller=d.a)
+    cols = {r["name"] for r in sql_rows(d.state, "PRAGMA table_info(pipeline_validations)")}
+    assert {"lint_status", "lint_report", "lint_job_id", "lint_at"} <= cols and len(rows(d)) == 1
+
+
+def test_017c2a_tc085_without_lint_the_six_columns_are_what_they_were(d):
+    # 017c2a TC-085
+    pid = pid_of(make(d, d.a))
+    r = pl().validate_pipeline(d.state, pid, caller=d.a, clock=lambda: 12.0)
+    row = rows(d)[0]
+    assert sorted(r) == ["ok", "validation"] or "lint" not in r
+    assert (row["pipeline_id"], row["version"], row["validated_at"]) == (pid, 1, 12.0)
+    assert json.loads(row["result_json"]) == {k: r["validation"][k] for k in json.loads(row["result_json"])}
+    assert row["lint_status"] is None and row["lint_job_id"] is None

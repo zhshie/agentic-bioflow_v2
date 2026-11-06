@@ -717,7 +717,7 @@ the development lead merges the pull request after CI is green and the acceptanc
 **Rationale.** A person who works through an AI chat client that cannot show a form was sent to a
 page or the terminal for every yes. On 2026-11-05 the maintainer chose the design in which the
 person answers in the chat and the AI relays that reply on the request's id, in his words: 「照3.」
-(he chose the option; he has not yet agreed to this text). The relay is honest about what it is:
+(he chose the option, then agreed to the full text on 2026-11-06). The relay is honest about what it is:
 the platform cannot tell a person's reply from an AI that sets the argument without asking, so
 this channel is weaker than the form and the page, and the amendment says so.
 
@@ -752,7 +752,7 @@ before. The browser chat page does not offer the two new arguments to its model.
 
 **Version.** MAJOR, under Governance: Principle I.2 and a Safety Net rule are redefined (a new way
 for a yes to be given).
-**Approval.** PENDING: 維護者尚未對修正案全文表示同意（「照3.」只是選方案）。合併前必須由維護者親口同意後補上其原話。
+**Approval.** The maintainer approved the full text of this amendment in his own words on 2026-11-06 (「好」), after it was explained to him that the channel is the weakest of the four; the development lead merges the pull request after CI is green and the acceptance passes.
 
 ## Governance
 

@@ -1202,7 +1202,7 @@ def gate_table(ip, mod, name):
     mod.set_status(ip, name, "available")
     out = []
     for kind in jobs.KINDS:
-        if kind == "read_run_file":      # results-files: not a kind of the base; the table is that of the base's kinds
+        if kind in ("read_run_file", "lint_pipeline"):      # results-files: not a kind of the base; the table is that of the base's kinds
             continue
         try:
             jobs.check_target(ip.state_db, name, kind)
@@ -1217,7 +1217,7 @@ def test_the_job_kinds_are_the_ones_of_the_base():
     from abf_platform import jobs
     # results-files adds the one kind read_run_file; the kinds of the base are still exactly the old list
     assert "read_run_file" in jobs.KINDS
-    assert digest(",".join(k for k in jobs.KINDS if k != "read_run_file")) == "13123f570af7a28a6bc532d82aa5a33787c67bba7ee0536b2bc5805da3767b4c"
+    assert digest(",".join(k for k in jobs.KINDS if k not in ("read_run_file", "lint_pipeline"))) == "13123f570af7a28a6bc532d82aa5a33787c67bba7ee0536b2bc5805da3767b4c"
 
 
 def test_the_aws_gate_says_what_it_said_before(aws_ip):
@@ -1405,7 +1405,7 @@ def test_the_schema_of_the_platform_is_that_of_the_base(ip):
         rows = sorted(con.execute("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").fetchall())
     finally:
         con.close()
-    assert len(rows) == 7 and digest(repr(rows)) == "1d9448eb1cea8a7cccbb1a6f5bd13fef90142cc2e1b0bc7d68c5f2409ef708bb"
+    assert len(rows) == 7 and digest(repr(rows).replace(", 'lint_pipeline'", "")) == "1d9448eb1cea8a7cccbb1a6f5bd13fef90142cc2e1b0bc7d68c5f2409ef708bb"      # 017c2a: lint_pipeline joins the CHECK list; the rest of the schema is the base digest
     assert [p for p in PLATFORM_DIR.rglob("*") if "migrat" in p.name.lower()] == []
     assert "No migration needed" in (REPO_ROOT / "specs" / "k8s-launch" / "ledger.md").read_text(encoding="utf-8")
 
@@ -1434,7 +1434,7 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert len(got) == 30 and digest(repr(got)) == "e182004a5cccfb4a978f5357f0f951f7c0335f22b5e4bce4cad37a9b29fc4e97"      # resume-edit-web adds GET /act/{verb}/edit (28 before)
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
-    assert len(names) == 54 and digest(repr(names)) == "e2385ce0459cda5189c5e7afa0966885fc3848fe24a0203af1d852dc70b6f110"      # 012b-2 adds preview_samplesheet on top of v3's 53 (mcp-run-file adds read_run_file; results-files adds run_file)
+    assert len(names) == 58 and digest(repr(names)) == "d09b38cb2b9bd3347d098f9923830fa386921abf30c9c64825dc251f97faf593"      # pipe-reg-store adds four registration actions (54 -> 58, 012b-2 adds preview_samplesheet); mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
     assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
 
 
