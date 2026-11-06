@@ -787,6 +787,7 @@ The automatic tests are in `platform/tests/test_web_finished.py`. The steps belo
 1. **Open it by clicking.** From the run list click the run, then "完成" in the stage strip. Check: the page shows "來源紀錄" and "交付包" with no extra download step or input.
 2. **390 px.** Narrow the browser to 390 px wide (developer tools, device mode) and open the stage of a run with a long parameter value. Check: there is no horizontal scroll bar and the long value wraps inside its column.
 3. **Tab key.** On the finished stage press Tab repeatedly. Check: every link (stage strip, "查看輸出", previous stage) shows a visible focus outline in turn; the grey "之後開放" lines are never focused.
+4. **Download a result file.** On the finished stage of a run whose outputs you have read in "結果 → 輸出", find "下載結果檔" under the package rows and click one file link, then the "MultiQC 報告" link. Check: the browser receives the file (or the existing loading page, then the file); a file over 25 MB shows "大於 25 MB" without a link; no AI tool or terminal is needed.
 
 ## Analysis state squares (status-squares-3): the maintainer and the reviewer check
 
@@ -1038,6 +1039,16 @@ Run on nano4 with the run `ampliseq_day5_nano4_r5` (`ae0d52e5e5fe5a98`), in an M
 3. Call `read_run_file(run_id, "multiqc/multiqc_report.html")`: you get the name, the size, a note and a `/run/file?...` address, and no HTML text.
 4. Call `read_run_file(run_id, "multiqc/multiqc_data/multiqc_general_stats.txt")`: you still get the text.
 
+### A refused launch shows why (refusal-visibility): the maintainer checks by hand
+
+1. Close the shared connection to the site (`ssh -O exit ...`), then ask for a launch and press 送出 on `/c/<id>`.
+2. The page must say the connection is not open and nothing was submitted, name the platform host, and show one line in a box. It must not say 已送出.
+3. Paste the line into a WSL terminal, log in, and call launch again; the new request must go through.
+4. The page has no password, passphrase or OTP input box anywhere; the person types them only in the WSL terminal of step 3. If you see one, stop: that is a failure (RV-12).
+5. Screenshots: `/c/<id>` at 1440 and 390 px wide, zh and en (four files named `confirm-<width>-<lang>.png`), into `specs/refusal-visibility/screens/`. A headless Chrome works: save the page, then `chrome --headless=new --window-size=1440,900 --screenshot=<file> <page>`. For 390 put the page in an `<iframe width=390>`, because headless Chrome will not make a window narrower than about 500 px. Check that none of the four shows 已送出 and that the 390 ones do not scroll sideways (`document.documentElement.scrollWidth` equals 390).
+6. Evidence for the reviewer, pasted into `specs/refusal-visibility/ledger.md` under "閱卷證據" (TC-086): (a) the line `scripts/on_site.sh` prints (fake ssh through `ON_SITE_SSH_BIN`, as `tests/on_site_test.sh` does) beside the line shown on the page; (b) a grep of `platform/` (not tests) for `ControlMaster=yes`, `ControlPersist`, `nchc_t3c4`, `u9613010`, `site_login_command` that finds nothing; (c) the PITFALLS re-check: entries that touch ssh, `on_site.sh`, `ControlPath`, `wsl.exe`, `web.py`, `jobs.py` and the tests that guard them; (d) each screenshot, one line with its file name and the words seen. Also paste the checks for TC-076, TC-078 and TC-085: `git diff origin/v3 --name-only` against the plan's file list, no no-touch file in it, and no `CREATE TABLE`, `ALTER TABLE` or migration in the diff of `platform/`.
+7. Accessibility (TC-065): with the page of step 2 open, run axe (the axe DevTools browser extension, or `axe.run(document)` from axe-core in the console; for a saved page, `npm pack axe-core`, add a `<script>` with `axe.min.js` and a call to `axe.run`, and read the result with `chrome --headless=new --dump-dom`). Do it on `/c/<id>` in zh and en. The list `violations` must have no entry with impact `serious` or `critical`. Paste the result into `specs/refusal-visibility/ledger.md` under "閱卷證據". On the board `/`, a `meta-refresh` finding comes from the page's older auto-refresh tag, not from the refusal block: note it, do not count it.
+
 ## CI security checks
 
 The `security` workflow (`.github/workflows/security.yml`) has two jobs, `gitleaks` and `pip-audit`. Neither is a required check. Static checks live in `tests/ci_security_workflow_test.sh`.
@@ -1078,3 +1089,27 @@ For each of `nf-core/ampliseq`, `nf-core/rnaseq`, `nf-core/sarek`, `nf-core/scrn
 2. The answer is "pending" with a page address. Open it: the screen says `Config profiles: test` and `Samplesheet: from the pipeline's test profile`, and head.sh has ` -profile test` after the site `-c` lines and before `-with-tower`. Say yes there.
 3. Wait until the run ends. It must reach SUCCEEDED; write the run name and its final status in the ledger.
 4. Also try `profiles=["nope"]`: nothing is sent and the answer lists the names the site has.
+
+## pipe-reg-store: pipeline registration record (manual checks)
+
+### (a) The diff stays inside the scope
+
+1. Run `git diff --stat origin/v3...HEAD`.
+2. It lists only `platform/abf_platform/actions/registrations.py`, `platform/abf_platform/actions/__init__.py`, `platform/tests/test_pipeline_registrations.py`, `platform/tests/test_actions_layer.py`, `platform/tests/test_owner_guard.py`, `platform/tests/test_web_parity.py`, `platform/tests/test_k8s_launch.py` (one line: the pinned action count 53 to 57 and its new hash, plan ruling R point 2), `docs/TESTING.md` and files under `specs/pipe-reg-store/`. None of `compute_envs.py`, `store.py`, `abf_station/`, `web*.py`, `mcp_server.py`, `cli.py`, `jobs.py` appears.
+
+### (b) The three list tests only gained lines
+
+1. Run `git diff origin/v3...HEAD -- platform/tests/test_actions_layer.py platform/tests/test_owner_guard.py platform/tests/test_web_parity.py`.
+2. Every changed line begins with `+` (apart from the file headers); no line begins with `-`.
+
+## 390 px 手動檢查 (web-bugs-b): the reviewer checks
+
+Needs a browser: `scripts/dev/ui_check.py --start` starts a temporary platform with one succeeded run and takes the screenshots and the axe scan (1440 and 390 wide, zh and en; pages include `results` and `usage`). CI has no Chromium, so this is by hand.
+
+1. Right column: at 1440 px the right column is 360 px and the left 272 px; make the window 1100 px: right 300 px, left 232 px. Write the measured numbers in the ledger.
+2. At 390 px open `/?run=<id>&stage=results&tab=outputs`, zh and en. Measure every link and button (the language switch, the tabs, the folder links and "下載", the report links, "重新讀取", "← 上一階段" and "下一階段 →", "開啟確認頁"): each is at least 24 x 24 CSS px. "← 上一階段" stays at the left end and "下一階段 →" at the right end.
+3. In the output table a file name such as `cutadapt`, `phyloseq`, `pipeline_info`, `overall_summary.tsv` shows as one piece, never cut into one or two characters; a name too long for the width scrolls the table sideways.
+4. In the console `document.documentElement.scrollWidth === document.documentElement.clientWidth` (the page itself does not scroll sideways; the output table may).
+5. Also open another run page (running, failed), `/usage` and `/usage?month=<a past month>`: the links ("中／EN", the tabs, "← 上一月", "下一月 →") are at least 24 x 24 px; the cards of a past month are titled with that month, not "本月".
+6. The title row of a run page has one line "pipeline revision · site · started · last update" under the name; the Info tab shows the same four fields.
+7. The axe scan reports nothing serious or critical. Keep the screenshots outside the repository.

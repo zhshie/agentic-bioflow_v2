@@ -18,7 +18,8 @@ CAP_KEY = "cap_" + "usd"        # the cap is read from the answer by this key on
 
 STRINGS = {
     "zh": {
-        "title": "費用", "card_su": "國網 SU（本月）", "card_used": "雲端已用（本月）", "card_cap": "雲端上限", "card_left": "雲端剩餘",
+        "title": "費用", "card_su": "國網 SU（本月）", "card_used": "雲端已用（本月）",
+        "card_su_month": "國網 SU（%s）", "card_used_month": "雲端已用（%s）", "empty_month": "— %s 尚無分析", "card_cap": "雲端上限", "card_left": "雲端剩餘",
         "unset": "未設定", "set_by_admin": "由管理者設定", "unknown_runs": "另有 %d 個分析無法計算",
         "action": "待處理：本月雲端額度已用盡",
         "note": "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字依執行紀錄估算，略低於實際帳單。",
@@ -29,7 +30,8 @@ STRINGS = {
         "usd_note": "SU 以 %s 匯率概算為美元，並非帳單金額。",
     },
     "en": {
-        "title": "Cost", "card_su": _HPC + " SU (this month)", "card_used": "Cloud used (this month)", "card_cap": "Cloud cap",
+        "title": "Cost", "card_su": _HPC + " SU (this month)", "card_used": "Cloud used (this month)",
+        "card_su_month": _HPC + " SU (%s)", "card_used_month": "Cloud used (%s)", "empty_month": "— No analyses in %s", "card_cap": "Cloud cap",
         "card_left": "Cloud remaining", "unset": "Not set", "set_by_admin": "Set by the administrator",
         "unknown_runs": "%d more analyses could not be priced", "unknown_run": "1 more analysis could not be priced",
         "action": "Action needed: this month's cloud cap is used up",
@@ -46,6 +48,7 @@ STRINGS = {
 for _lang in STRINGS:        # the side-note dollar words are the board's (the run page shows them too): one wording, in web_board
     STRINGS[_lang].update({w: web_board.STRINGS[_lang][w] for w in ("usd_about", "usd_under")})
 _ENGLISH_TAIL = re.compile(r"\(([^()]*)\)\s*$")
+_CN_TAIL = re.compile(r"\s*\([^()]*\)\s*$")
 _CJK = re.compile(r"[　-鿿＀-￯]")
 
 
@@ -78,10 +81,13 @@ def _reason(t, lang, reasons):
     if not reasons:
         return t["no_reason"]
     text = str(reasons[0])
+    if text.startswith("task ") and ": " in text:        # the task's name is the program's word, not the person's: only the reason stays
+        text = text.split(": ", 1)[1]
+    text = text.split("; ")[0]
     if lang == "en":
         tail = _ENGLISH_TAIL.search(text)
         return tail.group(1) if tail and not _CJK.search(tail.group(1)) else t["no_reason"]
-    return text.split(" (")[0] or t["no_reason"]
+    return _CN_TAIL.sub("", text).strip() or t["no_reason"]
 
 
 def _num(value):
@@ -102,15 +108,16 @@ def _card(title, value, small="", extra_class=""):
             % (extra_class, web_board.esc(title), web_board.esc(value), small))
 
 
-def _cards(t, lang, data):
+def _cards(t, lang, data, month, this_month):
+    now_month = month == this_month        # the titles say the month they show; "this month" only for this month
     su, cloud = data["su"], data["cloud"]
     unknown = cloud["unknown_runs"]
     cap = cloud[CAP_KEY]
     left = cloud["remaining_usd"]
-    used_up = left is not None and left <= 0
+    used_up = left is not None and left <= 0 and now_month        # the action is this month's to do
     cards = [
-        _card(t["card_su"], web_board.su_text(t, su["total"], su.get("usd_approx")) if su.get("usd_approx") else _num(su["total"]), _small(_reason(t, lang, su["unknown_reasons"]) if su["total"] is None else "")),
-        _card(t["card_used"], _usd(cloud["used_usd"]), _small((t.get("unknown_run") if unknown == 1 and lang == "en" else t["unknown_runs"] % unknown) if unknown > 0 else "")),
+        _card(t["card_su"] if now_month else t["card_su_month"] % month, web_board.su_text(t, su["total"], su.get("usd_approx")) if su.get("usd_approx") else _num(su["total"]), _small(_reason(t, lang, su["unknown_reasons"]) if su["total"] is None else "")),
+        _card(t["card_used"] if now_month else t["card_used_month"] % month, _usd(cloud["used_usd"]), _small((t.get("unknown_run") if unknown == 1 and lang == "en" else t["unknown_runs"] % unknown) if unknown > 0 else "")),
         _card(t["card_cap"], t["unset"] if cap is None else _usd(cap), _small(t["set_by_admin"] if cap is None else "")),
         _card(t["card_left"], _usd(left), _small(t["action"] if used_up else "", "⚠"), " state-failed" if used_up else ""),
     ]
@@ -130,9 +137,9 @@ def _row(t, lang, run, ids):
             % (name, web_board.esc(web_board._time(run["started_at"])), web_board.esc(where), web_board.esc(amount), state))
 
 
-def _table(t, lang, runs, ids):
+def _table(t, lang, runs, ids, month, this_month):
     if not runs:
-        return '<p class="muted">%s</p>' % web_board.esc(t["empty"])
+        return '<p class="muted">%s</p>' % web_board.esc(t["empty"] if month == this_month else t["empty_month"] % month)
     head = "".join("<th>%s</th>" % web_board.esc(t[k]) for k in ("th_name", "th_started", "th_where", "th_usage", "th_state"))
     return ('<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>'
             % (head, "".join(_row(t, lang, r, ids) for r in runs)))
@@ -151,8 +158,8 @@ def _middle(t, lang, data, ids, this_month, bad_month):
     as_of = data["su"].get("usd_rate_as_of")
     note = t["note"] + ("" if lang == "zh" else " ") + t["usd_note"] % as_of if as_of else t["note"]
     return ('<main class="main" data-pane="middle"><h1>%s <small>%s</small></h1><p class="views">%s</p>%s%s<p class="muted">%s</p>%s</main>'
-            % (web_board.esc(t["title"]), web_board.esc(month), "".join(nav), notice, _cards(t, lang, data), web_board.esc(note),
-               _table(t, lang, data["runs"], ids)))
+            % (web_board.esc(t["title"]), web_board.esc(month), "".join(nav), notice, _cards(t, lang, data, month, this_month), web_board.esc(note),
+               _table(t, lang, data["runs"], ids, month, this_month)))
 
 
 def render_usage(name, csrf, runs, data, lang="zh", now=0, bad_month=False):

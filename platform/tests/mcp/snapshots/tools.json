@@ -201,6 +201,7 @@
             }
           ],
           "default": null,
+          "description": "A flat mapping of pipeline parameters, e.g. {\"genome\": \"GRCh38\"}.",
           "title": "Params"
         },
         "path_columns": {
@@ -219,8 +220,25 @@
           "title": "Path Columns"
         },
         "pipeline": {
+          "description": "The pipeline to run: an nf-core name such as nf-core/rnaseq, or a pipeline the site already has. Use it with revision, which says which release or branch to run.",
           "title": "Pipeline",
           "type": "string"
+        },
+        "profiles": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The pipeline's own Config profiles, e.g. [\"test\"]. With test, test_full or test_* no samplesheet is needed: the pipeline runs on its own test data (a pipeline installed on the site, Slurm only).",
+          "title": "Profiles"
         },
         "revision": {
           "title": "Revision",
