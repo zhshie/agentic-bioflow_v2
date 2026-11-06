@@ -30,7 +30,7 @@ def test_design_cost_item_is_per_environment_rows():
     # TC-001 TC-002 TC-003 TC-004 TC-005 TC-006 TC-008 TC-012
     cost = _line(_read("DESIGN.md"), "11. **Cost**")
     for need in ("per compute environment", "one row per compute environment", "expand", "never summed",
-                 "never converted", "Metrics", "environment / usage / status / scope", "Action-needed"):
+                 "not a bill", "Metrics", "environment / usage / status / scope", "Action-needed"):
         assert need in cost, need
     for bad in ("Reconciled", "NT$", "NCHC SU / Cloud used", "Estimate, bill pending", "cards", "cloud cap"):
         assert bad not in cost, bad

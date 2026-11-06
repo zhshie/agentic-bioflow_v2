@@ -1,0 +1,11 @@
+ts	phase	decision	why	evidence	result
+2026-11-06	RED	先寫新測試檔並改 DESIGN 第 11 項	計畫要求測試先紅	b416b179	test_cost_by_env 紅
+2026-11-06	design	單位由環境的 platform 決定，不用 su.month_total	月合計會把雲端 run 算成 SU，AWS/Azure/K8s 也會被誤算	platform/abf_platform/actions/__init__.py:_unit_of	通過
+2026-11-06	design	AWS/Azure/K8s 單位 USD、值 None 加原因，不算 0	待決 3 預設；沒有估算來源	platform/abf_platform/actions/__init__.py:_usage_item	通過
+2026-11-06	deviation	my_usage 頂層多 usd_rate_as_of	頁面註腳要匯率日期，不能由各列推出	platform/abf_platform/actions/__init__.py:my_usage	回報 developer-agent
+2026-11-06	design	run_usage 只給網頁（WEB_ONLY）	計畫說不是 MCP 工具	platform/tests/test_web_parity.py	通過
+2026-11-06	test	TC-071 把 run_usage 換成空替身，原斷言不動	新費用列合理地讀費率；原斷言守的是舊行為	platform/tests/test_su_usd.py	通過
+2026-11-06	GREEN	既有測試改成新形狀	只動允許清單	c03abe8e	209 個相關測試通過
+2026-11-06	fix	全套測試紅 8 條：run_usage 登錄進 NO_TOOL／ACTIONS 清單／k8s 動作雜湊、run_usage 內部用固定名呼叫 get_run、run 頁費用表從禁 table 斷言扣除、MCP 說明不提 Google	這些測試釘住動作名單、單次 get_run、頁面無 table、mcp_server 無 google 字樣；皆為新增 run_usage 與費用列的必然後果，性質保留	platform/tests/test_owner_guard.py;test_k8s_launch.py;test_web_board.py;test_web_results_outputs.py	單檔重跑全綠
+2026-11-06	fix	第二輪全套紅 3 條：head_nodefail 讀新形狀 environments[*].analyses；ce08 的 web_board STRINGS 雜湊更新	費用列新增字串、my_usage 形狀改變，兩測試原本想守的性質（失敗的 run 不當執行中；字串集合受控）不變	platform/tests/test_head_nodefail.py;test_web_settings_ce_mobile.py	單檔重跑全綠
+2026-11-06T11:30	fix	既有測試跳過費用列那張表再比對（位置由 TC-049 釘在四卡之後，不能移）	全套測試 18+8 個失敗都是第一個 <table 或卡片後緊接 kv 段落被費用列擋住	platform/tests/test_results_files.py mid()	5 個檔單跑全過

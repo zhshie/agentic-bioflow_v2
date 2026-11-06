@@ -295,7 +295,7 @@ def test_r79_r92_tab_contents(w):
     # TC-R79, TC-R80, TC-R82, TC-R83, TC-R84, TC-R87, TC-R88, TC-R90, TC-R91, TC-R92, TC-N08
     ann, c = world(w)
     a = f1(w, ann)
-    t = pane(c.get("/?run=%s&tab=tasks" % a).text, "middle")
+    t = re.sub(r'<table class="tbl"><thead><tr><th>環境</th>.*?</table>', "", pane(c.get("/?run=%s&tab=tasks" % a).text, "middle"), flags=re.S)   # minus the cost row
     table = re.search(r"<table\b.*?</table>", t, re.S).group(0)
     rows = [[plain(x) for x in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", r, re.S)] for r in re.findall(r"<tr\b.*?</tr>", table, re.S)]
     assert rows[0] == ["名稱", "結束代碼", "錯誤訊息（第一行）", "工作目錄"]
@@ -305,7 +305,7 @@ def test_r79_r92_tab_contents(w):
         assert not re.search(r"\b(None|null|undefined)\b", c.get("/?run=%s&tab=%s" % (a, tab)).text)
     u = seed(w, "u1", "running", ann, started=T0)
     text = c.get("/?run=%s&tab=tasks" % u).text
-    assert "無失敗任務" in text and "<table" not in text
+    assert "無失敗任務" in text and "<table" not in re.sub(r'<table class="tbl"><thead><tr><th>環境</th>.*?</table>', "", text, flags=re.S)
     assert "No failed tasks" in c.get("/?run=%s&tab=tasks&lang=en" % u).text
     info = plain(pane(c.get("/?run=%s&tab=info" % a).text, "middle"))
     assert "11-14 08:00" in info and "11-14 10:05" in info and a in info and '<span class="sq"></span> 失敗</span>' in pane(c.get("/?run=%s&tab=info" % a).text, "middle")

@@ -541,7 +541,7 @@ def test_adv2_the_usage_page_does_not_call_a_failed_run_running(rig):
     rid = lost_run(rig)
     add_fetch(rig, "x", fact("NODE_FAIL"))
     assert get(rig, rid)["status"] == "failed"
-    rows = [r for r in actions.my_usage(rig.index, rig.state, caller=owner(rig))["runs"] if r["name"] == "x"]
+    rows = [r for e in actions.my_usage(rig.index, rig.state, caller=owner(rig))["environments"] for r in e["analyses"] if r["name"] == "x"]
     assert rows and rows[0]["state"] != "running"
     assert not any("has not ended" in x for x in rows[0]["unknown_reasons"])
 
@@ -550,7 +550,7 @@ def test_adv2_the_usage_page_still_calls_a_lost_run_running(rig):
     # ADV-2: no fact, no change
     from abf_platform import actions
     lost_run(rig)
-    rows = [r for r in actions.my_usage(rig.index, rig.state, caller=owner(rig))["runs"] if r["name"] == "x"]
+    rows = [r for e in actions.my_usage(rig.index, rig.state, caller=owner(rig))["environments"] for r in e["analyses"] if r["name"] == "x"]
     assert rows and rows[0]["state"] == "running"
 
 

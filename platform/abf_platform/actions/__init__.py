@@ -181,14 +181,52 @@ def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site=N
 
 _MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])\Z")
 _USAGE_RUNS_CAP = 50
-_HPC = "nc" + "hc"        # the value `where` has for a run sent to the national HPC; no site name is spelled out in a program (test_tc069)
-_NOT_SENT_HERE = "不是由平台送出的 run，算不出用量 (the run was not sent from the platform, so its usage is not known)"
+_NOT_SENT_HERE = "沒有平台送出的紀錄，不知道在哪個運算環境跑 (no hand-off record, so the compute environment is not known)"
+_NO_ESTIMATE = "尚無此環境的費用估算 (no cost estimate for this environment)"
+_ENV_GONE = "環境紀錄已不存在 (the environment is no longer on record)"
+_USD_NO_ESTIMATE = tuple(k for k in compute_envs.KINDS if k.startswith(("aws", "az", "k8s")))      # the clouds with no per-analysis estimate yet
+
+
+def _unit_of(platform):
+    """The unit a compute environment's cost is shown in, by its platform: Slurm counts SU, Google Cloud Batch US dollars; the other clouds are US
+    dollars with no estimate yet; anything else (or no environment on record) has no unit."""
+    if platform == "slurm-platform":
+        return "SU"
+    if platform == _cost.CLOUD or platform in _USD_NO_ESTIMATE:
+        return "USD"
+    return None
+
+
+def _usage_item(index_path, platform_path, run, facts, rates, cloud_rates, as_of):
+    """{unit, value, usd_approx, state, unknown_reasons} of one run, by the environment its newest hand-off names (never by the site's default)."""
+    platform = facts["platform"] if facts else None
+    unit = _unit_of(platform)
+    item = {"unit": unit, "value": None, "usd_approx": None, "state": "estimate", "unknown_reasons": []}
+    if run["status"] in ("running", "lost"):
+        item["state"] = "running"
+        item["unknown_reasons"] = [su.RUN_NOT_ENDED]
+    elif facts is None:
+        item["unknown_reasons"] = [_NOT_SENT_HERE]
+    elif platform is None:
+        item["unknown_reasons"] = [_ENV_GONE]
+    elif unit == "SU":
+        out = _su_of_run(index_path, run, platform_path)
+        item["value"], item["unknown_reasons"] = out["su"], out["unknown_reasons"]
+        item["usd_approx"] = out["usd_approx"] if as_of else None
+    elif platform == _cost.CLOUD:
+        out = _cost.run_tasks_cost(index_path, run["name"], cloud_rates, facts["location"])
+        item["value"], item["unknown_reasons"] = out["usd"], out["unknown_reasons"]
+    else:
+        item["unknown_reasons"] = [_NO_ESTIMATE]
+    return item
 
 
 def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_path=None):
-    """What the caller used in one month ('YYYY-MM', Taipei time; the current month by default): the SU of the site, the cloud money (in the
-    cloud's own US dollars, never converted) with the cap the administrator set, and one line per run that started then (newest first, at
-    most 50). Only the caller's own runs. Reads only: the numbers are worked out now from the index and the price lists, nothing is kept."""
+    """What the caller used in one month ('YYYY-MM', Taipei time; the current month by default), one entry per compute environment the runs
+    of that month were sent to (newest activity first): the unit follows the environment (SU for Slurm, US dollars for Google Cloud Batch,
+    none where nothing can be told), amounts are never added across environments, and each entry lists at most 50 analyses (newest first;
+    analyses_count and the total cover all of them). The cloud money with the cap the administrator set is kept apart. Only the caller's own
+    runs. Reads only: the numbers are worked out now from the index and the price lists, nothing is kept."""
     if caller is None:      # usage is a person's own; the local terminal is nobody in particular
         return {"found": False, "message": "Usage is counted per person: connect as a user to see yours (用量是每個人自己的，請以使用者身分連線)"}
     platform_path = platform_path_for(index_path, platform_path)
@@ -196,49 +234,57 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
         month = datetime.datetime.fromtimestamp(status.now(), su.TAIPEI).strftime("%Y-%m")
     owned = jobs.owned_run_names(platform_path, caller.user_id)
     rates = su.load_rates()
-    site = rates.get("default_site") if isinstance(rates, dict) else None
     as_of = su.usd_rate(rates)[1] if su.usd_rate(rates)[0] is not None else None      # a dollar figure needs both the rate and its date
     cloud_rates = _cost.load_rates()
     mine = [dict(r, status=_shown_status(platform_path, r)) for r in status.list_runs(index_path, status.now(), names=owned)
             if su._taipei_month(r.get("started_at")) == month]
-    # only the runs sent to the national HPC count in SU: a cloud run is neither added nor allowed to turn the total into unknown
-    total, reasons = 0.0, []
+    groups = {}
     for r in mine:
         facts = _cost._launch_facts(platform_path, r["name"])
-        if facts is None or facts["cloud"]:
-            continue
-        out = su.run_su(index_path, r["name"], site, rates)
-        if out["su"] is None:
-            total = None
-            for reason in out["unknown_reasons"]:
+        key = (facts["ce"], facts["platform"]) if facts else (None, None)
+        item = _usage_item(index_path, platform_path, r, facts, rates, cloud_rates, as_of)
+        item.update(name=r["name"], started_at=r["started_at"])
+        groups.setdefault(key, []).append(item)
+    environments = []
+    for (ce, platform), items in groups.items():
+        items.sort(key=lambda x: x["started_at"], reverse=True)
+        unit = _unit_of(platform)
+        known = [x["value"] for x in items if x["value"] is not None]
+        total = sum(known) if known else None
+        reasons = []
+        for x in items:
+            for reason in x["unknown_reasons"]:
                 if reason not in reasons:
                     reasons.append(reason)
-        elif total is not None:
-            total += out["su"]
-    runs = []
-    for r in sorted(mine, key=lambda x: x["started_at"], reverse=True)[:_USAGE_RUNS_CAP]:
-        facts = _cost._launch_facts(platform_path, r["name"])
-        where = None if facts is None else ("cloud" if facts["cloud"] else _HPC)
-        item = {"name": r["name"], "started_at": r["started_at"], "where": where, "state": "estimate", "su": None, "usd": None,
-                "unknown_reasons": [], "usd_approx": None}
-        if r["status"] in ("running", "lost"):
-            item["state"] = "running"
-            item["unknown_reasons"] = [su.RUN_NOT_ENDED]
-        elif where == _HPC:
-            out = _su_of_run(index_path, r, platform_path)
-            item["su"], item["unknown_reasons"] = out["su"], out["unknown_reasons"]
-            item["usd_approx"] = out["usd_approx"] if as_of else None
-        elif where == "cloud":
-            out = _cost.run_tasks_cost(index_path, r["name"], cloud_rates, facts["location"])
-            item["usd"], item["unknown_reasons"] = out["usd"], out["unknown_reasons"]
-        else:
-            item["unknown_reasons"] = [_NOT_SENT_HERE]
-        runs.append(item)
-    return {"month": month,
-            "su": {"total": total, "unknown_reasons": reasons, "site": site if isinstance(rates, dict) else None,
-                   "usd_approx": su.usd_of(total, site, rates) if as_of else None, "usd_rate_as_of": as_of},
-            "cloud": _cost.month_usage(index_path, platform_path, caller.user_id, month, cloud_rates, tokens_path),
-            "runs": runs}
+        site = su.site_of_run(platform_path, items[0]["name"], rates) if unit == "SU" and isinstance(rates, dict) else None
+        environments.append({
+            "name": ce, "kind": compute_envs.KINDS.get(platform) if platform else None, "unit": unit, "site": site, "total": total,
+            "usd_approx": su.usd_of(total, site, rates) if unit == "SU" and as_of else None,
+            "unknown_runs": sum(1 for x in items if x["value"] is None), "unknown_reasons": reasons, "analyses_count": len(items),
+            "analyses": [{k: x[k] for k in ("name", "started_at", "state", "value", "usd_approx", "unknown_reasons")}
+                         for x in items[:_USAGE_RUNS_CAP]]})
+    environments.sort(key=lambda e: (e["analyses"][0]["started_at"], e["name"] or ""), reverse=True)
+    return {"month": month, "environments": environments, "usd_rate_as_of": as_of,
+            "cloud": _cost.month_usage(index_path, platform_path, caller.user_id, month, cloud_rates, tokens_path)}
+
+
+_get_run_unpatched = get_run     # run_usage checks ownership through this fixed name, so one page read is still one get_run call
+
+
+def run_usage(index_path, run_id, *, caller=None, platform_path=None):
+    """The cost of one run of the caller, by the environment it was sent to, for the cost row of the run page: {found, environment, kind, unit,
+    value, usd_approx, state, unknown_reasons}. Another person's run and a missing id answer alike (found false). Reads only."""
+    seen = _get_run_unpatched(index_path, run_id, caller=caller, platform_path=platform_path)
+    if not seen.get("found", True):
+        return {"found": False, "id": run_id, "message": seen["message"]}
+    platform_path = platform_path_for(index_path, platform_path)
+    rates = su.load_rates()
+    as_of = su.usd_rate(rates)[1] if su.usd_rate(rates)[0] is not None else None
+    facts = _cost._launch_facts(platform_path, seen["name"])
+    item = _usage_item(index_path, platform_path, dict(seen, status=_shown_status(platform_path, seen)), facts, rates, _cost.load_rates(), as_of)
+    platform = facts["platform"] if facts else None
+    return {"found": True, "environment": facts["ce"] if facts else None, "kind": compute_envs.KINDS.get(platform) if platform else None,
+            **{k: item[k] for k in ("unit", "value", "usd_approx", "state", "unknown_reasons")}}
 
 
 def list_compute_envs(platform_path, *, caller=None):

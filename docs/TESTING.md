@@ -1119,6 +1119,18 @@ Needs a browser: `scripts/dev/ui_check.py --start` starts a temporary platform w
 2. At 390 px open `/?run=<id>&stage=results&tab=outputs`, zh and en. Measure every link and button (the language switch, the tabs, the folder links and "下載", the report links, "重新讀取", "← 上一階段" and "下一階段 →", "開啟確認頁"): each is at least 24 x 24 CSS px. "← 上一階段" stays at the left end and "下一階段 →" at the right end.
 3. In the output table a file name such as `cutadapt`, `phyloseq`, `pipeline_info`, `overall_summary.tsv` shows as one piece, never cut into one or two characters; a name too long for the width scrolls the table sideways.
 4. In the console `document.documentElement.scrollWidth === document.documentElement.clientWidth` (the page itself does not scroll sideways; the output table may).
-5. Also open another run page (running, failed), `/usage` and `/usage?month=<a past month>`: the links ("中／EN", the tabs, "← 上一月", "下一月 →") are at least 24 x 24 px; the cards of a past month are titled with that month, not "本月".
+5. Also open another run page (running, failed), `/usage` and `/usage?month=<a past month>`: the links ("中／EN", the tabs, "← 上一月", "下一月 →") are at least 24 x 24 px; the heading of a past month shows that month (the cards are only the cloud cap and what is left; the month is in the heading, not in a card).
 6. The title row of a run page has one line "pipeline revision · site · started · last update" under the name; the Info tab shows the same four fields.
 7. The axe scan reports nothing serious or critical. Keep the screenshots outside the repository.
+
+## 費用頁以運算環境為單位 (cost-page-by-environment): the reviewer checks by hand
+
+Automatic tests: `platform/tests/test_cost_by_env.py` (new), with the rewritten `test_web_cost.py`, `test_web_bugs_b.py`, `test_su_usd.py`, `test_web_parity.py`, `test_actions_layer.py`, `test_web_wording_sweep.py` and `test_cost_docs_spec.py`. They check the numbers, units, markup and words. Screenshots and the axe scan need a browser and CI has no Chromium, so they are by hand. Use `scripts/dev/ui_check.py --start` (a temporary platform; add a second compute environment by hand for the first set).
+
+Take 12 screenshots (1440 and 390 px wide, zh and en each time), and attach them to the PR:
+
+1. `/usage` with several compute environments (one Slurm, one Google Batch): 4 shots. Check: only the cloud cap and cloud remaining cards; one fold per environment, each with its own unit (SU or US$); no amount added across environments; the fold opens and closes with the keyboard.
+2. A run page with the cost row: 4 shots. Check: the row shows the environment, the usage in that environment's unit, and a dash with a reason when it is not known (never 0.00).
+3. `/usage` with a single compute environment: 4 shots. Check: its fold is open at once.
+
+At 390 px also check `document.documentElement.scrollWidth === document.documentElement.clientWidth` and that the axe scan reports nothing serious or critical.

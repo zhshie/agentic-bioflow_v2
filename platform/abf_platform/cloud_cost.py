@@ -147,7 +147,7 @@ def run_tasks_cost(index_path, run_name, rates, default_region=None):
 
 
 def _launch_facts(platform_path, run_name):
-    """{cloud, location, pipeline} of a run from its newest row of the hand-off record: whether it went to a Google Batch environment, that
+    """{cloud, location, pipeline, ce, platform} of a run from its newest row of the hand-off record: whether it went to a Google Batch environment, that
     environment's location, and the pipeline of the content that was confirmed (None when that content is no longer kept). None when the run
     has no row."""
     con = store.open_readonly(platform_path)
@@ -169,7 +169,8 @@ def _launch_facts(platform_path, run_name):
     config = ce["config"] if ce else {}
     location = config.get("location") if isinstance(config.get("location"), str) else None
     return {"cloud": bool(ce) and ce["platform"] == CLOUD, "location": location,
-            "pipeline": pipeline if isinstance(pipeline, str) else None}
+            "pipeline": pipeline if isinstance(pipeline, str) else None,
+            "ce": ce_name if isinstance(ce_name, str) and ce_name else None, "platform": ce["platform"] if ce else None}
 
 
 def _same_pipeline(a, b):

@@ -21,9 +21,14 @@ def w(tmp_path, monkeypatch):
     return World(tmp_path, monkeypatch)
 
 
-def usage_data(month="2026-11", reasons=(REASON,), left=None):
+def usage_data(month="2026-11", reasons=(REASON,), left=None, env=True):
+    """The answer of my_usage: one Slurm environment whose total is not known (the reasons are why), or none when env is False."""
     d = web_cost.empty_usage(month)
-    d["su"] = {"total": None, "unknown_reasons": list(reasons), "site": None}
+    if env:
+        d["environments"] = [{"name": "nchc1", "kind": "Slurm", "unit": "SU", "site": None, "total": None, "usd_approx": None, "unknown_runs": 1,
+                              "unknown_reasons": list(reasons), "analyses_count": 1,
+                              "analyses": [{"name": "r1", "started_at": "2026-11-05T01:00:00Z", "state": "estimate", "value": None,
+                                            "usd_approx": None, "unknown_reasons": list(reasons)}]}]
     d["cloud"]["remaining_usd"] = left
     return d
 
@@ -37,7 +42,9 @@ def middle(text):
 
 
 def small_of_first_card(text):
-    return plain(re.search(r'class="cv">[^<]*</p><small>(.*?)</small>', middle(text), re.S).group(1))
+    """The reason a total is not known: the last small text of the environment's summary line (the name is the old helper's, kept)."""
+    summary = re.search(r"<summary>(.*?)</summary>", middle(text), re.S).group(1)
+    return plain(re.findall(r"<small>(.*?)</small>", summary, re.S)[-1])
 
 
 # ---- #338
@@ -67,26 +74,27 @@ def test_338_reason_fallbacks():  # TC-004 .. TC-007
 
 
 def test_338_past_month_titles_show_month():  # TC-008, TC-009
+    # the cards of SU and used-dollars are gone (one summary line per environment instead): the month shows in the heading, never as "this month"
     zh = usage(usage_data("2026-10"))
-    assert "國網 SU（2026-10）" in zh and "雲端已用（2026-10）" in zh and "（本月）" not in zh
+    assert "<h1>費用 <small>2026-10</small></h1>" in zh and "（本月）" not in zh and "本月" not in plain(middle(zh)).replace("本月雲端額度", "")
     en = usage(usage_data("2026-10"), "en")
-    assert "(2026-10)" in en and "this month" not in en
+    assert "<h1>Cost <small>2026-10</small></h1>" in en and "this month" not in en
     no_cjk(en)
 
 
 def test_338_current_month_titles_unchanged():  # TC-010
     zh = usage(usage_data("2026-11"))
-    assert "國網 SU（本月）" in zh and "雲端已用（本月）" in zh
-    assert "this month" in usage(usage_data("2026-11"), "en")
+    assert "<h1>費用 <small>2026-11</small></h1>" in zh and "雲端上限" in zh and "雲端剩餘" in zh
+    assert "<h1>Cost <small>2026-11</small></h1>" in usage(usage_data("2026-11"), "en")
 
 
 def test_338_empty_month_sentence():  # TC-012, TC-013
-    assert "— 2099-01 尚無分析" in plain(middle(usage(usage_data("2099-01"))))
-    en = usage(usage_data("2099-01"), "en")
+    assert "— 2099-01 尚無分析" in plain(middle(usage(usage_data("2099-01", env=False))))
+    en = usage(usage_data("2099-01", env=False), "en")
     assert "No analyses in 2099-01" in en
     no_cjk(en)
-    assert "— 本月尚無分析" in plain(middle(usage(usage_data("2026-11"))))
-    assert "No analyses this month" in usage(usage_data("2026-11"), "en")
+    assert "— 本月尚無分析" in plain(middle(usage(usage_data("2026-11", env=False))))
+    assert "No analyses this month" in usage(usage_data("2026-11", env=False), "en")
 
 
 def test_338_action_only_this_month():  # TC-014
