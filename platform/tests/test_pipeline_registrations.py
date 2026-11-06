@@ -272,7 +272,7 @@ def test_nothing_is_queued_and_site_list_is_not_touched(w):
     from abf_platform.actions import registrations
     assert registrations._start_check({}, {}) is None
     kinds = w.sql("SELECT sql FROM sqlite_master WHERE name = 'jobs'")[0][0]
-    assert len(re.findall(r"'[a-z_]+'", re.search(r"kind TEXT NOT NULL CHECK \(kind IN \(([^)]*)\)", kinds).group(1))) == 10
+    assert len(re.findall(r"'[a-z_]+'", re.search(r"kind TEXT NOT NULL CHECK \(kind IN \(([^)]*)\)", kinds).group(1))) == 11
 
 
 # ---- 5 owner rules --------------------------------------------------------------------------------------------------------
