@@ -11,7 +11,7 @@ import pytest
 
 from helpers import PLATFORM_DIR, REPO_ROOT
 from test_web_board import no_cjk, pane, plain, style_of
-from test_web_cost import card, cards, env_of, get, seed, summaries, table_rows, usage, w  # noqa: F401  (w is the fixture)
+from test_web_cost import cap_line, env_of, get, seed, summaries, table_rows, usage, w  # noqa: F401  (w is the fixture)
 
 RATES_FILE = REPO_ROOT / "configs" / "sites" / "su_rates.json"
 PKG = PLATFORM_DIR / "abf_platform"
@@ -126,7 +126,7 @@ def test_tc016_to_019_my_usage_usd(w):
     got = env_of(usage(w, ann), "nchc1")
     total = got["total"]
     assert got["usd_approx"] == pytest.approx(total * 0.08 / 32)                                 # TC-016 (by formula, not 0.03)
-    assert usage(w, ann)["usd_rate_as_of"] == "2026-10-13"                                       # TC-017
+    assert env_of(usage(w, ann), "nchc1")["usd_rate_as_of"] == "2026-10-13"                                       # TC-017
     for row in got["analyses"]:                                                                  # TC-018
         assert row["usd_approx"] == pytest.approx(row["value"] * 0.08 / 32)
     seed(w, "cl-a", ann, "cloud", hours=6)
@@ -150,9 +150,9 @@ def test_tc021_key_sets(w):
     ann = two_runs(w)
     seed(w, "cl-a", ann, "cloud", hours=6)
     got = usage(w, ann)
-    assert set(got) == {"month", "environments", "usd_rate_as_of", "cloud"}
+    assert set(got) == {"month", "environments", "cloud"}
     for e in got["environments"]:
-        assert set(e) == {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses"}
+        assert set(e) == {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses", "usd_rate_as_of"}
         for row in e["analyses"]:
             assert set(row) == {"name", "started_at", "state", "value", "usd_approx", "unknown_reasons"}
     assert set(got["cloud"]) == {"used_usd", "unknown_runs", "cap_usd", "remaining_usd", "currency"}
@@ -203,7 +203,7 @@ def test_tc029_to_031_missing_usd_twd(w, tmp_path, monkeypatch):
     for change in cases:
         set_rates(tmp_path, monkeypatch, **change)
         got = usage(w, ann)
-        assert env_of(got, "nchc1")["usd_approx"] is None and got["usd_rate_as_of"] is None, change
+        assert env_of(got, "nchc1")["usd_approx"] is None and env_of(got, "nchc1")["usd_rate_as_of"] is None, change
         assert env_of(got, "nchc1")["total"] == pytest.approx(plain_total)
         assert all(r["usd_approx"] is None for e in got["environments"] for r in e["analyses"])
     set_rates(tmp_path, monkeypatch, usd_twd="DROP")
@@ -295,9 +295,9 @@ def test_tc039_tc040_cloud_unchanged(w):
     cap(w, ann, 50)
     r = get(w, "ann")
     assert rows_by_name(r.text)["cl-a"][2] == "US$ 12.34"                                         # TC-039
-    assert [c[2] for c in cards(r.text)] == ["US$ 50.00", "US$ 37.66"]                           # TC-040 (used is the cloud environment's line)
+    assert "雲端上限：US$ 50.00" in cap_line(r.text)[1] and "雲端剩餘：US$ 37.66" in cap_line(r.text)[1]      # TC-040 (used is the cloud environment's line)
     assert [x for x in summaries(r.text) if "gcb1" in x][0].count("US$ 12.34") == 1
-    assert all("約 US$" not in c[2] for c in cards(r.text)) and "約 US$" not in [x for x in summaries(r.text) if "gcb1" in x][0]
+    assert "約 US$" not in cap_line(r.text)[1] and "約 US$" not in [x for x in summaries(r.text) if "gcb1" in x][0]
 
 
 def test_tc041_tc042_small_amounts(w):
@@ -374,8 +374,8 @@ def test_tc053_used_up_still_shows_usd(w):
     seed(w, "run-a", ann, hours=5.10)
     cap(w, ann, 10)
     r = get(w, "ann")
-    left = card(r.text, 1)
-    assert "state-failed" in left[0] and "⚠" in left[3] and "待處理：本月雲端額度已用盡" in left[3]
+    html, line = cap_line(r.text)
+    assert "state-failed" in html and "⚠" in line and "待處理：本月雲端額度已用盡" in line
     assert "5.10 SU（約 US$0.01）" in su_line(r.text)
 
 

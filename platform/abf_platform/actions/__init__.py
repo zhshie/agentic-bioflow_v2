@@ -199,7 +199,7 @@ def _unit_of(platform):
 
 def _usage_item(index_path, platform_path, run, facts, rates, cloud_rates, as_of):
     """{unit, value, usd_approx, state, unknown_reasons} of one run, by the environment its newest hand-off names (never by the site's default)."""
-    platform = facts["platform"] if facts else None
+    platform = facts.get("platform") if facts else None
     unit = _unit_of(platform)
     item = {"unit": unit, "value": None, "usd_approx": None, "state": "estimate", "unknown_reasons": []}
     if run["status"] in ("running", "lost"):
@@ -241,7 +241,7 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
     groups = {}
     for r in mine:
         facts = _cost._launch_facts(platform_path, r["name"])
-        key = (facts["ce"], facts["platform"]) if facts else (None, None)
+        key = (facts.get("ce"), facts.get("platform")) if facts else (None, None)
         item = _usage_item(index_path, platform_path, r, facts, rates, cloud_rates, as_of)
         item.update(name=r["name"], started_at=r["started_at"])
         groups.setdefault(key, []).append(item)
@@ -260,11 +260,12 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
         environments.append({
             "name": ce, "kind": compute_envs.KINDS.get(platform) if platform else None, "unit": unit, "site": site, "total": total,
             "usd_approx": su.usd_of(total, site, rates) if unit == "SU" and as_of else None,
+            "usd_rate_as_of": as_of if unit == "SU" else None,
             "unknown_runs": sum(1 for x in items if x["value"] is None), "unknown_reasons": reasons, "analyses_count": len(items),
             "analyses": [{k: x[k] for k in ("name", "started_at", "state", "value", "usd_approx", "unknown_reasons")}
                          for x in items[:_USAGE_RUNS_CAP]]})
     environments.sort(key=lambda e: (e["analyses"][0]["started_at"], e["name"] or ""), reverse=True)
-    return {"month": month, "environments": environments, "usd_rate_as_of": as_of,
+    return {"month": month, "environments": environments,
             "cloud": _cost.month_usage(index_path, platform_path, caller.user_id, month, cloud_rates, tokens_path)}
 
 
@@ -282,8 +283,8 @@ def run_usage(index_path, run_id, *, caller=None, platform_path=None):
     as_of = su.usd_rate(rates)[1] if su.usd_rate(rates)[0] is not None else None
     facts = _cost._launch_facts(platform_path, seen["name"])
     item = _usage_item(index_path, platform_path, dict(seen, status=_shown_status(platform_path, seen)), facts, rates, _cost.load_rates(), as_of)
-    platform = facts["platform"] if facts else None
-    return {"found": True, "environment": facts["ce"] if facts else None, "kind": compute_envs.KINDS.get(platform) if platform else None,
+    platform = facts.get("platform") if facts else None
+    return {"found": True, "environment": facts.get("ce") if facts else None, "kind": compute_envs.KINDS.get(platform) if platform else None,
             **{k: item[k] for k in ("unit", "value", "usd_approx", "state", "unknown_reasons")}}
 
 

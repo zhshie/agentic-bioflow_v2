@@ -9,3 +9,9 @@ ts	phase	decision	why	evidence	result
 2026-11-06	fix	全套測試紅 8 條：run_usage 登錄進 NO_TOOL／ACTIONS 清單／k8s 動作雜湊、run_usage 內部用固定名呼叫 get_run、run 頁費用表從禁 table 斷言扣除、MCP 說明不提 Google	這些測試釘住動作名單、單次 get_run、頁面無 table、mcp_server 無 google 字樣；皆為新增 run_usage 與費用列的必然後果，性質保留	platform/tests/test_owner_guard.py;test_k8s_launch.py;test_web_board.py;test_web_results_outputs.py	單檔重跑全綠
 2026-11-06	fix	第二輪全套紅 3 條：head_nodefail 讀新形狀 environments[*].analyses；ce08 的 web_board STRINGS 雜湊更新	費用列新增字串、my_usage 形狀改變，兩測試原本想守的性質（失敗的 run 不當執行中；字串集合受控）不變	platform/tests/test_head_nodefail.py;test_web_settings_ce_mobile.py	單檔重跑全綠
 2026-11-06T11:30	fix	既有測試跳過費用列那張表再比對（位置由 TC-049 釘在四卡之後，不能移）	全套測試 18+8 個失敗都是第一個 <table 或卡片後緊接 kv 段落被費用列擋住	platform/tests/test_results_files.py mid()	5 個檔單跑全過
+2026-11-06	fix	_launch_facts 的 ce／platform 一律用 .get	計畫作法 2 要求；替身只回舊三鍵時不可 KeyError（/usage 只接 sqlite3.Error 會變 500）	platform/abf_platform/actions/__init__.py;test_web_cost.py::test_tc030_old_three_key_facts_do_not_crash	先紅 KeyError:ce，修後綠
+2026-11-06	fix	上限列由兩張卡改回頁面最上方一行 <p class="muted">，過額用 span.state-failed＋⚠	計畫作法 6 與待決 1 要一行；前一輪誤做成兩張卡	platform/abf_platform/web_cost.py:_cap_line	test_web_cost／test_su_usd／test_cost_by_env／test_web_bugs_b／test_web_wording_sweep 125 通過
+2026-11-06	blocked	TC-099 清單外的既有斷言改動不自行核可，寫進 ledger 7b 等人認可	計畫沒點名	specs/cost-page-by-environment/ledger.md 7b	待 developer-agent
+2026-11-06	fix-round	my_usage 頂層鍵回到 month/environments/cloud；匯率日期移到各 SU 環境的 usd_rate_as_of	TC-028 頂層鍵恰為三鍵；TC-069 註腳仍需日期，路由只能呼叫 my_usage	platform/abf_platform/actions/__init__.py:my_usage、web_cost.py:_middle	182 passed（相關 6 檔）；環境多一鍵待 developer-agent 認可
+2026-11-06	fix-round	TC-099 清單外的既有測試改動不改回	改回會使分析頁費用列（表格）與 run_usage（動作數 59）讓它們紅；執行者無權核可	specs/cost-page-by-environment/ledger.md 7b	待 developer-agent 認可
+2026-11-06T15:40	ratify	追認裁決已納入，不再改程式碼，只重跑全套	計畫裁決(15:30)核可清單外測試改動與 usd_rate_as_of	plan.md 裁決(11-06 15:30)	進入全套測試

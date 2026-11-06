@@ -73,7 +73,7 @@ def shift(month, step):
 
 def empty_usage(month):
     """What the page shows when the index cannot be read: nothing used, nothing listed (an unreadable index is an empty month, not a 500)."""
-    return {"month": month, "environments": [], "usd_rate_as_of": None,
+    return {"month": month, "environments": [],
             "cloud": {"used_usd": 0.0, "unknown_runs": 0, CAP_KEY: None, "remaining_usd": None, "currency": "USD"}}
 
 
@@ -103,21 +103,22 @@ def _small(text, symbol=""):
     return "<small>%s%s</small>" % (mark, web_board.esc(text)) if text else ""
 
 
-def _card(title, value, small="", extra_class=""):
-    return ('<div class="scard%s"><h2 class="ct">%s</h2><p class="cv">%s</p>%s</div>'
-            % (extra_class, web_board.esc(title), web_board.esc(value), small))
-
-
-def _cards(t, data, this_month):
+def _cap_line(t, lang, data, this_month):
+    """The one line at the top of the page: the cloud cap and what is left of it (v3's words; cost-reminder-quota will change it later).
+    Used up this month: the same line carries the symbol, the word and the failed colour, never colour alone."""
     cloud = data["cloud"]
     cap = cloud[CAP_KEY]
     left = cloud["remaining_usd"]
     used_up = left is not None and left <= 0 and data["month"] == this_month        # the action is this month's to do
-    cards = [
-        _card(t["card_cap"], t["unset"] if cap is None else _usd(cap), _small(t["set_by_admin"] if cap is None else "")),
-        _card(t["card_left"], _usd(left), _small(t["action"] if used_up else "", "⚠"), " state-failed" if used_up else ""),
-    ]
-    return '<section class="sumcards">%s</section>' % "".join(cards)
+    colon = "：" if lang == "zh" else ": "
+    if cap is None:
+        cap_text = t["unset"] + (("（%s）" if lang == "zh" else " (%s)") % t["set_by_admin"])
+    else:
+        cap_text = _usd(cap)
+    text = web_board.esc("%s%s%s · %s%s%s" % (t["card_cap"], colon, cap_text, t["card_left"], colon, _usd(left)))
+    if used_up:
+        text += ' <span class="state-failed"><span class="sym">⚠</span> %s</span>' % web_board.esc(t["action"])
+    return '<p class="muted">%s</p>' % text
 
 
 def _amount(t, unit, value, usd):
@@ -170,11 +171,11 @@ def _middle(t, lang, data, ids, this_month, bad_month):
     if month < this_month:        # never a link to a month that has not begun
         nav.append(_month_link(lang, shift(month, 1), t["next"]))
     notice = '<div class="notice" role="alert"><p>%s</p></div>' % web_board.esc(t["bad_month"]) if bad_month else ""
-    as_of = data.get("usd_rate_as_of")
-    shows_su = any(e["unit"] == "SU" and e["usd_approx"] is not None for e in data["environments"])
-    note = t["note"] + ("" if lang == "zh" else " ") + t["usd_note"] % as_of if as_of and shows_su else t["note"]
+    dated = [e.get("usd_rate_as_of") for e in data["environments"] if e["unit"] == "SU" and e["usd_approx"] is not None]
+    as_of = next((d for d in dated if d), None)        # the rate's date sits on the Slurm environments' entries, not at the top of the answer
+    note = t["note"] + ("" if lang == "zh" else " ") + t["usd_note"] % as_of if as_of else t["note"]
     return ('<main class="main" data-pane="middle"><h1>%s <small>%s</small></h1><p class="views">%s</p>%s%s<p class="muted">%s</p>%s</main>'
-            % (web_board.esc(t["title"]), web_board.esc(month), "".join(nav), notice, _cards(t, data, this_month), web_board.esc(note),
+            % (web_board.esc(t["title"]), web_board.esc(month), "".join(nav), notice, _cap_line(t, lang, data, this_month), web_board.esc(note),
                _envs(t, lang, data["environments"], ids, month, this_month)))
 
 
