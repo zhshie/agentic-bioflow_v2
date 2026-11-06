@@ -2,3 +2,4 @@ ts	phase	decision	why	evidence	result
 2026-11-06T22:30	green	任務比對用 failed_tasks 表的 task_key 或 name；get_run 檢視不含 task_key，故動作層另讀索引	計畫要求 task_key 或 name，status.py 與 get_run 形狀不准動	actions/__init__.py:_failed_task	通過 TC-024
 2026-11-06T22:40	green	任務分頁加第五欄「日誌」，並改 test_web_running 的表頭與第一列斷言（加欄位，不放寬）	計畫要求任務列加一格，但允許改動清單漏列該斷言	test_web_running.py:301-302	通過
 2026-11-06T22:45	green	test_web_board.py 的路由清單加 /run/log	新路由必然改變該清單，只是加法	test_web_board.py:826	通過
+2026-11-06T23:20	green	全套測試顯示五支舊測試的路由清單、動作名單、NO_TOOL 要跟新路由／新動作對齊，逐一加 /run/log 與 task_log_view，並重算 k8s 摘要	新增一條唯讀路由與一個動作必然改變這些釘住的清單，僅是加法	test_k8s_launch.py:1434,1437; test_owner_guard.py NO_TOOL	聚焦跑 5 支 pass
