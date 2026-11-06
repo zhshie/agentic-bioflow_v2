@@ -23,6 +23,7 @@ WEB_ROUTES = {"list_runs": "GET /", "get_run": "GET /", "list_compute_envs": "GE
 WEB_VIA_REQUEST = {"launch": "request_launch", "cancel": "request_cancel", "resume": "request_resume", "relaunch": "request_relaunch"}
 # The PAGE confirmation channel is web-only by design: the MCP side uses the form channel and request_launch/request_cancel.
 WEB_ONLY = {
+    "run_usage": "the cost row of the run page (cost-page-by-environment): one run of the caller, in its environment's unit; a read, not an MCP tool",
     "describe_request": "the confirmation page shows one pending request to the person it was made for",
     "approve": "the button of the confirmation page: the PAGE channel's yes",
     "platform_path_for": "the page finds platform.db from the index path, the way every entry does",

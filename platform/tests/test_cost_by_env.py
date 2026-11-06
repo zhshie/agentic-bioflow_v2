@@ -92,7 +92,7 @@ def test_env02_three_environments_nothing_added(w):
         assert not ("SU" in outside and "US$" in outside), url
         assert "國網" not in text and "雲端已用" not in text and "NCHC" not in text, url
     got = usage(w, ann)
-    assert set(got) == {"month", "environments", "cloud"}
+    assert set(got) == {"month", "environments", "usd_rate_as_of", "cloud"}
     assert {e["unit"] for e in got["environments"]} == {"SU", "USD"}
     keys = {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses"}
     for e in got["environments"]:
@@ -168,7 +168,7 @@ def test_env03_other_environments_never_count_as_slurm(w, monkeypatch):
     en = get(w, "ann", "/usage?lang=en").text
     assert "the environment is no longer on record" in summary(block_of(en, "gone-ce")[1]) and "no cost estimate" in summary(block_of(en, "aws-a")[1])
     mid = plain(pane(text, "middle"))
-    assert "US$ 0.00" not in mid and "0.00 SU" not in mid and "0 SU" not in mid.replace("100.00 SU", "")
+    assert "US$ 0.00" not in mid and not re.search(r"(?<![\d.])0(\.00)? SU", mid)
     for _o, inner in blocks(text):
         if "slurm-a" not in summary(inner):
             assert all(r[2] == "—" for r in analysis_rows(inner))
@@ -284,7 +284,7 @@ def test_env06_same_value_in_page_row_and_action(w):
     for e in usage(w, ann)["environments"]:
         assert all(a["value"] is None and a["unknown_reasons"] for a in e["analyses"])
     mid = plain(pane(get(w, "ann").text, "middle"))
-    assert "US$ 0.00" not in mid and "0.00 SU" not in mid
+    assert "US$ 0.00" not in mid and not re.search(r"(?<![\d.])0\.00 SU", mid)
 
 
 # ---- US4: only mine, unreadable index, read only ---------------------------------------------------------------------------------
@@ -309,7 +309,7 @@ def test_env13_unreadable_index_is_an_empty_page(w, monkeypatch):
     ann = w.user("ann")
     rid = seed(w, "run-a", ann, hours=2, ce="slurm-a")
     empty = web_cost.empty_usage("2026-10")
-    assert empty["environments"] == [] and set(empty) == {"month", "environments", "cloud"} and "cap_usd" in empty["cloud"]
+    assert empty["environments"] == [] and set(empty) == {"month", "environments", "usd_rate_as_of", "cloud"} and "cap_usd" in empty["cloud"]
 
     def boom(*a, **k):
         raise sqlite3.OperationalError("no such table: runs at /secret/index.db")
@@ -346,7 +346,8 @@ def test_env12_reads_only(w):
 
 def cost_table(text):
     """(heads, cells) of the cost row of the run page (the table whose first head is Environment), or None."""
-    for t in re.findall(r'<table class="tbl[^"]*">.*?</table>', pane(text, "middle"), re.S):
+    html = pane(text, "middle") if 'data-pane="middle"' in text else text
+    for t in re.findall(r'<table class="tbl[^"]*">.*?</table>', html, re.S):
         heads = [plain(h) for h in re.findall(r"<th\b[^>]*>(.*?)</th>", t, re.S)]
         if heads[:1] in (["環境"], ["Environment"]):
             rows = re.findall(r"<tr>(.*?)</tr>", re.search(r"<tbody>(.*?)</tbody>", t, re.S).group(1), re.S)
@@ -414,7 +415,7 @@ def test_env10_run_usage_and_my_usage_agree(w):
         other = mine[rid[3:]]
         assert (one["value"], one["state"], one["unknown_reasons"]) == (other["value"], other["state"], other["unknown_reasons"])
     assert actions.run_usage(w.ip.index, ids["w"], caller=ann, platform_path=w.ip.state_db)["unit"] == "USD"
-    assert "run_usage" in parity.WEB_ONLY and "run_usage" not in parity.READ_NAMES
+    assert "run_usage" in parity.WEB_ONLY
     assert 'name="run_usage"' not in (PKG / "mcp_server.py").read_text(encoding="utf-8")
     # failed tasks are counted (the scope says "failed steps included"): one completed task of 1 h and one failed of 2 h
     rid = seed(w, "run-f", ann, tasks=[dict(realtime_ms=H), dict(realtime_ms=2 * H)], ce="slurm-a")

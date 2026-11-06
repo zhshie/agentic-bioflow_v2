@@ -23,7 +23,7 @@ SRC = "https://example.test/price-page"
 CLOUD_RATES = {"currency": "USD", "regions": {"us-central1": {
     "n2-standard-4": {"standard": 0.20, "spot": 0.06, "source": SRC, "read_on": "2026-10-24"}}}}
 CAP_NOTE = "由管理者設定"
-NOTE_ZH = "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字依執行紀錄估算，略低於實際帳單。"
+NOTE_ZH = "各運算環境用各自的單位（SU 或美元）顯示，不互相換算、不加總。數字依執行紀錄估算，略低於實際帳單。"
 
 
 @pytest.fixture
@@ -129,10 +129,10 @@ def card(text, index):
 
 def table_rows(text):
     """[[cell texts]] of the body rows of the per-analysis table."""
-    body = re.search(r"<tbody>(.*?)</tbody>", pane(text, "middle"), re.S)
-    if not body:
-        return []
-    return [[plain(c) for c in re.findall(r"<td\b[^>]*>(.*?)</td>", r, re.S)] for r in re.findall(r"<tr>(.*?)</tr>", body.group(1), re.S)]
+    out = []
+    for body in re.findall(r"<tbody>(.*?)</tbody>", pane(text, "middle"), re.S):
+        out += [[plain(c) for c in re.findall(r"<td\b[^>]*>(.*?)</td>", r, re.S)] for r in re.findall(r"<tr>(.*?)</tr>", body, re.S)]
+    return out
 
 
 def get(w, name, url="/usage"):
@@ -141,45 +141,56 @@ def get(w, name, url="/usage"):
 
 # ---- US1: the four cards and the fixed line --------------------------------------------------------------------------
 
-def test_co01_page_has_four_cards_note_and_table(w):
-    # co01: TC-001, TC-002, TC-019
+def env_of(got, name):
+    return [e for e in got["environments"] if e["name"] == name][0]
+
+
+def summaries(text):
+    """[plain text of each environment's summary line]"""
+    return [plain(x) for x in re.findall(r"<summary>(.*?)</summary>", pane(text, "middle"), re.S)]
+
+
+def test_co01_page_has_two_cards_note_and_one_table_per_environment(w):
+    # co01: TC-001, TC-002, TC-019 (the four cards became the cloud cap and what is left; each environment has its own table)
     ann = w.user("ann")
     seed(w, "run-a", ann)
     r = get(w, "ann")
     assert r.status_code == 200
-    assert [c[1] for c in cards(r.text)] == ["國網 SU（本月）", "雲端已用（本月）", "雲端上限", "雲端剩餘"]
+    assert [c[1] for c in cards(r.text)] == ["雲端上限", "雲端剩餘"]
     assert NOTE_ZH in plain(pane(r.text, "middle"))
     head = re.search(r"<thead>(.*?)</thead>", pane(r.text, "middle"), re.S).group(1)
-    assert [plain(h) for h in re.findall(r"<th\b[^>]*>(.*?)</th>", head, re.S)] == ["分析名稱", "開始時間", "執行位置", "用量", "狀態"]
+    assert [plain(h) for h in re.findall(r"<th\b[^>]*>(.*?)</th>", head, re.S)] == ["分析名稱", "開始時間", "用量", "狀態"]
 
 
 def test_co02_su_total_and_unknown(w):
-    # co02: TC-003, TC-004, TC-005, TC-074
+    # co02: TC-003, TC-004, TC-005, TC-074 (the SU total is the Slurm environment's own total)
     ann = w.user("ann")
     seed(w, "run-a", ann, hours=5.10)
     seed(w, "run-b", ann, hours=7.20)
-    assert card(get(w, "ann").text, 0)[2] == "12.30 SU（約 US$0.03）"
-    assert usage(w, ann)["su"]["total"] == pytest.approx(12.30)
-    seed(w, "run-c", ann, hours=None)        # no usage rows: its SU cannot be worked out
+    assert "12.30 SU（約 US$0.03）" in summaries(get(w, "ann").text)[0]
+    assert env_of(usage(w, ann), "nchc1")["total"] == pytest.approx(12.30)
+    seed(w, "run-c", ann, hours=None)        # no usage rows: its SU cannot be worked out, and is not counted as 0
     r = get(w, "ann")
-    c = card(r.text, 0)
-    assert c[2] == "—" and "5.10" not in c[2] and "0.00" not in c[2]
-    got = usage(w, ann)["su"]
-    assert got["total"] is None and got["unknown_reasons"]
-    assert c[3] and c[3] == plain(got["unknown_reasons"][0]).split(" (")[0]
+    s = summaries(r.text)[0]
+    assert "0.00" not in s and "另有 1 個分析無法計算" in s
+    got = env_of(usage(w, ann), "nchc1")
+    assert got["unknown_runs"] == 1 and got["unknown_reasons"]
+    assert [x for x in got["analyses"] if x["name"] == "run-c"][0]["value"] is None
 
 
 def test_co03_cloud_used_cap_remaining(w):
-    # co03: TC-006 ... TC-009, TC-076, TC-078
+    # co03: TC-006 ... TC-009, TC-076, TC-078 (used is the cloud environment's total, in dollars)
     ann = w.user("ann")
     seed(w, "cl-a", ann, "cloud", hours=61.7)
     cap(w, ann, 50)
     for url in ("/usage", "/usage?lang=en"):
         r = get(w, "ann", url)
-        assert [c[2] for c in cards(r.text)][1:] == ["US$ 12.34", "US$ 50.00", "US$ 37.66"], url
+        assert [c[2] for c in cards(r.text)] == ["US$ 50.00", "US$ 37.66"], url
+        assert "US$ 12.34" in summaries(r.text)[0], url
         assert "NT$" not in r.text.replace("不換算新台幣", "")
     got = usage(w, ann)["cloud"]
     assert got["cap_usd"] == 50 and got["remaining_usd"] == pytest.approx(37.66) and got["currency"] == "USD"
+    assert env_of(usage(w, ann), "gcb1")["total"] == pytest.approx(12.34)
 
 
 def test_unknown_cloud_runs_are_not_added_as_zero(w):
@@ -188,20 +199,21 @@ def test_unknown_cloud_runs_are_not_added_as_zero(w):
     seed(w, "cl-ok", ann, "cloud", hours=6)
     seed(w, "cl-x1", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
     seed(w, "cl-x2", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
-    c = card(get(w, "ann").text, 1)
-    assert c[2] == "US$ 1.20" and "另有 2 個分析無法計算" in c[3]
+    s = summaries(get(w, "ann").text)[0]
+    assert "US$ 1.20" in s and "另有 2 個分析無法計算" in s
     assert usage(w, ann)["cloud"]["unknown_runs"] == 2
 
 
-def test_ruling12_su_card_ignores_cloud_runs(w):
-    # ruling 12: one HPC run and one cloud run in the same month; the SU card shows the HPC run's number
+def test_ruling12_su_total_ignores_cloud_runs(w):
+    # ruling 12: one HPC run and one cloud run in the same month; the Slurm environment shows the HPC run's number alone
     ann = w.user("ann")
     seed(w, "hpc-run", ann, hours=4.0)
     seed(w, "cloud-run", ann, "cloud", hours=6)
-    assert usage(w, ann)["su"]["total"] == pytest.approx(4.0)
-    assert card(get(w, "ann").text, 0)[2] == "4.00 SU（約 US$0.01）"
-    seed(w, "hpc-open", ann, hours=None)        # an HPC run that cannot be priced still turns the card to a dash
-    assert card(get(w, "ann").text, 0)[2] == "—"
+    assert env_of(usage(w, ann), "nchc1")["total"] == pytest.approx(4.0)
+    assert [s for s in summaries(get(w, "ann").text) if "nchc1" in s][0].count("4.00 SU（約 US$0.01）") == 1
+    seed(w, "hpc-open", ann, hours=None)        # an HPC run that cannot be priced is counted as unknown, not as 0
+    s = [s for s in summaries(get(w, "ann").text) if "nchc1" in s][0]
+    assert "另有 1 個分析無法計算" in s and "0.00 SU" not in s
 
 
 def test_ruling13_english_plural(w):
@@ -209,12 +221,12 @@ def test_ruling13_english_plural(w):
     ann = w.user("ann")
     seed(w, "cl-ok", ann, "cloud", hours=6)
     seed(w, "cl-x1", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
-    one = card(get(w, "ann", "/usage?lang=en").text, 1)[3]
-    assert "1 more analysis could not be priced" in one and "analyses" not in one
+    one = summaries(get(w, "ann", "/usage?lang=en").text)[0]
+    assert "1 more analysis could not be priced" in one and "more analyses" not in one
     seed(w, "cl-x2", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
-    two = card(get(w, "ann", "/usage?lang=en").text, 1)[3]
+    two = summaries(get(w, "ann", "/usage?lang=en").text)[0]
     assert "2 more analyses could not be priced" in two
-    assert "另有 2 個分析無法計算" in card(get(w, "ann").text, 1)[3]
+    assert "另有 2 個分析無法計算" in summaries(get(w, "ann").text)[0]
 
 
 def test_ruling14_future_or_missing_month_is_an_empty_table(w):
@@ -226,8 +238,8 @@ def test_ruling14_future_or_missing_month_is_an_empty_table(w):
         assert r.status_code == 200, m
         assert table_rows(r.text) == [], m
     mid = plain(pane(get(w, "ann", "/usage?month=2099-01").text, "middle"))
-    assert "2099-01 尚無分析" in mid and "本月" not in mid        # web-bugs-b: the empty sentence and the card titles name the month
-    assert usage(w, ann, month="2099-01")["runs"] == []
+    assert "2099-01 尚無分析" in mid and "本月" not in mid        # web-bugs-b: the empty sentence names the month
+    assert usage(w, ann, month="2099-01")["environments"] == []
     # "2026-13" is not the form YYYY-MM (TC-046/TC-095): the standard notice and this month, still no error
     bad = get(w, "ann", "/usage?month=2026-13")
     assert bad.status_code == 200 and "月份格式不符，已顯示本月。" in plain(pane(bad.text, "middle"))
@@ -237,8 +249,8 @@ def test_co04_no_cap(w):
     # co04: TC-012, TC-013, TC-014, TC-077, TC-079
     ann = w.user("ann")
     r = get(w, "ann")
-    assert card(r.text, 2)[2] == "未設定" and CAP_NOTE in card(r.text, 2)[3]
-    assert card(r.text, 3)[2] == "—"
+    assert card(r.text, 0)[2] == "未設定" and CAP_NOTE in card(r.text, 0)[3]
+    assert card(r.text, 1)[2] == "—"
     got = usage(w, ann)["cloud"]
     assert got["cap_usd"] is None and got["remaining_usd"] is None
 
@@ -249,7 +261,7 @@ def test_co05_over_cap_is_zero_remaining(w):
     seed(w, "cl-a", ann, "cloud", hours=61.7)
     cap(w, ann, 10)
     r = get(w, "ann")
-    c = card(r.text, 3)
+    c = card(r.text, 1)
     assert c[2] == "US$ 0.00"
     assert "state-failed" in c[0] and ".state-failed{" in style_of(r.text)        # a class the stylesheet already had
     assert "⚠" in c[3] or "!" in c[3]                                              # a symbol and a word, not colour alone
@@ -264,7 +276,7 @@ def test_amounts_are_shown_with_two_decimals_but_not_rounded_inside(w):
     seed(w, "cl-a", ann, "cloud", tasks=[dict(realtime_ms=int(0.617283 * H))])        # 0.617283 h x 0.20 = 0.1234566
     assert usage(w, ann)["cloud"]["used_usd"] == pytest.approx(0.1234566, rel=1e-6)
     assert usage(w, ann)["cloud"]["used_usd"] != round(usage(w, ann)["cloud"]["used_usd"], 2)
-    assert card(get(w, "ann").text, 1)[2] == "US$ 0.12"
+    assert "US$ 0.12" in summaries(get(w, "ann").text)[0]
 
 
 # ---- US2: one line per analysis --------------------------------------------------------------------------------------
@@ -280,13 +292,13 @@ def test_co06_rows_states(w):
     r = get(w, "ann")
     rows = {row[0]: row for row in table_rows(r.text)}
     assert set(rows) == {"run-live", "run-done", "run-lost"}
-    assert rows["run-live"][3] == "—" and rows["run-live"][4] == "執行中"
-    assert rows["run-lost"][3] == "—" and rows["run-lost"][4] == "執行中"
-    assert rows["run-done"][2] == "國網" and rows["run-done"][3] == "5.10 SU（約 US$0.01）" and rows["run-done"][4] == "≈ 估算・帳單未到"
+    assert rows["run-live"][2] == "—" and rows["run-live"][3] == "執行中"
+    assert rows["run-lost"][2] == "—" and rows["run-lost"][3] == "執行中"
+    assert rows["run-done"][2] == "5.10 SU（約 US$0.01）" and rows["run-done"][3] == "≈ 估算・帳單未到"
     assert "bob-run" not in r.text and "run-old" not in pane(r.text, "middle")
     assert "run-done" not in get(w, "bob").text and "bob-run" in get(w, "bob").text
-    by_name = {x["name"]: x for x in usage(w, ann)["runs"]}
-    assert by_name["run-live"]["state"] == "running" and by_name["run-live"]["su"] is None and by_name["run-live"]["usd"] is None
+    by_name = {x["name"]: x for x in env_of(usage(w, ann), "nchc1")["analyses"]}
+    assert by_name["run-live"]["state"] == "running" and by_name["run-live"]["value"] is None and by_name["run-live"]["usd_approx"] is None
     assert any("run 還沒結束" in x for x in by_name["run-live"]["unknown_reasons"])
     assert by_name["run-done"]["state"] == "estimate"
 
@@ -303,14 +315,14 @@ def test_where_and_amount_per_row(w, monkeypatch):
     seed(w, "run-cx", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
     r = get(w, "ann")
     rows = {row[0]: row for row in table_rows(r.text)}
-    assert rows["run-n"][2:4] == ["國網", "5.10 SU（約 US$0.01）"]
-    assert rows["run-c"][2:4] == ["雲端", "US$ 1.20"]
-    assert rows["run-x"][2:4] == ["—", "—"]
-    assert rows["run-cx"][2:4] == ["雲端", "—"] and rows["run-cx"][4] == "≈ 估算・帳單未到"
+    assert rows["run-n"][2] == "5.10 SU（約 US$0.01）"
+    assert rows["run-c"][2] == "US$ 1.20"
+    assert rows["run-x"][2] == "—"
+    assert rows["run-cx"][2] == "—" and rows["run-cx"][3] == "≈ 估算・帳單未到"
     assert 'href="/?run=%s"' % rid in r.text
     assert 'href="/?run=%s&amp;lang=en"' % rid in get(w, "ann", "/usage?lang=en").text or 'href="/?run=%s&lang=en"' % rid in get(w, "ann", "/usage?lang=en").text
-    by = {x["name"]: x["where"] for x in usage(w, ann)["runs"]}
-    assert by == {"run-n": "nchc", "run-c": "cloud", "run-x": None, "run-cx": "cloud"}
+    by = {a["name"]: e["name"] for e in usage(w, ann)["environments"] for a in e["analyses"]}
+    assert by == {"run-n": "nchc1", "run-c": "gcb1", "run-x": None, "run-cx": "gcb1"}
 
 
 def test_newest_a_launch_decides_where(w):
@@ -328,20 +340,21 @@ def test_newest_a_launch_decides_where(w):
     got = con.execute("SELECT count(*) FROM launches WHERE run_name = 'run-m'").fetchone()[0]
     con.close()
     assert got == 2
-    assert [x["where"] for x in usage(w, ann)["runs"] if x["name"] == "run-m"] == ["cloud"]
+    assert [e["name"] for e in usage(w, ann)["environments"] for a in e["analyses"] if a["name"] == "run-m"] == ["gcb1"]
 
 
 def test_month_edge_order_and_limit(w):
     # TC-033, TC-034, TC-035
     ann = w.user("ann")
     seed(w, "edge", ann, started=epoch_of("2026-09-30T16:30:00Z"))
-    assert [x["name"] for x in usage(w, ann, month="2026-10")["runs"]] == ["edge"]
-    assert usage(w, ann, month="2026-09")["runs"] == []
+    assert [x["name"] for e in usage(w, ann, month="2026-10")["environments"] for x in e["analyses"]] == ["edge"]
+    assert usage(w, ann, month="2026-09")["environments"] == []
     base = epoch_of("2026-08-10T00:00:00Z")
     for i in range(51):
         seed(w, "m%02d" % i, ann, started=base + i * 60)
-    runs = usage(w, ann, month="2026-08")["runs"]
-    assert len(runs) == 50 and runs[0]["name"] == "m50" and "m00" not in [x["name"] for x in runs]
+    one = usage(w, ann, month="2026-08")["environments"][0]
+    runs = one["analyses"]
+    assert len(runs) == 50 and one["analyses_count"] == 51 and runs[0]["name"] == "m50" and "m00" not in [x["name"] for x in runs]
     page = [row[0] for row in table_rows(get(w, "ann", "/usage?month=2026-08").text)]
     assert page[0] == "m50" and len(page) == 50
 
@@ -424,12 +437,12 @@ def test_co09_english(w):
     seen = re.sub(r">run-[a-z]+<", "><", mid)
     assert cjk(seen) == []
     titles = [c[1] for c in cards(r.text)]
-    assert "NCHC SU" in titles[0] and "used" in titles[1] and "cap" in titles[2] and "remaining" in titles[3]
+    assert titles == ["Cloud cap", "Cloud remaining"]
     note = [p for p in re.findall(r"<p[^>]*>(.*?)</p>", mid, re.S) if "convert" in p]
     assert note and "SU" in note[0]
-    assert card(r.text, 0)[3] and cjk(card(r.text, 0)[3]) == []
+    assert summaries(r.text) and all(cjk(x) == [] for x in summaries(r.text))
     rows = {row[0]: row for row in table_rows(r.text)}
-    assert rows["run-live"][4] == "Running" and rows["run-done"][4] == "≈ Estimate · bill pending"
+    assert rows["run-live"][3] == "Running" and rows["run-done"][3] == "≈ Estimate · bill pending"
     flash = get(w, "ann", "/usage?month=abc&lang=en").text
     assert "The month is not in the form YYYY-MM, so this month is shown." in flash
     assert no_cjk(re.sub(r"run-[a-z]+", "", pane(flash, "middle")))
@@ -471,7 +484,7 @@ def test_no_other_currency_no_reconciled_no_advice(w):
         assert "<form" not in pane(t, "middle") and "<input" not in pane(t, "middle")
     got = json.dumps(usage(w, ann))
     assert "TWD" not in got and "twd" not in got.lower() and "NT" not in got
-    assert {x["state"] for x in usage(w, ann)["runs"]} <= {"running", "estimate"}
+    assert {a["state"] for e in usage(w, ann)["environments"] for a in e["analyses"]} <= {"running", "estimate"}
 
 
 # ---- US4: the action and the tool -------------------------------------------------------------------------------------
@@ -484,20 +497,21 @@ def test_co11_my_usage_action_and_mcp_match(w):
     seed(w, "ann-cl", ann, "cloud", hours=6)
     cap(w, ann, 50)
     got = usage(w, ann)
-    assert set(got) == {"month", "su", "cloud", "runs"}
-    assert set(got["su"]) == {"total", "unknown_reasons", "site", "usd_approx", "usd_rate_as_of"} and got["su"]["site"] == "taiwania3"
+    assert set(got) == {"month", "environments", "usd_rate_as_of", "cloud"}
     assert set(got["cloud"]) == {"used_usd", "unknown_runs", "cap_usd", "remaining_usd", "currency"}
     assert got["month"] == this_month()
-    for item in got["runs"]:
-        assert set(item) == {"name", "started_at", "where", "state", "su", "usd", "unknown_reasons", "usd_approx"}
-    assert sorted(x["name"] for x in got["runs"]) == ["ann-cl", "ann-run"]
+    for e in got["environments"]:
+        assert set(e) == {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses"}
+        for item in e["analyses"]:
+            assert set(item) == {"name", "started_at", "state", "value", "usd_approx", "unknown_reasons"}
+    assert sorted(a["name"] for e in got["environments"] for a in e["analyses"]) == ["ann-cl", "ann-run"]
     b = usage(w, bob)
-    assert [x["name"] for x in b["runs"]] == ["bob-run"] and b["cloud"]["cap_usd"] is None and b["cloud"]["used_usd"] == 0
-    assert b["su"]["total"] == pytest.approx(3.0) and got["su"]["total"] != b["su"]["total"]
+    assert [a["name"] for e in b["environments"] for a in e["analyses"]] == ["bob-run"] and b["cloud"]["cap_usd"] is None and b["cloud"]["used_usd"] == 0
+    assert env_of(b, "nchc1")["total"] == pytest.approx(3.0) and env_of(got, "nchc1")["total"] != env_of(b, "nchc1")["total"]
     # ruling 12: ann has a cloud run too, yet her SU is the HPC run's alone, a number and not None
-    assert got["su"]["total"] is not None and got["su"]["total"] == pytest.approx(2.0)
-    assert got["su"]["unknown_reasons"] == []
-    assert card(get(w, "ann").text, 0)[2] == "2.00 SU（約 US$0.01 以下）"
+    assert env_of(got, "nchc1")["total"] == pytest.approx(2.0) and env_of(got, "nchc1")["unknown_reasons"] == []
+    assert env_of(got, "nchc1")["unit"] == "SU" and env_of(got, "gcb1")["unit"] == "USD" and env_of(got, "gcb1")["total"] == pytest.approx(1.2)
+    assert "2.00 SU（約 US$0.01 以下）" in [s for s in summaries(get(w, "ann").text) if "nchc1" in s][0]
     assert "ann-run" not in get(w, "bob").text
     # the same through MCP
     out = tool_json(w.call("my_usage", {}, caller=ann))
@@ -524,9 +538,10 @@ def test_not_known_is_never_shown_as_zero(w):
     seed(w, "cl-x", ann, "cloud", tasks=[dict(realtime_ms=H, machine_type="m-unknown")])
     seed(w, "run-bad", ann, hours=None)
     mid = plain(pane(get(w, "ann").text, "middle"))
-    assert card(get(w, "ann").text, 0)[2] == "—"
-    assert "另有 1 個分析無法計算" in mid
-    assert not [r for r in table_rows(get(w, "ann").text) if r[0] in ("run-live", "cl-x", "run-bad") and "0.00" in r[3]]
+    assert len(summaries(get(w, "ann").text)) == 2 and all("—" in x for x in summaries(get(w, "ann").text))       # nothing in either environment is known: a dash and a reason
+    assert "不在價目表" in mid
+    assert not [r for r in table_rows(get(w, "ann").text) if r[0] in ("run-live", "cl-x", "run-bad") and "0.00" in r[2]]
+    assert all("0.00" not in x for x in summaries(get(w, "ann").text))
 
 
 def test_status_cells_have_symbol_and_word(w):
@@ -535,7 +550,7 @@ def test_status_cells_have_symbol_and_word(w):
     seed(w, "run-live", ann, status="running")
     seed(w, "run-done", ann)
     for row in table_rows(get(w, "ann").text):
-        assert re.match(r"^(執行中|≈ 估算・帳單未到)$", row[4])
+        assert re.match(r"^(執行中|≈ 估算・帳單未到)$", row[3])
 
 
 # ---- code shape: one door, no network ---------------------------------------------------------------------------------
