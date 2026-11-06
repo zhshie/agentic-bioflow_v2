@@ -64,3 +64,9 @@
 ## 9. 全套測試後補修（8 條）
 
 不在「允許改動」清單、但因 `run_usage` 與分析頁費用列而必須動的既有斷言（性質都保留）：`test_owner_guard`（NO_TOOL 加 run_usage）、`test_web_downstream` 與 `test_k8s_launch`（動作名單／數量／雜湊 58 到 59）、`test_web_board` tn10 與 `test_web_results_outputs` ro04（「無 table」改為扣除費用列那一張表後仍無 table）、`test_gcb_ce`／`test_oauth_mcp`（改 `mcp_server.py` 的 my_usage 說明，不再出現 Google 字樣；`BASELINE` 同步）。`run_usage` 以固定名呼叫 `get_run`，使 tcl29「一次頁面讀取只問一次 get_run」不變。
+
+## 10. 追認後重閱（15:30 裁決）
+
+- 7b 列出的清單外測試改動、`usd_rate_as_of`、tc058、tc071 替身已由計畫「裁決（15:30 追認）」核可；程式碼無需再改。tc071 替身後原斷言（分析頁不呼叫 my_usage、不讀費率）一字未動。
+- TC-089～091 截圖與 axe 由 developer-agent 補拍，標 UNVERIFIED(needs human)。
+- 重跑全套測試，結果見 decisions.tsv。
