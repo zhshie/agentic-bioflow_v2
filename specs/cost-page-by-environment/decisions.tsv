@@ -1,0 +1,8 @@
+ts	phase	decision	why	evidence	result
+2026-11-06	RED	先寫新測試檔並改 DESIGN 第 11 項	計畫要求測試先紅	b416b179	test_cost_by_env 紅
+2026-11-06	design	單位由環境的 platform 決定，不用 su.month_total	月合計會把雲端 run 算成 SU，AWS/Azure/K8s 也會被誤算	platform/abf_platform/actions/__init__.py:_unit_of	通過
+2026-11-06	design	AWS/Azure/K8s 單位 USD、值 None 加原因，不算 0	待決 3 預設；沒有估算來源	platform/abf_platform/actions/__init__.py:_usage_item	通過
+2026-11-06	deviation	my_usage 頂層多 usd_rate_as_of	頁面註腳要匯率日期，不能由各列推出	platform/abf_platform/actions/__init__.py:my_usage	回報 developer-agent
+2026-11-06	design	run_usage 只給網頁（WEB_ONLY）	計畫說不是 MCP 工具	platform/tests/test_web_parity.py	通過
+2026-11-06	test	TC-071 把 run_usage 換成空替身，原斷言不動	新費用列合理地讀費率；原斷言守的是舊行為	platform/tests/test_su_usd.py	通過
+2026-11-06	GREEN	既有測試改成新形狀	只動允許清單	c03abe8e	209 個相關測試通過
