@@ -1237,7 +1237,9 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
         for tag in ("<textarea", "<select", "<iframe", "<table", 'type="radio"', 'type="checkbox"'):
             if tag == "<table" and url == "/settings":      # settings-page ruling 11: only /settings may carry a table (the compute environments)
                 continue
-            assert tag not in t, (url, tag)
+            # cost-page-by-environment: the run page now carries the one-row cost table (Environment / Usage / Status / Scope)
+            checked = re.sub(r'<table class="tbl"><thead><tr><th>(環境|Environment)</th>.*?</table>', "", t, flags=re.S) if tag == "<table" else t
+            assert tag not in checked, (url, tag)
         settings_free = re.sub(r'<form[^>]*action="/settings/(pipelines|inventory|personal)".*?</form>', "", t, flags=re.S) if url == "/settings" else t     # settings-register-pipeline: its own forms are checked in test_web_settings_register.py
         assert [m for m in re.findall(r"<input\b[^>]*>", settings_free) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m or ('name="ce"' in m and url == "/settings"))] == []     # 012b: the buttons carry the run id (and the language)
         # settings-pick-installed: the folded "advanced" block of a Slurm environment on /settings is a <details class="padv"> (the plan says so)

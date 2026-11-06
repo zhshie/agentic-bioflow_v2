@@ -11,7 +11,7 @@ import pytest
 
 from helpers import PLATFORM_DIR, REPO_ROOT
 from test_web_board import no_cjk, pane, plain, style_of
-from test_web_cost import card, cards, get, seed, table_rows, usage, w  # noqa: F401  (w is the fixture)
+from test_web_cost import card, cards, env_of, get, seed, summaries, table_rows, usage, w  # noqa: F401  (w is the fixture)
 
 RATES_FILE = REPO_ROOT / "configs" / "sites" / "su_rates.json"
 PKG = PLATFORM_DIR / "abf_platform"
@@ -57,6 +57,11 @@ def cost_value(text):
     m = re.search(r'<h2 class="ct">(?:費用|Cost)</h2><p class="cv">(.*?)</p>', text, re.S)
     assert m, "no cost card"
     return plain(m.group(1))
+
+
+def su_line(text):
+    """The summary line of the Slurm environment (the seeded one is called nchc1)."""
+    return [x for x in summaries(text) if "nchc1" in x][0]
 
 
 def login_get(w, name, url):
@@ -118,16 +123,16 @@ def two_runs(w):
 
 def test_tc016_to_019_my_usage_usd(w):
     ann = two_runs(w)
-    got = usage(w, ann)
-    total = got["su"]["total"]
-    assert got["su"]["usd_approx"] == pytest.approx(total * 0.08 / 32)                           # TC-016 (by formula, not 0.03)
-    assert got["su"]["usd_rate_as_of"] == "2026-10-13"                                           # TC-017
-    for row in got["runs"]:                                                                      # TC-018
-        assert row["usd_approx"] == pytest.approx(row["su"] * 0.08 / 32)
+    got = env_of(usage(w, ann), "nchc1")
+    total = got["total"]
+    assert got["usd_approx"] == pytest.approx(total * 0.08 / 32)                                 # TC-016 (by formula, not 0.03)
+    assert usage(w, ann)["usd_rate_as_of"] == "2026-10-13"                                       # TC-017
+    for row in got["analyses"]:                                                                  # TC-018
+        assert row["usd_approx"] == pytest.approx(row["value"] * 0.08 / 32)
     seed(w, "cl-a", ann, "cloud", hours=6)
     again = usage(w, ann)
-    cloud_row = [r for r in again["runs"] if r["name"] == "cl-a"][0]
-    assert cloud_row["usd_approx"] is None and cloud_row["usd"] == pytest.approx(1.2)            # TC-019
+    cloud_row = [r for e in again["environments"] for r in e["analyses"] if r["name"] == "cl-a"][0]
+    assert cloud_row["usd_approx"] is None and cloud_row["value"] == pytest.approx(1.2)          # TC-019
     assert again["cloud"]["used_usd"] == pytest.approx(1.2)                                      # TC-080: the cloud numbers stay
 
 
@@ -145,10 +150,11 @@ def test_tc021_key_sets(w):
     ann = two_runs(w)
     seed(w, "cl-a", ann, "cloud", hours=6)
     got = usage(w, ann)
-    assert set(got) == {"month", "su", "cloud", "runs"}
-    assert set(got["su"]) == {"total", "unknown_reasons", "site", "usd_approx", "usd_rate_as_of"}
-    for row in got["runs"]:
-        assert set(row) == {"name", "started_at", "where", "state", "su", "usd", "unknown_reasons", "usd_approx"}
+    assert set(got) == {"month", "environments", "usd_rate_as_of", "cloud"}
+    for e in got["environments"]:
+        assert set(e) == {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses"}
+        for row in e["analyses"]:
+            assert set(row) == {"name", "started_at", "state", "value", "usd_approx", "unknown_reasons"}
     assert set(got["cloud"]) == {"used_usd", "unknown_runs", "cap_usd", "remaining_usd", "currency"}
 
 
@@ -181,8 +187,8 @@ def test_tc026_tc027_tc028_unknown_su_gives_none(w):
     seed(w, "run-open", ann, hours=None)                    # no usage rows: SU cannot be worked out
     seed(w, "run-live", ann, status="running")
     got = usage(w, ann)
-    assert got["su"]["total"] is None and got["su"]["usd_approx"] is None                        # TC-026
-    assert all(r["usd_approx"] is None for r in got["runs"])                                     # TC-026, TC-027
+    assert env_of(got, "nchc1")["total"] is None and env_of(got, "nchc1")["usd_approx"] is None   # TC-026
+    assert all(r["usd_approx"] is None for e in got["environments"] for r in e["analyses"])      # TC-026, TC-027
     live = seed(w, "run-live2", ann, status="running")
     assert get_run(w, ann, live)["su"]["usd_approx"] is None                                     # TC-028
 
@@ -190,16 +196,16 @@ def test_tc026_tc027_tc028_unknown_su_gives_none(w):
 def test_tc029_to_031_missing_usd_twd(w, tmp_path, monkeypatch):
     ann = two_runs(w)
     rid = seed(w, "run-n", ann, hours=3)
-    plain_total = usage(w, ann)["su"]["total"]
+    plain_total = env_of(usage(w, ann), "nchc1")["total"]
     cases = ({"usd_twd": "DROP"},
              {"usd_twd": {"rate": 32.0}},                                                        # TC-030
              {"usd_twd": {"as_of": "2026-10-13"}})                                               # TC-031
     for change in cases:
         set_rates(tmp_path, monkeypatch, **change)
         got = usage(w, ann)
-        assert got["su"]["usd_approx"] is None and got["su"]["usd_rate_as_of"] is None, change
-        assert got["su"]["total"] == pytest.approx(plain_total)
-        assert all(r["usd_approx"] is None for r in got["runs"])
+        assert env_of(got, "nchc1")["usd_approx"] is None and got["usd_rate_as_of"] is None, change
+        assert env_of(got, "nchc1")["total"] == pytest.approx(plain_total)
+        assert all(r["usd_approx"] is None for e in got["environments"] for r in e["analyses"])
     set_rates(tmp_path, monkeypatch, usd_twd="DROP")
     assert get_run(w, ann, rid)["su"]["usd_approx"] is None and get_run(w, ann, rid)["su"]["su"] == pytest.approx(3)
 
@@ -209,8 +215,8 @@ def test_tc032_owner_rule(w):
     rid = seed(w, "ann-run", ann, hours=5)
     assert get_run(w, bob, rid)["found"] is False and "usd_approx" not in json.dumps(get_run(w, bob, rid))
     mine = usage(w, bob)
-    assert mine["runs"] == [] and "ann-run" not in json.dumps(mine) and mine["su"]["total"] == 0
-    assert [r["name"] for r in usage(w, ann)["runs"]] == ["ann-run"]
+    assert mine["environments"] == [] and "ann-run" not in json.dumps(mine)
+    assert [r["name"] for e in usage(w, ann)["environments"] for r in e["analyses"]] == ["ann-run"]
     assert get_run(w, ann, rid)["su"]["usd_approx"] is not None
 
 
@@ -260,26 +266,25 @@ def test_tc035_nano4_row(w):
     seed(w, "run-n", ann, hours=51.5)
     as_nano4(w, "run-n")
     r = get(w, "ann")
-    assert rows_by_name(r.text)["run-n"][3] == "51.50 SU（約 US$0.16）"
+    assert rows_by_name(r.text)["run-n"][2] == "51.50 SU（約 US$0.16）"
 
 
 def test_tc036_to_038_card_and_rows(w, monkeypatch):
     ann = two_runs(w)
     r = get(w, "ann")
-    assert card(r.text, 0)[2] == "12.30 SU（約 US$0.03）"                                          # TC-036
+    assert "12.30 SU（約 US$0.03）" in su_line(r.text)                                              # TC-036 (the environment's own line)
     rows = rows_by_name(r.text)
-    assert rows["run-a"][3] == "5.10 SU（約 US$0.01）" and rows["run-b"][3] == "7.20 SU（約 US$0.02）"      # TC-037
+    assert rows["run-a"][2] == "5.10 SU（約 US$0.01）" and rows["run-b"][2] == "7.20 SU（約 US$0.02）"      # TC-037
     from abf_platform import actions
     real = actions.my_usage
 
     def stub(*a, **k):
         d = real(*a, **k)
-        d["su"] = dict(d["su"], usd_approx=1.2345)
-        d["runs"] = [dict(x, usd_approx=1.2345) for x in d["runs"]]
+        d["environments"] = [dict(e, usd_approx=1.2345, analyses=[dict(x, usd_approx=1.2345) for x in e["analyses"]]) for e in d["environments"]]
         return d
     monkeypatch.setattr(actions, "my_usage", stub)
     r = get(w, "ann")
-    assert "約 US$1.23" in card(r.text, 0)[2] and all("約 US$1.23" in row[3] for row in table_rows(r.text))   # TC-038
+    assert "約 US$1.23" in su_line(r.text) and all("約 US$1.23" in row[2] for row in table_rows(r.text))   # TC-038
 
 
 def test_tc039_tc040_cloud_unchanged(w):
@@ -289,24 +294,25 @@ def test_tc039_tc040_cloud_unchanged(w):
     from test_web_cost import cap
     cap(w, ann, 50)
     r = get(w, "ann")
-    assert rows_by_name(r.text)["cl-a"][3] == "US$ 12.34"                                         # TC-039
-    assert [c[2] for c in cards(r.text)][1:] == ["US$ 12.34", "US$ 50.00", "US$ 37.66"]          # TC-040
-    assert all("約 US$" not in c[2] for c in cards(r.text)[1:])
+    assert rows_by_name(r.text)["cl-a"][2] == "US$ 12.34"                                         # TC-039
+    assert [c[2] for c in cards(r.text)] == ["US$ 50.00", "US$ 37.66"]                           # TC-040 (used is the cloud environment's line)
+    assert [x for x in summaries(r.text) if "gcb1" in x][0].count("US$ 12.34") == 1
+    assert all("約 US$" not in c[2] for c in cards(r.text)) and "約 US$" not in [x for x in summaries(r.text) if "gcb1" in x][0]
 
 
 def test_tc041_tc042_small_amounts(w):
     ann = w.user("ann")
     seed(w, "run-s", ann, hours=3.0)
     r = get(w, "ann")
-    assert card(r.text, 0)[2] == "3.00 SU（約 US$0.01 以下）" and rows_by_name(r.text)["run-s"][3] == "3.00 SU（約 US$0.01 以下）"   # TC-041
-    assert "0.00" not in card(r.text, 0)[2]
+    assert "3.00 SU（約 US$0.01 以下）" in su_line(r.text) and rows_by_name(r.text)["run-s"][2] == "3.00 SU（約 US$0.01 以下）"   # TC-041
+    assert "0.00" not in su_line(r.text)
     seed(w, "run-t", ann, hours=5.10)
-    assert rows_by_name(get(w, "ann").text)["run-t"][3] == "5.10 SU（約 US$0.01）"               # TC-042
+    assert rows_by_name(get(w, "ann").text)["run-t"][2] == "5.10 SU（約 US$0.01）"               # TC-042
 
 
 def test_tc043_tc044_footnote(w, tmp_path, monkeypatch):
     two_runs(w)
-    note = "雲端費用以美元顯示，不換算新台幣；國網以 SU 計。數字依執行紀錄估算，略低於實際帳單。"
+    note = "各運算環境用各自的單位（SU 或美元）顯示，不互相換算、不加總。數字依執行紀錄估算，略低於實際帳單。"
     mid = plain(pane(get(w, "ann").text, "middle"))
     assert note + "SU 以 2026-10-13 匯率概算為美元，並非帳單金額。" in mid                         # TC-043
     data = real_rates()
@@ -318,10 +324,10 @@ def test_tc045_to_049_english(w):
     ann = two_runs(w)
     seed(w, "run-s", ann, hours=3.0)
     r = get(w, "ann", "/usage?lang=en")
-    assert card(r.text, 0)[2] == "15.30 SU (≈ US$0.04)"                                          # 12.30 + 3.00 = 15.30 -> 0.0382
+    assert "15.30 SU (≈ US$0.04)" in su_line(r.text)                                             # 12.30 + 3.00 = 15.30 -> 0.0382
     rows = rows_by_name(r.text)
-    assert rows["run-a"][3] == "5.10 SU (≈ US$0.01)" and rows["run-b"][3] == "7.20 SU (≈ US$0.02)"        # TC-046
-    assert rows["run-s"][3] == "3.00 SU (≈ under US$0.01)"                                       # TC-047
+    assert rows["run-a"][2] == "5.10 SU (≈ US$0.01)" and rows["run-b"][2] == "7.20 SU (≈ US$0.02)"        # TC-046
+    assert rows["run-s"][2] == "3.00 SU (≈ under US$0.01)"                                       # TC-047
     mid = plain(pane(r.text, "middle"))
     assert "SU figures are converted to US dollars at the 2026-10-13 rate, roughly; this is not a bill." in mid    # TC-048
     assert no_cjk(r.text)                                                                        # TC-049
@@ -330,7 +336,7 @@ def test_tc045_to_049_english(w):
 def test_tc047_card_under_a_cent_english(w):
     ann = w.user("ann")
     seed(w, "run-s", ann, hours=3.0)
-    assert card(get(w, "ann", "/usage?lang=en").text, 0)[2] == "3.00 SU (≈ under US$0.01)"
+    assert "3.00 SU (≈ under US$0.01)" in su_line(get(w, "ann", "/usage?lang=en").text)
 
 
 def test_tc050_tc051_front_end_limits(w, tmp_path, monkeypatch):
@@ -358,7 +364,7 @@ def test_tc052_status_words(w):
     seed(w, "run-live", ann, status="running")
     seed(w, "run-done", ann, hours=5.10)
     rows = rows_by_name(get(w, "ann").text)
-    assert rows["run-live"][4] == "執行中" and rows["run-done"][4] == "≈ 估算・帳單未到"
+    assert rows["run-live"][3] == "執行中" and rows["run-done"][3] == "≈ 估算・帳單未到"
 
 
 def test_tc053_used_up_still_shows_usd(w):
@@ -368,18 +374,18 @@ def test_tc053_used_up_still_shows_usd(w):
     seed(w, "run-a", ann, hours=5.10)
     cap(w, ann, 10)
     r = get(w, "ann")
-    left = card(r.text, 3)
+    left = card(r.text, 1)
     assert "state-failed" in left[0] and "⚠" in left[3] and "待處理：本月雲端額度已用盡" in left[3]
-    assert card(r.text, 0)[2] == "5.10 SU（約 US$0.01）"
+    assert "5.10 SU（約 US$0.01）" in su_line(r.text)
 
 
 def test_tc054_tc055_unknown_su(w):
     ann = w.user("ann")
     seed(w, "run-open", ann, hours=None)
     r = get(w, "ann")
-    c = card(r.text, 0)
-    assert c[2] == "—" and c[3] and "約 US$" not in r.text.split("</style>")[1]
-    assert rows_by_name(r.text)["run-open"][3] == "—"
+    line = su_line(r.text)
+    assert "—" in line and "0.00" not in line and "約 US$" not in r.text.split("</style>")[1]
+    assert rows_by_name(r.text)["run-open"][2] == "—"
 
 
 def test_tc056_tc057_tc060_no_rate_in_config(w, tmp_path, monkeypatch):
@@ -392,20 +398,20 @@ def test_tc056_tc057_tc060_no_rate_in_config(w, tmp_path, monkeypatch):
             assert "約 US$" not in body and "≈" not in body.replace("≈ 估算", "").replace("≈ Estimate", "")
             assert "換美元" not in body and "converted to US dollars" not in body
         r = get(w, "ann")
-        assert card(r.text, 0)[2] == "12.30"
+        assert "12.30 SU" in su_line(r.text) and "約 US$" not in su_line(r.text)
         rows = rows_by_name(r.text)
-        assert rows["run-a"][3] == "5.10 SU" and rows["run-b"][3] == "7.20 SU"
-        assert "雲端費用以美元顯示" in plain(pane(r.text, "middle"))
+        assert rows["run-a"][2] == "5.10 SU" and rows["run-b"][2] == "7.20 SU"
+        assert "各運算環境用各自的單位" in plain(pane(r.text, "middle"))
 
 
 def test_tc058_tc059_zero(w):
     ann = w.user("ann")
     seed(w, "cl-a", ann, "cloud", hours=6)
     r = get(w, "ann")
-    assert card(r.text, 0)[2] == "0.00" and "約 US$" not in card(r.text, 0)[2]                   # TC-058
+    assert not [x for x in summaries(r.text) if "nchc1" in x] and "約 US$" not in r.text.split("</style>")[1]      # TC-058: no Slurm environment, no SU line at all
     seed(w, "run-z", ann, hours=0.0)
     r = get(w, "ann")
-    assert rows_by_name(r.text)["run-z"][3] == "0.00 SU"                                         # TC-059
+    assert rows_by_name(r.text)["run-z"][2] == "0.00 SU"                                         # TC-059
 
 
 def test_tc061_tc062_empty_and_unreadable(w, monkeypatch):
@@ -450,6 +456,7 @@ def test_tc071_run_page_uses_get_run_only(w, monkeypatch):
     monkeypatch.setattr(actions, "get_run", stub)
     calls = []
     monkeypatch.setattr(actions, "my_usage", lambda *a, **k: calls.append("my_usage"))
+    monkeypatch.setattr(actions, "run_usage", lambda *a, **k: {})        # cost-page-by-environment: the new cost row has its own action (and reads the rates there)
     monkeypatch.setattr(su, "load_rates", lambda *a, **k: calls.append("rates") or None)
     assert cost_value(login_get(w, "ann", "/?run=" + rid).text) == "7.00 SU（約 US$7.77）"
     assert "my_usage" not in calls and "rates" not in calls
@@ -510,7 +517,7 @@ def test_tc078_no_network(w, monkeypatch):
             raise AssertionError("network used: %r" % (addr,))
         return real_connect(self, addr, *a, **k)
     monkeypatch.setattr(socket.socket, "connect", refuse)
-    assert usage(w, ann)["su"]["usd_approx"] is not None
+    assert env_of(usage(w, ann), "nchc1")["usd_approx"] is not None
     assert get_run(w, ann, rid)["su"]["usd_approx"] is not None
     assert "約 US$" in get(w, "ann").text
     assert "約 US$" in login_get(w, "ann", "/?run=" + rid).text
@@ -564,14 +571,14 @@ def test_tc089_nothing_stored_and_no_cache(w, tmp_path, monkeypatch):
             con.close()
         return out
     before = snapshot()
-    first = usage(w, ann)["su"]["usd_approx"]
+    first = env_of(usage(w, ann), "nchc1")["usd_approx"]
     get_run(w, ann, rid)
     get(w, "ann")
     login_get(w, "ann", "/?run=" + rid)
     assert snapshot() == before
     data = real_rates()
     set_rates(tmp_path, monkeypatch, usd_twd=dict(data["usd_twd"], rate=40.0))
-    assert usage(w, ann)["su"]["usd_approx"] == pytest.approx(first * 32 / 40)
+    assert env_of(usage(w, ann), "nchc1")["usd_approx"] == pytest.approx(first * 32 / 40)
 
 
 def test_tc091_gaps_are_not_zero_dollars(w, tmp_path, monkeypatch):

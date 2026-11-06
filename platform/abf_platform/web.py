@@ -589,6 +589,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             selected = await run_in_threadpool(read_run, run_id or web_board.default_run(runs), caller)
             if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+            try:        # the cost row under the cards: the run's own cost in its environment's unit; a read that fails is a row of dashes
+                cost = await run_in_threadpool(lambda: actions.run_usage(index_path, selected["id"], caller=caller, platform_path=platform_path))
+                if cost.get("found"):
+                    selected["usage"] = cost
+            except (sqlite3.Error, OSError):
+                selected["usage"] = {}
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, "results") == "results" and not flash:
                 outputs = await run_in_threadpool(read_outputs, selected["id"], caller, web_board.pick_results_tab(tab) == "outputs", relist, subpath)
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "finished" and not flash:

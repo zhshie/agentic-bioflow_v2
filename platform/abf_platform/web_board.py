@@ -68,7 +68,7 @@ STRINGS = {
         "set_me": "個人", "set_step": "逐步模式", "set_dev": "開發模式", "set_ops": "營運者後台",
         "set_roles": "角色（老師／學生）",
         "resume": "續跑", "rerun": "重跑", "cancel": "取消", "quick": "沿用設定重新分析",
-        "card_step": "目前步驟", "card_stopped_at": "停在", "menu_more": "更多", "stage_running_failed": "執行", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "more_steps": "等 %d 項",
+        "card_step": "目前步驟", "card_stopped_at": "停在", "menu_more": "更多", "stage_running_failed": "執行", "card_duration": "耗時", "card_compute": "運算環境", "card_cost": "費用", "cr_env": "環境", "cr_usage": "用量", "cr_state": "狀態", "cr_scope": "範圍", "cr_scope_text": "整個分析（含失敗的步驟）", "state_estimate": "≈ 估算・帳單未到", "more_steps": "等 %d 項",
         "dur_hm": "%d 小時 %d 分", "dur_m": "%d 分", "dur_short": "不到 1 分",
         "no_notices": "目前無通知", "no_failed_tasks": "無失敗任務",
         "failed_unlisted": "失敗計數 %d，但沒有可列出的失敗任務明細；這些失敗可能已被忽略或重試成功。",
@@ -135,7 +135,7 @@ STRINGS = {
         "set_ai_key": "AI model key", "set_me": "Personal", "set_step": "Step-by-step mode",
         "set_dev": "Development mode", "set_ops": "Operator panel", "set_roles": "Roles (teacher / student)",
         "resume": "Resume", "rerun": "Re-run", "cancel": "Cancel", "quick": "Launch again from this run",
-        "card_step": "Current step", "card_stopped_at": "Stopped at", "menu_more": "More", "stage_running_failed": "Run", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "more_steps": "+%d more",
+        "card_step": "Current step", "card_stopped_at": "Stopped at", "menu_more": "More", "stage_running_failed": "Run", "card_duration": "Duration", "card_compute": "Compute", "card_cost": "Cost", "cr_env": "Environment", "cr_usage": "Usage", "cr_state": "Status", "cr_scope": "Scope", "cr_scope_text": "Whole analysis (failed steps included)", "state_estimate": "≈ Estimate · bill pending", "more_steps": "+%d more",
         "dur_hm": "%dh %dm", "dur_m": "%dm", "dur_short": "<1m",
         "no_notices": "No notices", "no_failed_tasks": "No failed tasks",
         "failed_unlisted": "The failed count is %d, but no failed task has a recorded detail; these may have been ignored or retried successfully.",
@@ -648,6 +648,34 @@ def su_text(t, su, usd):
     return text
 
 
+def usage_text(t, unit, value, usd):
+    """The amount of one environment's cost in its own unit: `51.50 SU（約 US$0.16）`, `US$ 1.20`, or a dash when it is not known (never 0)."""
+    if unit == "SU":
+        return su_text(t, value, usd) or "—"
+    if unit == "USD" and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return "US$ %.2f" % value
+    return "—"
+
+
+def cost_row(t, run):
+    """The cost row under the four cards of a run page: environment, usage in that environment's unit, status, scope. `run["usage"]` is the answer
+    of the run_usage action; an empty dict (it could not be read) gives a row of dashes; no `usage` key (another person's run) gives no row."""
+    data = run.get("usage") if isinstance(run, dict) else None
+    if not isinstance(data, dict):
+        return ""
+    heads = "".join("<th>%s</th>" % esc(t[k]) for k in ("cr_env", "cr_usage", "cr_state", "cr_scope"))
+    if not data:
+        cells = ["—"] * 4
+    else:
+        known = data.get("value") is not None
+        if data.get("state") == "running":
+            state = '<span class="state-running">⟳ %s</span>' % esc(t["state_running"])
+        else:
+            state = esc(t["state_estimate"]) if known else "—"
+        cells = [esc(data.get("environment") or "—"), esc(usage_text(t, data.get("unit"), data.get("value"), data.get("usd_approx"))), state, esc(t["cr_scope_text"])]
+    return '<table class="tbl"><thead><tr>%s</tr></thead><tbody><tr>%s</tr></tbody></table>' % (heads, "".join("<td>%s</td>" % c for c in cells))
+
+
 def _cost_value(t, run):
     """The value of the cost card: the SU of the run with its side-note dollars when get_run knows them, else the dash `SU —`."""
     shown = run.get("su") if isinstance(run, dict) else None
@@ -754,7 +782,7 @@ def _results_body(t, lang, run, tab, now, outputs):
     links = "".join('<a href="%s"%s>%s</a>' % (_url(lang, run["id"], None, tab=k), ' aria-current="page"' if k == tab else "", esc(t["tab_" + k]))
                     for k in RESULT_TABS)
     body = _outputs_body(t, lang, run["id"], outputs) if tab == "outputs" else tab_body(t, lang, run, tab)
-    return '%s%s<nav class="rtabs">%s</nav>%s' % (_results_cards(t, run, now, outputs), later, links, body)
+    return '%s%s%s<nav class="rtabs">%s</nav>%s' % (_results_cards(t, run, now, outputs), cost_row(t, run), later, links, body)
 
 
 def _tasks_bar(t, run):
@@ -809,7 +837,7 @@ def _running_body(t, selected, lang, tab_param, stage_param, now, acts=None):
     tab = tab_param or "tasks"
     links = "".join('<a href="%s"%s>%s</a>' % (_url(lang, selected["id"], stage_param, tab=k), ' aria-current="page"' if k == tab else "",
                                                esc(t["tab_" + k])) for k in TABS)
-    return '%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), _tasks_bar(t, selected), links, tab_body(t, lang, selected, tab))
+    return '%s%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), cost_row(t, selected), _tasks_bar(t, selected), links, tab_body(t, lang, selected, tab))
 
 
 def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None, finished=None, user_name="", studio=None):

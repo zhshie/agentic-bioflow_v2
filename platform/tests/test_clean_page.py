@@ -29,6 +29,7 @@ def w(tmp_path, monkeypatch):
 
 
 def mask(text):
+    text = re.sub(r'<table class="tbl"><thead><tr><th>(?:環境|Environment)</th>.*?</table>', "", text, flags=re.S)   # the run-page cost row (cost-page-by-environment) is new; the rest stays byte-for-byte
     text = re.sub(r"[0-9a-f]{32,}", "X", text)
     text = re.sub(r"[^\s<>\"']*(?:pytest-|/tmp/)[^\s<>\"']*", "P", text)
     return re.sub(r"\d{9,}", "N", text)

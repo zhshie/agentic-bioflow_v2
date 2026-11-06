@@ -258,7 +258,7 @@ def test_the_plan_table_values():
     assert s["key_note"] == "金鑰僅儲存於您的瀏覽器，不會傳送至平台。" and s["token_hint"] == "請於終端機執行 abf-platform token new 建立。"
     assert s["check_cmd"] == "請以指令確認" and "尚無運算環境。" in (s.get("ce_none"), s.get("no_ce"))
     c = web_cost.STRINGS["zh"]
-    assert c["th_where"] == "執行位置" and c["empty"] == "— 本月尚無分析" and c["bad_month"] == "月份格式不符，已顯示本月。"
+    assert c["th_usage"] == "用量" and c["empty"] == "— 本月尚無分析" and c["bad_month"] == "月份格式不符，已顯示本月。"
     assert c["no_reason"] == "無法計算" and c["unknown_runs"] == "另有 %d 個分析無法計算" and c["note"].endswith("數字依執行紀錄估算，略低於實際帳單。")
     assert c["usd_note"] == "SU 以 %s 匯率概算為美元，並非帳單金額。" and c["action"] == "待處理：本月雲端額度已用盡"
     f = web_finished.STRINGS["zh"]
@@ -486,7 +486,7 @@ def test_cost_settings_finished_pages(tmp_path, monkeypatch):
     cost.seed(w, "nc-c", ann, None, hours=1)
     cost.cap(w, ann, 1.0)
     t = login_of(w, "ann").get("/usage").text
-    assert "執行位置" in visible(t) and "無法計算" in visible(t) and "另有 1 個分析無法計算" in visible(t) and bad_page(t) == []
+    assert "用量" in visible(t) and "無法計算" in visible(t) and "另有 1 個分析無法計算" in visible(t) and bad_page(t) == []
     cost.cap(w, ann, 0.01)
     assert bad_page(login_of(w, "ann").get("/usage").text) == []
     # settings: with environments, without, and an environment that cannot be used

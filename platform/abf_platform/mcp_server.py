@@ -97,10 +97,11 @@ def build_server(index_path, platform_path=None):
     def list_used_pipelines(ctx: Context) -> dict:
         return actions.list_used_pipelines(platform_path, caller=_caller(ctx))
     @server.tool(name="my_usage", annotations=_READ_ONLY,
-                 description="What you used in one month (month is YYYY-MM in Taipei time; this month by default): the SU of the "
-                             "national HPC, the cloud money in US dollars (never converted) with the monthly cap the administrator "
-                             "set and what is left of it, and one line per run you started that month. A figure that cannot be "
-                             "worked out is null, never 0. usd_approx is a rough conversion of the SU at the rate in the settings file.")
+                 description="What you used in one month (month is YYYY-MM in Taipei time; this month by default): one entry per compute "
+                             "environment you sent runs to, each in its own unit (SU for Slurm, US dollars for a cloud environment; "
+                             "never converted or added across environments) with up to 50 of its analyses, and the cloud money with "
+                             "the monthly cap the administrator set and what is left of it. A figure that cannot be worked out is "
+                             "null, never 0. usd_approx is a rough conversion of the SU at the rate in the settings file.")
     def my_usage(ctx: Context, month: str | None = None) -> dict:
         return actions.my_usage(index_path, platform_path, caller=_caller(ctx), month=month)
 
