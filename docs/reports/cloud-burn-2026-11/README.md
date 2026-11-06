@@ -1,5 +1,8 @@
 # cloud-burn 2026-11 reports
 
+- R1 - platform coverage report and split of the sweep section 6 heuristic list: 146 names checked, 142 are in fact executed; 20 never-run safety gates and refusal branches ranked for new tests, plus 2 minor findings.
+- R2 - abf_station fix design (path-rule duplication, F1, F2): root cause, fix, RED tests and measured blast radius for a parity test, a fail-open samplesheet-cell check and a scoped resourceLimits hoist.
+- R3 - tests that hard-code a count, list or hash: 12 findings and a migration order for moving them to one source.
 - UI2: ui_check.py with axe-core, 6 pages x 1440/390 x zh/en. Eight critical axe meta-refresh hits on board and results, plus wording, launch-with-no-compute-environment and 390 px layout issues (11 findings).
 - UI3: design report for settings-ce-table-mobile. The 390 px card layout already landed, but the viewport-keyed switch still cuts words mid-letter from about 901 to 1313 px; proposes a container query (4 findings).
 - R4: real-process QA walk with verify-abf against a fake station. Most surfaces pass; findings include the Slurm computeQueue not reaching Nextflow, an all-green preflight that still refuses launch, and a set of CLI/MCP wording and validation gaps (16 findings).
