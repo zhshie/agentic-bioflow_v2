@@ -351,7 +351,7 @@ def test_tc023_no_new_kind_no_migration_no_new_state(rig):
     from abf_platform import jobs
     from abf_station import handlers
     assert jobs.KINDS == handlers.JOB_KINDS
-    assert len(jobs.KINDS) == 10
+    assert len(jobs.KINDS) == 11
     lost_run(rig)
     add_fetch(rig, "x", fact("NODE_FAIL"))
     assert get(rig, "id-x")["status"] in ("failed",)       # shown as the third state of DESIGN.md; no fourth

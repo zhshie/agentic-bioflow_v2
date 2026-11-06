@@ -6,6 +6,5 @@ _no platform/abf_platform/actions/datasets.py platform/abf_platform/actions/pipe
 _run platform/abf_station/aws_preflight.py platform/abf_station/azure_preflight.py platform/abf_station/gcb_preflight.py platform/abf_station/k8s_preflight.py
 _shown platform/abf_platform/cloud_cost.py platform/abf_platform/compute_envs.py
 credentials_path platform/abf_station/aws_preflight.py platform/abf_station/azure_preflight.py platform/abf_station/gcb_preflight.py platform/abf_station/k8s_preflight.py
-load_rates platform/abf_platform/cloud_cost.py platform/abf_platform/su.py
 path_problem platform/abf_platform/compute_envs.py platform/abf_station/rules.py
 say platform/abf_station/agent.py platform/abf_station/cli.py
