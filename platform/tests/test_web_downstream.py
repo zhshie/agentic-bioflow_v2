@@ -19,7 +19,7 @@ ROUTES_V3 = [('/', ('GET', 'HEAD')), ('/.well-known/oauth-authorization-server',
              ('/act/{verb}/edit', ('GET', 'HEAD')), ('/authorize', ('GET', 'HEAD', 'POST')), ('/c/{rid}', ('GET', 'HEAD')), ('/c/{rid}', ('POST',)),
              ('/consent/{rid}', ('GET', 'HEAD')), ('/consent/{rid}', ('POST',)), ('/launch', ('GET', 'HEAD')), ('/launch', ('POST',)),
              ('/launch/diagram', ('GET', 'HEAD')), ('/login', ('GET', 'HEAD')), ('/login', ('POST',)), ('/logout', ('POST',)),
-             ('/register', ('OPTIONS', 'POST')), ('/revoke', ('OPTIONS', 'POST')), ('/run/file', ('GET', 'HEAD')), ('/settings', ('GET', 'HEAD')),
+             ('/register', ('OPTIONS', 'POST')), ('/revoke', ('OPTIONS', 'POST')), ('/run/file', ('GET', 'HEAD')), ('/run/log', ('GET', 'HEAD')), ('/settings', ('GET', 'HEAD')),
              ('/settings/inventory', ('POST',)), ('/settings/personal', ('POST',)), ('/settings/pipelines', ('POST',)),
              ('/settings/pipelines/confirm', ('POST',)), ('/token', ('OPTIONS', 'POST')), ('/upload', ('GET', 'HEAD')), ('/upload', ('POST',)),
              ('/upload/{batch}', ('GET', 'HEAD')), ('/usage', ('GET', 'HEAD')), ('/welcome', ('GET', 'HEAD')), ('/welcome', ('POST',))]
@@ -30,7 +30,7 @@ ACTIONS_V3 = ['Caller', 'ConnectorCaller', 'approve', 'caller_area', 'cancel', '
               'person_at', 'pipeline_files', 'platform_path_for', 'preview_samplesheet', 'propose_pipeline_registration', 'read_confined_samplesheet', 'read_run_file', 'read_task_log',
               'register_site_pipeline', 'reload_site_inventory', 'remove_pipeline_registration', 'remove_site_pipeline', 'request_cancel', 'request_facts', 'request_forget',
               'request_launch', 'request_pipeline_launch', 'request_relaunch', 'request_resume', 'run_environment', 'run_file', 'run_outputs', 'run_usage',
-              'set_my_setting', 'site_pipeline_inventory', 'start_upload_batch', 'upload_batch_status', 'void_request']
+              'set_my_setting', 'site_pipeline_inventory', 'start_upload_batch', 'task_log_view', 'upload_batch_status', 'void_request']
 
 REJECTED = ["javascript:alert(1)", "JaVaScRiPt:alert(1)", "data:text/html,x", "file:///etc/passwd", "ftp://x", "//evil.example",
             "http://user:pw@host/", "http://h/?token=abc", "http://h/?PASSWORD=x", "http://h/?key=abc", "http://h/?secret=abc",

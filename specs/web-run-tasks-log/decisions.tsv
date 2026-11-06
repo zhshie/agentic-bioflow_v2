@@ -4,3 +4,4 @@ ts	phase	decision	why	evidence	result
 2026-11-06T22:45	green	test_web_board.py 的路由清單加 /run/log	新路由必然改變該清單，只是加法	test_web_board.py:826	通過
 2026-11-06T23:20	green	全套測試顯示五支舊測試的路由清單、動作名單、NO_TOOL 要跟新路由／新動作對齊，逐一加 /run/log 與 task_log_view，並重算 k8s 摘要	新增一條唯讀路由與一個動作必然改變這些釘住的清單，僅是加法	test_k8s_launch.py:1434,1437; test_owner_guard.py NO_TOOL	聚焦跑 5 支 pass
 2026-11-06T23:50	green	test_results_files 的新路由清單加 /run/log	全套測試第二輪才露出，只是加法，仍無整批下載	test_results_files.py:604	通過
+2026-11-07T00:20	green	test_web_downstream 的路由與動作名單加 /run/log、task_log_view	全套第三輪才露出，只是加法	test_web_downstream.py:22,33	通過
