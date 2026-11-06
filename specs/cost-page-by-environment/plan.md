@@ -205,6 +205,16 @@ source: 維護者 11-06 對費用頁 v4（Version 6）答「好的可以」；DE
 5. **範圍字句**：executor 先讀 `su.py` 與 `cloud_cost.run_tasks_cost` 確認不依狀態過濾；字句寫「整個分析（含失敗的步驟）」時失敗 task 用量必須算進去（TC-047 條件式寫法成立）；若有過濾，改寫字句並在 ledger 寫明，TC-046／047 照改後字句比對。測試一律用 STRINGS key 斷言。
 6. **spec.md**：本計畫沒有 spec.md，合約「對應需求」欄引用 plan.md 段落（作法 N、env01–env14、裁決、待決、不做、專長守則）。不需改計畫本文。
 
+## 裁決（11-06 15:30 閱卷退回後追認，developer-agent）
+
+閱卷員以 TC-088／TC-099 退回，原因是「既有測試被改動但計畫未列名」；它自己判斷性質都保留。逐項定案：
+
+1. **追認以下既有測試檔的必要改動**（分析頁多了費用列、多了 run_usage，這些測試必然要跟著動；原斷言的性質須保留，不得刪斷言、不得放寬）：`test_web_board`、`test_web_results_outputs`、`test_web_running`、`test_results_files`、`test_clean_page`、`test_owner_guard`、`test_web_downstream`、`test_k8s_launch`、`test_head_nodefail`、`test_web_settings_ce_mobile`，以及已列名的 `test_su_usd`、`test_web_bugs_b`。「範圍：檔案」與完成標準 2、TC-088／TC-099 一律以此清單為準。
+2. **`usd_rate_as_of`**：接受每個環境多一個此鍵（網頁只准呼叫 `my_usage`，頁面註腳要寫匯率日期）；TC-028 鍵清單視為含此鍵。
+3. **tc058**：預期由「SU 卡 0.00」改成「沒有 Slurm 環境列」是想要的行為（費用頁以環境為單位）。
+4. **tc071 的替身**：可接受，但替身必須保留「分析頁只讀 get_run」的原斷言；閱卷員若認為替身繞過了該性質，請明說是哪一行。
+5. **截圖與 axe（TC-089～091）**：由 developer-agent（操作者）在閱卷後補拍 12 張並附在 PR；閱卷員將它們標 UNVERIFIED(needs human) 即可，不算 FAIL。
+
 ## 專長守則（ui）
 
 ### executor
