@@ -115,8 +115,11 @@ def ok_result(data, name="multiqc_report.html"):
     return {"ok": True, "status": "ok", "name": name, "size": len(data), "b64": base64.b64encode(data).decode("ascii")}
 
 
+COST_ROW = re.compile(r'<table class="tbl"><thead><tr><th>(?:環境|Environment)</th>.*?</table>', re.S)   # the run-page cost row (cost-page-by-environment); these tests are about what sits around it
+
+
 def mid(text):
-    return pane(text, "middle")
+    return COST_ROW.sub("", pane(text, "middle"))
 
 
 def crumbs(text):
