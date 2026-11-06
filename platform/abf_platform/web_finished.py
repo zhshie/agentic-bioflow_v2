@@ -3,7 +3,7 @@
 
 No database, no file and no network is touched here: `web.py` reads `launch_prefill` and `run_outputs(enqueue=False)` for the logged-in
 caller and hands the answers in. Every word of this stage is in the two tables below (zh and en, same keys). Each state is a symbol plus
-words; the colour only helps. Nothing here downloads, writes or asks the site for anything.
+words; the colour only helps. Nothing here downloads, writes or asks the site for anything: the download block only makes links to the existing `/run/file`.
 """
 import html
 
@@ -15,7 +15,7 @@ STRINGS = {
         "foreign": "此分析並非經由平台送出，無來源紀錄。",
         "pack": "交付包", "report": "報告", "tables": "結果表格", "multiqc": "MultiQC 報告", "figures": "圖", "methods": "方法段落（含版本）",
         "in_folder": "在輸出資料夾", "no_files": "無檔案", "no_multiqc": "該次未產生", "unread": "尚未讀取輸出", "see_outputs": "查看輸出",
-        "download": "下載交付包",
+        "download": "下載交付包", "dl_head": "下載結果檔", "dl_big": "大於 25 MB", "dl_more": "其餘檔案請至「%s」。",
     },
     "en": {
         "prov": "Provenance", "pipeline": "Pipeline", "revision": "Revision", "params": "Changed parameters", "ce": "Compute environment",
@@ -27,6 +27,7 @@ STRINGS = {
         "methods": "Methods with versions",
         "in_folder": "In the output folder", "no_files": "No files", "no_multiqc": "Not produced this time", "unread": "Outputs not read yet",
         "see_outputs": "View outputs", "download": "Download delivery package",
+        "dl_head": "Download result files", "dl_big": "Over 25 MB", "dl_more": "Other files: see %s.",
     },
 }
 
@@ -92,6 +93,39 @@ def _package(t, lang, run, outputs, board):
     return '<ul class="pack">%s</ul><p class="off">%s %s</p>' % (lis, _e(t["download"]), soon)
 
 
+def _size(n, board):
+    if not isinstance(n, int) or n < 0:
+        return "—"
+    return "%.1f KB" % (n / 1024) if n < 1048576 else board._mb(n)
+
+
+def _downloads(t, lang, run, outputs, board):
+    """Links to the existing `/run/file` for the top-level files (at most 20 items, the MultiQC report first); nothing when not ready."""
+    out = outputs or {}
+    if out.get("found") is False or out.get("state") != "ready":
+        return ""
+    files = out.get("files") or []
+    items = []
+    if any(f.get("name") == "multiqc" and f.get("type") == "dir" for f in files):
+        items.append('<li><a href="%s">%s</a></li>' % (board._url(lang, run["id"], path="/run/file", sub="multiqc/multiqc_report.html"), _e(t["multiqc"])))
+    for f in files:
+        if f.get("type") != "file":
+            continue
+        if f.get("too_large"):
+            items.append('<li>%s <span class="muted">%s</span></li>' % (_e(f.get("name")), _e(t["dl_big"])))
+        elif f.get("download"):
+            items.append('<li><a href="%s">%s</a> <span class="muted">%s</span></li>'
+                         % (board._url(lang, run["id"], path="/run/file", sub=f["download"]), _e(f.get("name")), _e(_size(f.get("size"), board))))
+    if not items:
+        return ""
+    more = ""
+    if len(items) > 20:
+        items = items[:20]
+        see = '<a href="%s">%s</a>' % (board._url(lang, run["id"], "results", tab="outputs"), _e(t["see_outputs"]))
+        more = '<p class="muted">%s</p>' % _e(t["dl_more"]).replace("%s", see)
+    return '<p>%s</p><ul class="pack">%s</ul>%s' % (_e(t["dl_head"]), "".join(items), more)
+
+
 def render_finished(lang, run, provenance, outputs, user_name):
     """The two sections of the finished stage of a succeeded run: provenance (from `launch_prefill`, `get_run`) and the delivery package
     list (from `run_outputs`). `provenance` None is read as a run with no launch record."""
@@ -99,4 +133,4 @@ def render_finished(lang, run, provenance, outputs, user_name):
     t = STRINGS["en" if lang == "en" else "zh"]
     prov = provenance if isinstance(provenance, dict) else {"found": False}
     return ('<section class="card"><h2>%s</h2>%s</section><section class="card"><h2>%s</h2>%s</section>'
-            % (_e(t["prov"]), _provenance(t, run, prov, user_name, web_board), _e(t["pack"]), _package(t, lang, run, outputs, web_board)))
+            % (_e(t["prov"]), _provenance(t, run, prov, user_name, web_board), _e(t["pack"]), _package(t, lang, run, outputs, web_board) + _downloads(t, lang, run, outputs, web_board)))

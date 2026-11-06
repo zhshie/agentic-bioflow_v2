@@ -121,7 +121,7 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
     if view["status"] == "lost":     # the one place that asks the site: only for a run the caller owns, and the answer is there next time
         path = platform_path_for(index_path, platform_path)
         if caller is not None:      # a read with no person behind it asks the site for no one
-            jobs.ask_head_state(path, view["name"])
+            jobs.ask_head_state(path, view["name"], last_message_at=common.parse_iso_epoch(view.get("last_message_at")))
         view = failures.with_head_state(view, jobs.head_state(path, view["name"]))
     asked = jobs.cancel_requested_at(platform_path_for(index_path, platform_path), view["name"])
     if asked is not None:        # a fact about a request that was sent, never a state of the run (the status stays Nextflow's word)
@@ -1813,3 +1813,30 @@ def start_upload_batch(platform_path, tokens_path, caller, **kw):
 def upload_batch_status(platform_path, caller, batch, **kw):
     """Where one batch of the caller's uploads stands; registers the Dataset when every file is in the bucket (actions/uploads.py)."""
     return _uploads.upload_batch_status(platform_path, caller, batch, **kw)
+
+
+# ---- pipeline registrations (pipe-reg-store): the record of which pipeline version is on which compute environment; actions/registrations.py holds the rules ----
+
+from . import registrations as _registrations
+
+
+def list_pipeline_registrations(platform_path, *, ce=None, caller=None):
+    """The caller's pipeline registrations, removed ones left out; old `sitePipelines` entries are added as awaiting_test (actions/registrations.py). Reads only."""
+    return _registrations.list_pipeline_registrations(platform_path, ce=ce, caller=caller)
+
+
+def list_registered_pipelines(platform_path, *, ce, caller=None):
+    """The registered pipeline versions of one of the caller's environments (empty until the test step exists). Reads only."""
+    return _registrations.list_registered_pipelines(platform_path, ce=ce, caller=caller)
+
+
+def propose_pipeline_registration(platform_path, *, ce, pipeline, revision, confirmed_by=None, caller=None):
+    """Record a pipeline version on the caller's environment as "checking", only after a person's yes (actions/registrations.py)."""
+    _require_human(confirmed_by)
+    return _registrations.propose_pipeline_registration(platform_path, ce=ce, pipeline=pipeline, revision=revision, confirmed_by=confirmed_by, caller=caller)
+
+
+def remove_pipeline_registration(platform_path, *, ce, pipeline, revision, confirmed_by=None, caller=None):
+    """Mark a registration removed, only after a person's yes (actions/registrations.py)."""
+    _require_human(confirmed_by)
+    return _registrations.remove_pipeline_registration(platform_path, ce=ce, pipeline=pipeline, revision=revision, confirmed_by=confirmed_by, caller=caller)

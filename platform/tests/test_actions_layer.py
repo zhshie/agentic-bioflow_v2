@@ -222,11 +222,16 @@ def test_tca10_the_server_is_byte_for_byte_the_one_of_the_starting_point(tmp_pat
     assert server.instructions == guidance.routing_instructions()
     for word in ("setup", "launch", "runs", "downstream", "finish", "read-only", "terminal"):
         assert word in server.instructions
-    tools = sorted([t for t in _tools(server) if t.name in READ_NAMES and t.name != "read_run_file"], key=lambda t: t.name)    # mcp-run-file: read_run_file is new, so it is not in the starting point; run_outputs took an optional path    # 009c: the six read tools, unchanged; launch and cancel are new
+    tools = sorted([t for t in _tools(server) if t.name in READ_NAMES and t.name not in ("read_run_file", "get_run")], key=lambda t: t.name)    # ruling R2: get_run changed on purpose (annotation, one sentence of its description); see test_head_nodefail.py TC-046/047    # mcp-run-file: read_run_file is new, so it is not in the starting point; run_outputs took an optional path    # 009c: the six read tools, unchanged; launch and cancel are new
     got = [{"name": t.name, "description": t.description,
             "annotations": t.annotations.model_dump(exclude_none=True) if t.annotations else None,
             "schema": t.input_schema} for t in tools]
-    assert json.loads(json.dumps(got)) == base["tools"]
+    want = [t for t in base["tools"] if t["name"] != "get_run"]      # ruling R2: get_run is checked below against its old self
+    assert json.loads(json.dumps(got)) == want
+    run = [t for t in _tools(server) if t.name == "get_run"][0]
+    old = [t for t in base["tools"] if t["name"] == "get_run"][0]
+    assert run.description.startswith(old["description"]) and run.input_schema == old["schema"]
+    assert run.annotations.model_dump(exclude_none=True) == dict(old["annotations"], read_only_hint=False)
 
 
 def _tool_functions():
@@ -625,7 +630,8 @@ def test_tce01_the_only_write_tools_are_launch_and_cancel_and_none_can_confirm(t
     names = {t.name for t in tools}
     assert names == set(READ_NAMES + CANVAS_NAMES + WRITE_NAMES) and not any(re.search(r"confirm|approve|passwd|login", n) for n in names)
     for t in tools:
-        assert t.annotations.read_only_hint is (t.name in READ_NAMES + CANVAS_NAMES)
+        # ruling R2: get_run is the one query that is not marked read-only (a lost run queues one read of the site)
+        assert t.annotations.read_only_hint is (t.name in READ_NAMES + CANVAS_NAMES and t.name != "get_run")
 
 
 def test_tce02_the_receiver_has_the_routes_of_the_starting_point(tmp_path):
@@ -705,6 +711,7 @@ def test_tce07_exactly_the_five_flow_prompts_on_the_server(tmp_path):
 # ---- settings-register-pipeline (K01): the two write actions of the settings page refuse without a person's channel, and are not tools ----
 
 PAGE_WRITE_NAMES = ["register_site_pipeline", "remove_site_pipeline", "set_my_setting"]      # written only from the settings page; no MCP tool (012a TC-049: set_my_setting flips the personal flags)
+PAGE_WRITE_NAMES += ["propose_pipeline_registration", "remove_pipeline_registration"]      # pipe-reg-store: written only after a person's yes; no tool, no page yet (pipe-reg-settings-ui connects them)
 
 
 @pytest.mark.parametrize("name", PAGE_WRITE_NAMES)

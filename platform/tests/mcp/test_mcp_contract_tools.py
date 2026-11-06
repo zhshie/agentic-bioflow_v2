@@ -122,8 +122,7 @@ LIMIT = 600
 # Technical debt, listed for the maintainer: these descriptions are longer than LIMIT today. A tool listed here may not grow past the
 # number written next to it; shorten the description and delete the line. (Measured on v3.)
 OVER_LIMIT = {
-    "get_run": 683,
-    "launch": 968,
+    "get_run": 804,      # ruling R2: +121 for the sentence that a lost run triggers one read-only site query
     "run_outputs": 700,
 }
 
