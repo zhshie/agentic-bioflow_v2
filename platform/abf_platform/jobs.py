@@ -1,7 +1,7 @@
-# Not Celery or RQ: they need a separate broker process; ten job kinds in one SQLite table are enough, and the table is not a run state machine.
+# Not Celery or RQ: they need a separate broker process; eleven job kinds in one SQLite table are enough, and the table is not a run state machine.
 """The queue of jobs that agents poll for.
 
-Ten kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log`, `pipeline_files` and `read_run_file`
+Eleven kinds exist (a CHECK constraint in platform.db says so): `preflight`, `list_site_files`, `fetch_run_records`, `read_task_log`, `pipeline_files`, `lint_pipeline` and `read_run_file`
 only read (`read_run_file` asks the agent to read one result file of a run, at most 25 MB, for the web download); `put_upload` asks the agent to write one file the user put in the uploads folder into the user's own cloud prefix, and needs no
 confirmation (the person pressing Upload is the yes; it is queued only by enqueue_put_upload); `launch_nextflow`, `cancel_run` and `clean_work` write on the site, so a job of those three kinds can only be queued with
 a confirmation: a row that a person's yes made (state confirmed: y at the terminal, a form in the MCP client, or the
@@ -29,7 +29,7 @@ from . import cloud_store, common, compute_envs, failures, records, releases, st
 LIST_LIMIT = 500
 PRUNE_AFTER_SECONDS = 7 * 86400
 DEADLINE_SECONDS = {"preflight": 180, "list_site_files": 60, "launch_nextflow": 300, "cancel_run": 90,
-                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600, "pipeline_files": 90, "read_run_file": 60}
+                    "fetch_run_records": 180, "read_task_log": 60, "clean_work": 600, "put_upload": 3600, "pipeline_files": 90, "read_run_file": 60, "lint_pipeline": 300}
 _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "list_site_files": "ABF_PLATFORM_DEADLINE_LIST_SITE_FILES",
                  "launch_nextflow": "ABF_PLATFORM_DEADLINE_LAUNCH",
@@ -39,7 +39,8 @@ _DEADLINE_ENV = {"preflight": "ABF_PLATFORM_DEADLINE_PREFLIGHT",
                  "clean_work": "ABF_PLATFORM_DEADLINE_CLEAN",
                  "put_upload": "ABF_PLATFORM_DEADLINE_PUT_UPLOAD",
                  "pipeline_files": "ABF_PLATFORM_DEADLINE_PIPELINE_FILES",
-                 "read_run_file": "ABF_PLATFORM_DEADLINE_READ_RUN_FILE"}
+                 "read_run_file": "ABF_PLATFORM_DEADLINE_READ_RUN_FILE",
+                 "lint_pipeline": "ABF_PLATFORM_DEADLINE_LINT_PIPELINE"}
 LOG_FILES = {"err": ".command.err", "out": ".command.out", "log": ".command.log"}      # the only three files read_task_log can name
 # The words D5 of run-diag-tools fixes. The package-source scan of test_scope (TC-061) forbids that whole word in this package's lines, so it is joined here.
 NO_AGENT_KNOWN = "no " + "sta" "tion agent is known for this run (這個 run 不是從這個平台送出的，不知道是哪個代理)"
@@ -58,6 +59,9 @@ _RUN_FILE_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 PF_PARTS = ("schema", "schema_input", "diagram", "image", "tags", "catalogue")      # the standard order of the parts of one job
 PF_STATUSES = ("ok", "not_found", "too_large", "bad_response", "rate_limited", "none")
 PF_RETRY_SECONDS = 60
+# lint_pipeline (017c2a): the five ends a lint can have, and the longest report the platform keeps
+LINT_STATUSES = ("passed", "failed", "unavailable", "error", "expired")
+LINT_REPORT_MAX = 8000
 TAGS_CACHE_SECONDS = 24 * 3600
 TAGS_CACHE_FILE = "release-tags.json"
 # nfcore-catalogue: nf-core's list of all pipelines is one more part of the same job; an answer is reused for a day from the job row
@@ -210,6 +214,8 @@ def _enqueue(state_path, ce_name, kind, listing_path, clock, deadline, offline_a
         raise JobRefused("a file upload is queued only through enqueue_put_upload (上傳只能走專用入口)")
     if kind == "pipeline_files":
         raise JobRefused("reading public files is queued only through enqueue_pipeline_files (讀公開檔只能走專用入口)")
+    if kind == "lint_pipeline":
+        raise JobRefused("a lint is queued only through enqueue_lint_pipeline (lint 只能走專用入口 enqueue_lint_pipeline)")
     if kind == "list_site_files":
         listing_path = check_listing_path(listing_path)
     now = clock()
@@ -349,19 +355,19 @@ def pf_arguments(repo, revision, parts):
     return repo, revision, ordered
 
 
-def pick_environment(con, caller_user_id, compute_env, now, offline_after):
+def pick_environment(con, caller_user_id, compute_env, now, offline_after, *, kind="pipeline_files"):
     """The compute environment row whose agent will read the files. This job never touches the cluster, so it only needs an
     agent that is online: an environment that was just made and not checked yet is as good as an available one. With a name, only that
     one; without, the caller's own environments by name, the first that passes. None for caller_user_id is the local terminal."""
     if compute_env is not None:
-        return _target(con, compute_env, "pipeline_files", now, offline_after, caller_user_id)
+        return _target(con, compute_env, kind, now, offline_after, caller_user_id)
     if caller_user_id is None:
         names = con.execute("SELECT name FROM compute_envs ORDER BY name").fetchall()
     else:
         names = con.execute("SELECT name FROM compute_envs WHERE owner_user_id = ? ORDER BY name", (caller_user_id,)).fetchall()
     for entry in names:
         try:
-            return _target(con, entry["name"], "pipeline_files", now, offline_after, caller_user_id)
+            return _target(con, entry["name"], kind, now, offline_after, caller_user_id)
         except JobRefused:
             continue
     raise JobRefused("no online agent of yours (沒有在線的代理): start your agent and add a compute environment for it first "
@@ -379,6 +385,21 @@ def enqueue_pipeline_files(state_path, repo, revision, parts, *, compute_env=Non
     def work(con):
         row = pick_environment(con, caller_user_id, compute_env, now, offline_after)
         return _insert_job(con, row, "pipeline_files", {"repo": repo, "revision": revision, "parts": parts}, now, seconds)
+
+    return transaction(state_path, work)
+
+
+def enqueue_lint_pipeline(state_path, name, version, project, *, compute_env=None, clock=time.time, deadline_seconds=None,
+                          offline_after=None, caller_user_id=None):
+    """Ask an agent of the caller to run nf-core's lint on the project files of one composed pipeline version (the agent's lint
+    module, on the agent's own host). The only way to queue this kind. It reads only and costs nothing, so it needs no confirmation;
+    the job holds the project text (already bounded by the caller), nothing secret."""
+    now = clock()
+    seconds = _seconds("lint_pipeline", deadline_seconds)
+
+    def work(con):
+        row = pick_environment(con, caller_user_id, compute_env, now, offline_after, kind="lint_pipeline")
+        return _insert_job(con, row, "lint_pipeline", {"name": name, "version": version, "project": project}, now, seconds)
 
     return transaction(state_path, work)
 
@@ -1297,6 +1318,23 @@ def clean_result(kind, result, stored=None, host=None):
                 if cleaned is not None:
                     parts[name] = cleaned
         out["parts"] = parts
+    elif kind == "lint_pipeline":
+        out.pop("message", None)
+        out.pop("error", None)
+        out.pop("note", None)
+        status = result.get("status")
+        out["status"] = status if status in LINT_STATUSES else "error"
+        if isinstance(result.get("reason"), str):
+            out["reason"] = _short(result["reason"], 200)
+        if isinstance(result.get("report"), str):
+            out["report"] = _short(result["report"], LINT_REPORT_MAX)
+        counts = {}
+        if isinstance(result.get("counts"), dict):
+            for key in ("passed", "warned", "failed"):
+                n = result["counts"].get(key)
+                if isinstance(n, int) and not isinstance(n, bool) and 0 <= n <= 100000:
+                    counts[key] = n
+        out["counts"] = counts
     elif kind == "put_upload":
         written = _int(result.get("bytes"), 0, cloud_store.UPLOAD_LIMIT)
         if written is not None:

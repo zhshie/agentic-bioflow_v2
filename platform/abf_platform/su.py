@@ -7,7 +7,6 @@ rates file) the answer is None with the reasons, never a guess and never 0. Noth
 at the moment someone asks.
 """
 import datetime
-import json
 import sqlite3
 from pathlib import Path
 
@@ -32,17 +31,17 @@ RUN_NOT_ENDED = "run 還沒結束，SU 等它結束後再算 (the run has not en
 
 
 def load_rates(path=None):
-    """The rates table, or None when the file cannot be read as JSON."""
-    try:
-        with open(path or RATES_PATH, encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
+    """The rates table, or None when the file cannot be read as a JSON object. The reading is cloud_cost's; the default file stays this
+    module's own RATES_PATH (cloud_cost's default is its cloud rates file). cloud_cost imports this module at its top, so it is imported
+    here inside the function, not at the top."""
+    from . import cloud_cost
+    return cloud_cost.load_rates(path or RATES_PATH)
 
 
 def _number(v):
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    """A real, finite number (cloud_cost's check: not a bool, and neither NaN nor Infinity, which json.load accepts)."""
+    from . import cloud_cost
+    return cloud_cost._number(v)
 
 
 def _unknown(reasons):

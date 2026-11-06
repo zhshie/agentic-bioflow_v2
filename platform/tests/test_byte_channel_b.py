@@ -180,8 +180,8 @@ def w(tmp_path, monkeypatch):
 def test_tc001_put_upload_is_the_last_kind(w):
     # TC-001, BB-01
     from abf_station import handlers
-    assert handlers.JOB_KINDS[-3:] == ("put_upload", "pipeline_files", "read_run_file")      # release-lookup-job: put_upload comes before pipeline_files; results-files: read_run_file is last
-    assert handlers.JOB_KINDS[:-3] == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records",
+    assert handlers.JOB_KINDS[-4:] == ("put_upload", "pipeline_files", "read_run_file", "lint_pipeline")      # release-lookup-job: put_upload comes before pipeline_files; results-files: read_run_file is last
+    assert handlers.JOB_KINDS[:-4] == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records",
                                        "read_task_log", "clean_work")
 
 
