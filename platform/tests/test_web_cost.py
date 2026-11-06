@@ -507,11 +507,11 @@ def test_co11_my_usage_action_and_mcp_match(w):
     seed(w, "ann-cl", ann, "cloud", hours=6)
     cap(w, ann, 50)
     got = usage(w, ann)
-    assert set(got) == {"month", "environments", "usd_rate_as_of", "cloud"}
+    assert set(got) == {"month", "environments", "cloud"}
     assert set(got["cloud"]) == {"used_usd", "unknown_runs", "cap_usd", "remaining_usd", "currency"}
     assert got["month"] == this_month()
     for e in got["environments"]:
-        assert set(e) == {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses"}
+        assert set(e) == {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses", "usd_rate_as_of"}
         for item in e["analyses"]:
             assert set(item) == {"name", "started_at", "state", "value", "usd_approx", "unknown_reasons"}
     assert sorted(a["name"] for e in got["environments"] for a in e["analyses"]) == ["ann-cl", "ann-run"]

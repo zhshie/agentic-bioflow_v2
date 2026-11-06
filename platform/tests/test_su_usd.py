@@ -126,7 +126,7 @@ def test_tc016_to_019_my_usage_usd(w):
     got = env_of(usage(w, ann), "nchc1")
     total = got["total"]
     assert got["usd_approx"] == pytest.approx(total * 0.08 / 32)                                 # TC-016 (by formula, not 0.03)
-    assert usage(w, ann)["usd_rate_as_of"] == "2026-10-13"                                       # TC-017
+    assert env_of(usage(w, ann), "nchc1")["usd_rate_as_of"] == "2026-10-13"                                       # TC-017
     for row in got["analyses"]:                                                                  # TC-018
         assert row["usd_approx"] == pytest.approx(row["value"] * 0.08 / 32)
     seed(w, "cl-a", ann, "cloud", hours=6)
@@ -150,9 +150,9 @@ def test_tc021_key_sets(w):
     ann = two_runs(w)
     seed(w, "cl-a", ann, "cloud", hours=6)
     got = usage(w, ann)
-    assert set(got) == {"month", "environments", "usd_rate_as_of", "cloud"}
+    assert set(got) == {"month", "environments", "cloud"}
     for e in got["environments"]:
-        assert set(e) == {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses"}
+        assert set(e) == {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses", "usd_rate_as_of"}
         for row in e["analyses"]:
             assert set(row) == {"name", "started_at", "state", "value", "usd_approx", "unknown_reasons"}
     assert set(got["cloud"]) == {"used_usd", "unknown_runs", "cap_usd", "remaining_usd", "currency"}
@@ -203,7 +203,7 @@ def test_tc029_to_031_missing_usd_twd(w, tmp_path, monkeypatch):
     for change in cases:
         set_rates(tmp_path, monkeypatch, **change)
         got = usage(w, ann)
-        assert env_of(got, "nchc1")["usd_approx"] is None and got["usd_rate_as_of"] is None, change
+        assert env_of(got, "nchc1")["usd_approx"] is None and env_of(got, "nchc1")["usd_rate_as_of"] is None, change
         assert env_of(got, "nchc1")["total"] == pytest.approx(plain_total)
         assert all(r["usd_approx"] is None for e in got["environments"] for r in e["analyses"])
     set_rates(tmp_path, monkeypatch, usd_twd="DROP")

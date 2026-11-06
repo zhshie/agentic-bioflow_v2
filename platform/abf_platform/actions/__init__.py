@@ -260,11 +260,12 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
         environments.append({
             "name": ce, "kind": compute_envs.KINDS.get(platform) if platform else None, "unit": unit, "site": site, "total": total,
             "usd_approx": su.usd_of(total, site, rates) if unit == "SU" and as_of else None,
+            "usd_rate_as_of": as_of if unit == "SU" else None,
             "unknown_runs": sum(1 for x in items if x["value"] is None), "unknown_reasons": reasons, "analyses_count": len(items),
             "analyses": [{k: x[k] for k in ("name", "started_at", "state", "value", "usd_approx", "unknown_reasons")}
                          for x in items[:_USAGE_RUNS_CAP]]})
     environments.sort(key=lambda e: (e["analyses"][0]["started_at"], e["name"] or ""), reverse=True)
-    return {"month": month, "environments": environments, "usd_rate_as_of": as_of,
+    return {"month": month, "environments": environments,
             "cloud": _cost.month_usage(index_path, platform_path, caller.user_id, month, cloud_rates, tokens_path)}
 
 

@@ -12,3 +12,5 @@ ts	phase	decision	why	evidence	result
 2026-11-06	fix	_launch_facts 的 ce／platform 一律用 .get	計畫作法 2 要求；替身只回舊三鍵時不可 KeyError（/usage 只接 sqlite3.Error 會變 500）	platform/abf_platform/actions/__init__.py;test_web_cost.py::test_tc030_old_three_key_facts_do_not_crash	先紅 KeyError:ce，修後綠
 2026-11-06	fix	上限列由兩張卡改回頁面最上方一行 <p class="muted">，過額用 span.state-failed＋⚠	計畫作法 6 與待決 1 要一行；前一輪誤做成兩張卡	platform/abf_platform/web_cost.py:_cap_line	test_web_cost／test_su_usd／test_cost_by_env／test_web_bugs_b／test_web_wording_sweep 125 通過
 2026-11-06	blocked	TC-099 清單外的既有斷言改動不自行核可，寫進 ledger 7b 等人認可	計畫沒點名	specs/cost-page-by-environment/ledger.md 7b	待 developer-agent
+2026-11-06	fix-round	my_usage 頂層鍵回到 month/environments/cloud；匯率日期移到各 SU 環境的 usd_rate_as_of	TC-028 頂層鍵恰為三鍵；TC-069 註腳仍需日期，路由只能呼叫 my_usage	platform/abf_platform/actions/__init__.py:my_usage、web_cost.py:_middle	182 passed（相關 6 檔）；環境多一鍵待 developer-agent 認可
+2026-11-06	fix-round	TC-099 清單外的既有測試改動不改回	改回會使分析頁費用列（表格）與 run_usage（動作數 59）讓它們紅；執行者無權核可	specs/cost-page-by-environment/ledger.md 7b	待 developer-agent 認可

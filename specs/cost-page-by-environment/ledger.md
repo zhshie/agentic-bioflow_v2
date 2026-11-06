@@ -12,7 +12,7 @@
 ## 3. 進度（executor）
 
 - [x] `cloud_cost._launch_facts` 加 `ce`、`platform`。
-- [x] `actions.my_usage` 改為 `{month, environments, usd_rate_as_of, cloud}`；`su`、`runs` 兩鍵刪除；不呼叫 `su.month_total`。
+- [x] `actions.my_usage` 改為 `{month, environments, cloud}`（頂層恰為合約三鍵；匯率日期改放各 SU 環境的 `usd_rate_as_of`，修正輪）；`su`、`runs` 兩鍵刪除；不呼叫 `su.month_total`。
 - [x] `actions.run_usage`（只給網頁，`WEB_ONLY`，不是 MCP 工具）。
 - [x] `web_cost.py` 重寫：上限與剩餘合成頁面最上方一行 `<p class="muted">`（修正輪由兩張卡改回一行）＋固定句＋每個環境一個 `<details>`，單一環境時預設展開；`web_board.cost_row` 放進分析頁。
 - [x] 測試：`tests/test_cost_by_env.py`（新）；既有測試依「允許改動」改形狀。
@@ -39,7 +39,7 @@
 4. 範圍字句：「整個分析（含失敗的步驟）」。`su.run_tasks` 與 `cloud_cost` 都不依 task 狀態過濾，字句成立。
 5. 環境小計遇到無法計算的分析：已知加總＋「另有 N 個分析無法計算」；整個環境都算不出來時顯示 `—` 加第一個原因。
 
-偏離一：`my_usage` 頂層多一個 `usd_rate_as_of`（計畫寫 `{month, environments, cloud}`）。原因：頁面註腳要寫匯率日期，而 SU 環境可能沒有任何一列有美元值，日期無法從各列推。請 developer-agent 認可或改派。
+偏離一（修正輪改）：頂層鍵已回到合約的 `month`、`environments`、`cloud`。但 TC-016/069 要求頁面註腳帶匯率日期（`usd_note` 一字不差），而網頁路由只准呼叫 `my_usage`，日期只能由 `my_usage` 帶出；因此各 Slurm（SU）環境多一個 `usd_rate_as_of`（其餘環境為 None）。TC-028 對環境鍵寫「有 …」未寫「恰為」，這樣字面上不違約，但仍是多一個鍵，請 developer-agent 認可，或改派（例如新增專供網頁的動作）。
 
 偏離二：`test_su_usd.py` TC-071 原斷言「分析頁不讀費率」。新費用列走 `run_usage`（它讀費率），所以該測試把 `actions.run_usage` 換成回 `{}` 的替身，原斷言一字不動。此測試不在「允許改動」清單，在此說明。
 

@@ -92,9 +92,9 @@ def test_env02_three_environments_nothing_added(w):
         assert not ("SU" in outside and "US$" in outside), url
         assert "國網" not in text and "雲端已用" not in text and "NCHC" not in text, url
     got = usage(w, ann)
-    assert set(got) == {"month", "environments", "usd_rate_as_of", "cloud"}
+    assert set(got) == {"month", "environments", "cloud"}
     assert {e["unit"] for e in got["environments"]} == {"SU", "USD"}
-    keys = {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses"}
+    keys = {"name", "kind", "unit", "site", "total", "usd_approx", "unknown_runs", "unknown_reasons", "analyses_count", "analyses", "usd_rate_as_of"}
     for e in got["environments"]:
         assert set(e) == keys and e["unit"] in ("SU", "USD", None)
         assert all(set(a) == {"name", "started_at", "state", "value", "usd_approx", "unknown_reasons"} for a in e["analyses"])
@@ -309,7 +309,7 @@ def test_env13_unreadable_index_is_an_empty_page(w, monkeypatch):
     ann = w.user("ann")
     rid = seed(w, "run-a", ann, hours=2, ce="slurm-a")
     empty = web_cost.empty_usage("2026-10")
-    assert empty["environments"] == [] and set(empty) == {"month", "environments", "usd_rate_as_of", "cloud"} and "cap_usd" in empty["cloud"]
+    assert empty["environments"] == [] and set(empty) == {"month", "environments", "cloud"} and "cap_usd" in empty["cloud"]
 
     def boom(*a, **k):
         raise sqlite3.OperationalError("no such table: runs at /secret/index.db")

@@ -73,7 +73,7 @@ def shift(month, step):
 
 def empty_usage(month):
     """What the page shows when the index cannot be read: nothing used, nothing listed (an unreadable index is an empty month, not a 500)."""
-    return {"month": month, "environments": [], "usd_rate_as_of": None,
+    return {"month": month, "environments": [],
             "cloud": {"used_usd": 0.0, "unknown_runs": 0, CAP_KEY: None, "remaining_usd": None, "currency": "USD"}}
 
 
@@ -171,9 +171,9 @@ def _middle(t, lang, data, ids, this_month, bad_month):
     if month < this_month:        # never a link to a month that has not begun
         nav.append(_month_link(lang, shift(month, 1), t["next"]))
     notice = '<div class="notice" role="alert"><p>%s</p></div>' % web_board.esc(t["bad_month"]) if bad_month else ""
-    as_of = data.get("usd_rate_as_of")
-    shows_su = any(e["unit"] == "SU" and e["usd_approx"] is not None for e in data["environments"])
-    note = t["note"] + ("" if lang == "zh" else " ") + t["usd_note"] % as_of if as_of and shows_su else t["note"]
+    dated = [e.get("usd_rate_as_of") for e in data["environments"] if e["unit"] == "SU" and e["usd_approx"] is not None]
+    as_of = next((d for d in dated if d), None)        # the rate's date sits on the Slurm environments' entries, not at the top of the answer
+    note = t["note"] + ("" if lang == "zh" else " ") + t["usd_note"] % as_of if as_of else t["note"]
     return ('<main class="main" data-pane="middle"><h1>%s <small>%s</small></h1><p class="views">%s</p>%s%s<p class="muted">%s</p>%s</main>'
             % (web_board.esc(t["title"]), web_board.esc(month), "".join(nav), notice, _cap_line(t, lang, data, this_month), web_board.esc(note),
                _envs(t, lang, data["environments"], ids, month, this_month)))
