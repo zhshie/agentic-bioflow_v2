@@ -868,3 +868,15 @@ def test_no_new_public_name_in_the_tool_or_web_layers():
             text = text.replace("request_pipeline_launch", "").replace("launch_pipeline", "")
         assert "pipeline_launch" not in text and "launch_pipeline" not in text, f
     assert "pipeline_launch" not in read(PLATFORM / "abf_station" / "handlers.py")
+
+
+def test_a_failed_lint_does_not_block_a_launch(d):
+    # 017c2a TC-100: the launch gate looks at the static check only; a version whose lint failed is asked for as before
+    pid = make(d, d.a)
+    pipes().validate_pipeline(d.state, pid, caller=d.a)
+    con = sqlite3.connect(str(d.state))
+    con.execute("UPDATE pipeline_validations SET lint_status = 'failed', lint_report = 'files_exist: x', lint_job_id = 1, lint_at = 1.0 WHERE pipeline_id = ?", (pid,))
+    con.commit()
+    con.close()
+    out = ask(d, d.a, pid)
+    assert out.get("ok") is True, out.get("message")

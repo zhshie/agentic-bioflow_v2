@@ -458,3 +458,8 @@ def test_only_the_seven_codes_appear():
     seen = set(codes(validate_mod().validate(norm(graph, data), data)["findings"]))
     seen |= set(codes(validate_mod().validate(norm(qc_graph()), cat(mod("x")))["findings"]))
     assert seen <= CODES
+
+
+def test_017c2a_tc109_checks_stay_static_only():
+    # 017c2a TC-109: the optional lint is not a check of validate()
+    assert golden()["checks"] == ["static"]
