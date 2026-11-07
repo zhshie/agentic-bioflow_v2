@@ -291,7 +291,7 @@ def run_usage(index_path, run_id, *, caller=None, platform_path=None):
 def list_compute_envs(platform_path, *, caller=None):
     envs = compute_envs.list_all(platform_path, owner=_caller_id(caller))
     # what each environment's own agent last said about the shared connection to the site: self-reported, read-only (agents.view)
-    by_agent = {a["name"]: a for a in agents.list_agents(platform_path, status.now())}
+    by_agent = {a["name"]: a for a in agents.list_agents(platform_path, status.now(), owner=_caller_id(caller))}
     for env in envs:
         a = by_agent.get(env.get("agent"))
         env["site_connection"] = {"state": a["site_link"] if a else "unknown", "as_of": a["site_link_at"] if a else None,
@@ -447,9 +447,9 @@ def _with_agent(message, agent):
     return message + ' Run it in the WSL terminal of the machine running agent "%s" (請在執行 agent「%s」那台機器的 WSL 終端機執行).' % (agent, agent)
 
 
-def _agent_of_ce(platform_path, compute_env):
+def _agent_of_ce(platform_path, compute_env, owner=None):
     try:
-        ce = compute_envs.get(platform_path, compute_env) if isinstance(compute_env, str) else None
+        ce = compute_envs.get(platform_path, compute_env, owner=owner) if isinstance(compute_env, str) else None
     except (sqlite3.Error, OSError):
         return None
     return ce.get("agent") if ce else None
@@ -465,7 +465,7 @@ async def list_site_files(platform_path, compute_env, path, *, caller=None):
     try:
         job_id = jobs.enqueue_listing(platform_path, compute_env, path, status.now, caller_user_id=_caller_id(caller))
     except jobs.JobRefused as e:
-        answer.update(ok=False, message=_with_agent(str(e), _agent_of_ce(platform_path, compute_env)))
+        answer.update(ok=False, message=_with_agent(str(e), _agent_of_ce(platform_path, compute_env, _caller_id(caller))))
         return answer
     out = await jobs.wait_for_result(platform_path, job_id, status.now)
     result = out["result"]
@@ -473,7 +473,7 @@ async def list_site_files(platform_path, compute_env, path, *, caller=None):
         answer.update(result)
         answer["path"] = result.get("path", path)
         return answer
-    answer.update(ok=False, message=_with_agent(out["message"], _agent_of_ce(platform_path, compute_env)))
+    answer.update(ok=False, message=_with_agent(out["message"], _agent_of_ce(platform_path, compute_env, _caller_id(caller))))
     if result and result.get("error"):
         answer["error"] = result["error"]
     return answer
