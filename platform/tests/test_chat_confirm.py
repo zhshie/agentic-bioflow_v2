@@ -380,7 +380,7 @@ BASE_ROUTES = [
     ("/act/{verb}/edit", ("GET", "HEAD")), ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")),
     ("/c/{rid}", ("POST",)), ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")),
     ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")), ("/login", ("GET", "HEAD")), ("/login", ("POST",)),
-    ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")),
+    ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")), ("/run/log", ("GET", "HEAD")),
     ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/personal", ("POST",)),
     ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)), ("/token", ("OPTIONS", "POST")),
     ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")), ("/usage", ("GET", "HEAD")),

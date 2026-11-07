@@ -21,3 +21,7 @@
 - shard_6 單跑 ok 280s（逼近 300s 上限，機器忙時會逾時）。
 - 第三次全套在 shard_6 之前全部 ok（shard 1-5 ok），但 2 小時背景上限在 shard_6 還在跑時到了，沒拿到完整綠燈。
 - 下一步：機器較空時重跑全套；若 shard_6 仍逾時，需 lead 決定。未寫 GREEN。
+
+## 續作 2 (executor)
+- origin/v3 又前進 28 commits (fcb26614)，已 merge 進分支，無衝突，沒有 force。
+- 新差異只有一項：v3 加入 GET /run/log (web-run-tasks-log)；BASE_ROUTES 加入該路由。結構雜湊不變。test_chat_confirm.py 38 passed。
