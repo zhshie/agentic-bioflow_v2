@@ -20,3 +20,4 @@
 - docs/TESTING.md step 3 of the manual case updated.
 - Screenshots: all 24 retaken with seed_failed_demo.py; log pages axe-clean. Remaining axe critical `meta-refresh` is the board's old tag on board-tasks, board-logs, results-logs (pages that already had it; outside this task by the ruling). Every board page built by `render_board` has it; also `document(..., refresh=True)` pages of other features (results outputs loading, /run/file loading, launch loading, waiting-for-run page).
 - GATE: full suite at the new HEAD, marker written after.
+- Fix round 4: the STRINGS digest in test_web_settings_ce_mobile.py::test_ce08_no_new_strings re-taken (web_board hash only) because l_loading changed and l_reload / l_asof were added; same kind of update as 0d05064d. Nothing else in that test touched.

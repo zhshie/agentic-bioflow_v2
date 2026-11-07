@@ -12,3 +12,4 @@ ts	phase	decision	why	evidence	result
 2026-11-07T12:41	fix3	TC-036 meta-refresh 與 TC-011 的 15 秒刷新衝突：不改程式、不改 TC，留給維護者決定	TC-011 與 TC-036 是已確認的合約，執行者不得改；去掉刷新或改驗收規則屬維護者決定	specs/web-run-tasks-log/screenshots/summary.md:122-127	未處理，回報為待決
 2026-11-07T20:30	fix	等待中的日誌頁拿掉 meta-refresh，改放「重新整理」連結與資料時間	計畫裁決（lead 2026-11-07 晚）：axe 把 meta-refresh 當嚴重違規，本站不得新增	platform/abf_platform/web_board.py render_log_page; platform/tests/test_web_run_log.py is_waiting	29 個日誌測試全綠；24 張截圖重拍，日誌頁 axe 無違規
 2026-11-07T20:40	fix	連結與資料時間分成兩段	axe link-in-text-block（serious）：連結和文字同一段	web_board.py render_log_page	日誌頁 12 張 axe 無違規
+2026-11-07T23:10	fix	更新 STRINGS 雜湊（ce08）	新增 l_reload、l_asof 並改 l_loading，全套測試唯一失敗	platform/tests/test_web_settings_ce_mobile.py:100	重跑 ce08 後綠

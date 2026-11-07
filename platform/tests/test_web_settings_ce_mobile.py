@@ -98,7 +98,7 @@ def test_ce08_no_new_strings():
     from abf_platform import web_board, web_settings
     got = [hashlib.sha256(json.dumps(m.STRINGS, sort_keys=True, ensure_ascii=False).encode()).hexdigest() for m in (web_settings, web_board)]
     assert got == ["82228e36c502def9667ae1c87a618f96b4b53baa811f2bfa4338621cb081094b",
-                   "96772702f624769f85a179c2d4bd8aeec10ff8de715f8d2495257d5262e8c469"]      # web-run-tasks-log adds the l_* log-page strings and th_log; cost-page-by-environment adds the run-page cost row strings; refusal-visibility adds refusal_* strings; web-bugs-a adds failed_unlisted/failed_partial and placeholder strings; 012b-2 adds g_pv_* guided preview strings; resume-edit-web merges RESUME_EDIT into web_board.STRINGS; web-bugs-b adds the title-row meta labels
+                   "62a5d706e1f0d5b552fbfbb893418c810b1ff902b427fb454f6edff05d3ec399"]      # web-run-tasks-log adds the l_* log-page strings (l_reload, l_asof, no auto-refresh sentence) and th_log; cost-page-by-environment adds the run-page cost row strings; refusal-visibility adds refusal_* strings; web-bugs-a adds failed_unlisted/failed_partial and placeholder strings; 012b-2 adds g_pv_* guided preview strings; resume-edit-web merges RESUME_EDIT into web_board.STRINGS; web-bugs-b adds the title-row meta labels
 
 
 def test_ce09_no_inline_style(w):
