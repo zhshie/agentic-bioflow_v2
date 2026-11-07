@@ -172,7 +172,8 @@ test_permissions_stay_read_only_after_report() { # TC-026, TC-027
 test_pr_scan_has_no_report() { # TC-025
   local l; l="$(code | grep -A3 -F "name: Scan this PR's commits")"
   grep -Fq "if: github.event_name == 'pull_request'" <<<"$l" || return 1
-  ! code | grep -F -- '--log-opts' | grep -Eq -- '--report-(format|path)'
+  local pr; pr="$(code | grep -F -- '--log-opts')"
+  ! grep -Eq -- '--report-(format|path)' <<<"$pr"
 }
 test_gitleaks_toml_has_no_new_allowlist() { # TC-021 (origin/v3 baseline: 0 entries)
   [ "$(grep -c '^\[\[allowlists\]\]' "$GL")" = 0 ]
