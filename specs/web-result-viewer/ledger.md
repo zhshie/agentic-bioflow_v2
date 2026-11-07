@@ -26,3 +26,7 @@ DESIGN.md、docs/PLATFORM.md、docs/TESTING.md、web.py、web_board.py、web_fin
 ## 與計畫的差異
 - `web_board.render_file_page` 加了 `route` 參數（預設不變），讓預覽頁的重試／刷新回到 /run/preview。
 - TC-065：路徑中的 `"allow-same-origin"` 以跳脫或百分比編碼出現，測試斷言它不以獨立帶引號的字出現、也不在 sandbox 屬性內。
+
+## 全套後補
+- test_web_wording_sweep 表清單加 web_preview.STRINGS（9→10）、test_k8s_launch 路由釘住 30→33（只加項）。
+- test_mcp_launch_pipeline::test_no_schema_change 對 mirror 的 origin/v3 比 store.py 有差，本分支 store.py 對基準 d4dd182e 零差異，屬環境（基準漂移）；test_aws_ce 為偶發，單跑通過。

@@ -4,3 +4,4 @@ ts	phase	decision	why	evidence	result
 2026-11-07 21:10	A-GREEN	既有路由清單測試加入新路由（只加不改）	新增 /run/preview /run/image 必然改變清單	test_results_files.py:604 等 7 檔	pass
 2026-11-07 21:50	B-GREEN	報告路由 CSP 照計畫，未放寬；iframe 大小用 width／height 屬性	不改 STYLE；先照計畫字，真 MultiQC 未能驗	web_preview.py report_headers/render_report	tests pass
 2026-11-07 21:50	B-GREEN	瀏覽器測試用系統 python3 的 playwright 開 Chromium，站台以 uvicorn 執行緒起	venv 沒有 playwright	test_web_result_viewer.py test_tc053...	pass
+2026-11-08T00:00	fix	加入 web_preview.STRINGS 到措辭掃描表、k8s 路由釘住改為 33 條	全套測試紅：新表未涵蓋、路由數 30→33	platform/tests/test_web_wording_sweep.py, test_k8s_launch.py:1434	單檔 163 通過
