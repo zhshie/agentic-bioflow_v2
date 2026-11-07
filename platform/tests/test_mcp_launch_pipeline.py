@@ -341,6 +341,17 @@ def test_schema_pin_still_catches_branch_change(tmp_path, rel):
 def test_no_schema_change():
     # TC-032
     # three-dot compare with origin/v3: a newer local origin/v3 snapshot no longer causes a false red
+    # refresh origin/v3 first; if that is impossible, skip with the reason (never pass silently)
+    # In a local mirror clone, origin is the worktree whose own origin/v3 is the fresh one (its v3 is stale):
+    # that ref exists only there, so try it first; against GitHub it fails and we fetch v3 itself.
+    def _fetch(src):
+        return subprocess.run(["git", "fetch", "origin", src + ":refs/remotes/origin/v3"], cwd=str(HERE.parent),
+                              capture_output=True, text=True, timeout=120)
+    f = _fetch("+refs/remotes/origin/v3")
+    if f.returncode != 0:
+        f = _fetch("v3")
+    if f.returncode != 0:
+        pytest.skip("cannot fetch origin/v3: " + (f.stderr or f.stdout).strip()[:200])
     assert schema_diff(HERE.parent).strip() == ""
 
 

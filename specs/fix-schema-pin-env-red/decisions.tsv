@@ -1,3 +1,4 @@
 ts	phase	decision	why	evidence	result
 2026-11-07	GREEN	三點比對抽成 schema_diff helper，加反證測試	計畫作法 1、2	test_mcp_launch_pipeline.py::test_schema_pin_*	新測試綠
 2026-11-07	BLOCKED	停下，不自行加 fallback	鏡像(~/abf-mirror)的 origin/v3 是 clone 時的 worktree 本機 v3(075b6177)，比分支底(87107ae9)舊，三點比對仍含 v3 新增的 store.py	mirror git rev-parse origin/v3; 單跑 test_no_schema_change 紅	需 lead 裁決
+2026-11-07	GREEN	test 內先 fetch origin；鏡像用 refs/remotes/origin/v3，真實遠端退回 v3	依裁決 a；鏡像的 v3 過舊，單 fetch v3 仍紅	test_mcp_launch_pipeline.py::test_no_schema_change	鏡像 25 passed
