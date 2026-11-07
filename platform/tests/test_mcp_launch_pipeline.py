@@ -280,12 +280,68 @@ def test_no_web_route_for_it(d, w):
     assert client.post("/act/launch_pipeline", data={}).status_code in (404, 405)
 
 
+SCHEMA_PATHS = ["migrations", "abf_platform/store.py", "abf_platform/schema.sql"]
+
+
+def schema_diff(cwd, base="origin/v3"):
+    # three dots: compare with the merge-base, so only the branch's own changes count
+    return subprocess.run(["git", "diff", "--stat", base + "...HEAD", "--"] + SCHEMA_PATHS,
+                          cwd=str(cwd), capture_output=True, text=True).stdout
+
+
+def _git(cwd, *a):
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=str(cwd), check=True,
+                   capture_output=True)
+
+
+def _repo(tmp_path):
+    r = tmp_path / "r"
+    (r / "migrations").mkdir(parents=True)
+    (r / "abf_platform").mkdir()
+    (r / "migrations" / "001.sql").write_text("a\n")
+    (r / "abf_platform" / "store.py").write_text("a\n")
+    (r / "abf_platform" / "schema.sql").write_text("a\n")
+    _git(r, "init", "-q")
+    _git(r, "add", "-A")
+    _git(r, "commit", "-qm", "base")
+    return r
+
+
+def _commit_file(r, rel, text):
+    (r / rel).write_text(text)
+    _git(r, "add", "-A")
+    _git(r, "commit", "-qm", "c " + rel)
+
+
+def test_schema_pin_ignores_base_advance(tmp_path):
+    # TC-001: base moved on after the branch was cut; the branch itself touched nothing
+    r = _repo(tmp_path)
+    _git(r, "branch", "feature")
+    _commit_file(r, "abf_platform/schema.sql", "newer\n")
+    _commit_file(r, "abf_platform/store.py", "newer\n")
+    _git(r, "update-ref", "refs/remotes/origin/v3", "HEAD")
+    _git(r, "checkout", "-q", "feature")
+    assert schema_diff(r).strip() == ""
+    # the old two-dot form would have flagged it
+    old = subprocess.run(["git", "diff", "--stat", "origin/v3", "--"] + SCHEMA_PATHS, cwd=str(r),
+                         capture_output=True, text=True).stdout
+    assert old.strip() != ""
+
+
+@pytest.mark.parametrize("rel", ["abf_platform/schema.sql", "abf_platform/store.py", "migrations/002.sql"])
+def test_schema_pin_still_catches_branch_change(tmp_path, rel):
+    # TC-004 / TC-005 / TC-006: a real change on the branch must still show
+    r = _repo(tmp_path)
+    _git(r, "update-ref", "refs/remotes/origin/v3", "HEAD")
+    _git(r, "checkout", "-qb", "feature")
+    _commit_file(r, rel, "changed\n")
+    assert rel.split("/")[-1] in schema_diff(r)
+
+
 def test_no_schema_change():
     # TC-032
-    # pin moved from the stale commit e428661b (v3 changed store.py since) to origin/v3
-    out = subprocess.run(["git", "diff", "--stat", "origin/v3", "--", "migrations", "abf_platform/store.py", "abf_platform/schema.sql"],
-                         cwd=str(HERE.parent), capture_output=True, text=True).stdout
-    assert out.strip() == ""
+    # three-dot compare with origin/v3: a newer local origin/v3 snapshot no longer causes a false red
+    assert schema_diff(HERE.parent).strip() == ""
 
 
 # ---- constitution ----
