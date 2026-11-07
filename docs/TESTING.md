@@ -1134,3 +1134,17 @@ Take 12 screenshots (1440 and 390 px wide, zh and en each time), and attach them
 3. `/usage` with a single compute environment: 4 shots. Check: its fold is open at once.
 
 At 390 px also check `document.documentElement.scrollWidth === document.documentElement.clientWidth` and that the axe scan reports nothing serious or critical.
+
+## 結果檢視：圖片預覽與沙盒 iframe 報告 (web-result-viewer): the reviewer checks by hand
+
+自動測試涵蓋標頭、iframe 屬性與真瀏覽器的攻擊腳本（`test_web_result_viewer.py`，需要 Playwright 與 Chromium，沒有就標 UNVERIFIED）。下面是要人看的部分。
+
+1. **真 MultiQC（TC-095）**：登入後在某個成功 run 的輸出頁，按 `multiqc/multiqc_report.html` 旁的「預覽」。圖表應顯示。若因 CSP 載不出，只能放寬 `/run/report` 的政策，且 `sandbox`（不含 allow-same-origin）、`connect-src 'none'`、`form-action 'none'`、`frame-ancestors 'self'` 四項不得動；放寬的字與原因寫進 `specs/web-result-viewer/ledger.md`（沒放寬就寫「未放寬」，TC-069）。
+2. **summary_report（TC-096）**：同上，開一份真的 ampliseq `summary_report.html`。
+3. **報告內連結（TC-097）**：在預覽頁點報告內的外部連結，應沒有作用，頁面不會被導走。
+4. **截圖（TC-091 至 TC-094）**：1440 與 390 寬、中文與英文各一張，共 4 組：完成頁的清單、PNG 預覽頁、too_large 預覽頁、MultiQC 預覽頁；檔名貼進 ledger。
+5. **無障礙與手機（TC-098、TC-099）**：390 寬不橫向捲動、Tab 焦點可見；`scripts/dev/ui_check.py` 掃描無 serious／critical，跑不起來標 UNVERIFIED 並寫缺什麼。
+6. **R Studio 那一半（TC-039）**：不在本任務；確認 `web_downstream.py` 沒有出現 `/run/preview`。
+7. **提交順序（TC-085）**：`git log --oneline` 看步驟 A 在前；`git show <A>` 找不到 `/run/report` 與 `<iframe`。
+8. **不得改動（TC-082）**：`git diff v3...HEAD -- platform/abf_platform/jobs.py platform/abf_platform/actions/__init__.py platform/abf_station/` 應為空；`RUN_FILE_MAX_BYTES = 26214400` 未變。
+

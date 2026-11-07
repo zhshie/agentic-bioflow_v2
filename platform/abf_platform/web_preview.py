@@ -13,9 +13,11 @@ PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 _SVG_HEAD = re.compile(rb"\A(?:\s|\xef\xbb\xbf|<\?xml.*?\?>|<!--.*?-->|<!DOCTYPE[^>]*>)*<svg[\s>/]", re.S | re.I)
 
 STRINGS = {
-    "zh": {"p_title": "預覽結果檔", "p_none": "此檔類型不提供預覽。", "p_download": "下載", "p_preview": "預覽", "p_back": "回到輸出分頁"},
+    "zh": {"p_title": "預覽結果檔", "p_none": "此檔類型不提供預覽。", "p_download": "下載", "p_preview": "預覽", "p_back": "回到輸出分頁",
+           "p_note": "報告在隔離框內顯示，其中的程式不能讀取本站資料。報告內的連結可能無法使用，可下載後再開啟。"},
     "en": {"p_title": "Preview a result file", "p_none": "This file type has no preview.", "p_download": "Download", "p_preview": "Preview",
-           "p_back": "Back to Outputs"},
+           "p_back": "Back to Outputs",
+           "p_note": "The report is shown in an isolated frame; its code cannot read the data of this site. Links inside the report may not work; download it to open it."},
 }
 
 
@@ -54,7 +56,19 @@ def page_headers(base, kind=None):
     headers = dict(base)
     if kind in ("png", "svg"):
         headers["Content-Security-Policy"] = base["Content-Security-Policy"].replace("default-src 'none'; ", "default-src 'none'; img-src 'self'; ", 1)
+    if kind == "html":
+        headers["Content-Security-Policy"] = base["Content-Security-Policy"] + "; frame-src 'self'"
     return headers
+
+
+def report_headers(base):
+    """Headers of the report itself, for the iframe of the preview page: the report runs its scripts but `sandbox allow-scripts` (no allow-same-origin)
+    makes it an opaque origin, and the policy lets it load nothing from the network nor send a form. Only this route may be framed (by the site)."""
+    return dict(base, **{"Content-Type": "text/html; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
+                         "Referrer-Policy": "no-referrer", "X-Frame-Options": "SAMEORIGIN",
+                         "Content-Security-Policy": "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; "
+                                                    "style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; "
+                                                    "frame-src 'none'; frame-ancestors 'self'; base-uri 'none'; worker-src blob:"})
 
 
 def image_headers(base, kind):
@@ -85,4 +99,15 @@ def render_image(run_id, path, name, lang="zh"):
     src = web_board._url(lang, run_id, path="/run/image", sub=path)
     src = src.replace("&amp;lang=en", "")        # the picture route does not speak a language
     body = '<h1>%s</h1><p><img src="%s" alt="%s" width="100%%"></p>%s' % (web_board.esc(name), src, web_board.esc(name), _links(lang, run_id, path, t))
+    return web_board.document(t["p_title"], body, lang=lang)
+
+
+def render_report(run_id, path, name, lang="zh"):
+    """The page of a white-listed report: the file name, one line on what the frame is, the report in a sandboxed iframe (its address is the report
+    route; the sandbox is `allow-scripts` alone), the way to download, the way back. The size is in attributes: the stylesheet is not changed."""
+    lang = web_board.pick_lang(lang)
+    t = STRINGS[lang]
+    src = web_board._url(lang, run_id, path="/run/report", sub=path).replace("&amp;lang=en", "")
+    body = ('<h1>%s</h1><p class="muted">%s</p><p><iframe sandbox="allow-scripts" src="%s" title="%s" referrerpolicy="no-referrer" width="100%%" height="800"></iframe></p>%s'
+            % (web_board.esc(name), web_board.esc(t["p_note"]), src, web_board.esc(name), _links(lang, run_id, path, t)))
     return web_board.document(t["p_title"], body, lang=lang)

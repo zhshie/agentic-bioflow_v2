@@ -2,3 +2,5 @@ ts	phase	decision	why	evidence	result
 2026-11-07T20:10	A-RED	步驟 A 測試先寫並提交	先紅後綠	tests/test_web_result_viewer.py	22 紅 6 綠
 2026-11-07 21:10	A-GREEN	render_file_page 加 route 參數，讓預覽頁的重試與刷新連結回到 /run/preview	不加則重試會跳到下載路由	web_board.py render_file_page	tests pass
 2026-11-07 21:10	A-GREEN	既有路由清單測試加入新路由（只加不改）	新增 /run/preview /run/image 必然改變清單	test_results_files.py:604 等 7 檔	pass
+2026-11-07 21:50	B-GREEN	報告路由 CSP 照計畫，未放寬；iframe 大小用 width／height 屬性	不改 STYLE；先照計畫字，真 MultiQC 未能驗	web_preview.py report_headers/render_report	tests pass
+2026-11-07 21:50	B-GREEN	瀏覽器測試用系統 python3 的 playwright 開 Chromium，站台以 uvicorn 執行緒起	venv 沒有 playwright	test_web_result_viewer.py test_tc053...	pass
