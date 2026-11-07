@@ -9,3 +9,14 @@
 - test_no_schema_change 比對前先 fetch origin：先試 +refs/remotes/origin/v3（鏡像 clone 的 origin 是 worktree，其 v3 過舊），失敗再 fetch v3；兩者皆失敗則 skip 並印原因。斷言不變。
 - 反證：test_schema_pin_still_catches_branch_change（三種路徑）證明分支真改 store.py/schema.sql/migrations 時 helper 非空。
 - 鏡像單檔 25 passed。
+
+## 修正輪：TC-008 實跑輸出（HEAD 349641d0，abf-fast-suite 鏡像）
+反證測試 `test_schema_pin_still_catches_branch_change`（參數 schema.sql／store.py／migrations；每個參數在暫時 repo 的分支上改該檔，斷言 `schema_diff` 非空，故分支真改 schema 時 `test_no_schema_change` 會紅）：
+```
+$ abf-fast-suite <wt> --pytest tests/test_mcp_launch_pipeline.py::test_schema_pin_still_catches_branch_change
+...                                                                      [100%]
+3 passed, 5 warnings in 0.39s
+$ abf-fast-suite <wt> --pytest tests/test_mcp_launch_pipeline.py::test_no_schema_change
+.                                                                        [100%]
+1 passed in 0.20s
+```
