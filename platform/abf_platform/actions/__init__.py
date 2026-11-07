@@ -128,7 +128,7 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
         view["cancel_requested_at"] = common.epoch_iso_ms(asked)
     view["failure"] = failures.summarize(view)
     view.pop("_no_resume", None)
-    view["su"] = _su_of_run(index_path, view, platform_path_for(index_path, platform_path))
+    view["su"] = _su_of_run(index_path, view, platform_path_for(index_path, platform_path), strict=True)
     return view
 
 
@@ -138,13 +138,15 @@ def run_environment(platform_path, run_name):
     return jobs.latest_launch_ce(platform_path, run_name)
 
 
-def _su_of_run(index_path, view, platform_path):
+def _su_of_run(index_path, view, platform_path, strict=False):
     """The `su` part of get_run: five fixed keys (and twd when the site has money rates per SU). Unknown, with the reason, when
     the run has not ended or fewer succeeded tasks have a usage row than the run counts; never a partial sum."""
     rates = su.load_rates()
-    site = su.site_of_run(platform_path, view["name"], rates)
+    site = su.site_of_run(platform_path, view["name"], rates, strict=strict)
     if view["status"] in ("running", "lost"):
         out = su._unknown([su.RUN_NOT_ENDED])
+    elif site is None and isinstance(rates, dict) and rates.get("default_site") is not None:
+        out = su._unknown([su.NO_SU_SITE])      # the run's environment names no suSite: said once, not guessed as the default site
     else:
         tasks = su.run_tasks(index_path, view["name"])
         done = sum(1 for t in tasks or () if t.get("status") == "COMPLETED")

@@ -152,7 +152,7 @@ def run_tasks(index_path, run_name):
             for r in rows]
 
 
-def site_of_run(platform_path, run_name, rates):
+def site_of_run(platform_path, run_name, rates, strict=False):
     """The rates site of a run: the suSite of the compute environment of its newest launch; else the rates file's default_site
     (also when there is no launch, the environment is gone, it names no suSite, or platform.db cannot be read)."""
     default = rates.get("default_site") if isinstance(rates, dict) else None
@@ -171,15 +171,15 @@ def site_of_run(platform_path, run_name, rates):
     if ce is None:
         return default
     site = ce["config"].get("suSite")
-    return site if isinstance(site, str) and site else None      # a known environment without suSite: not guessed as the default site
+    if isinstance(site, str) and site:
+        return site
+    return None if strict else default      # strict (get_run): a known environment without suSite is not guessed as the default site
 
 
 NO_SU_SITE = "計算環境未設定 suSite，無法判定站台（compute environment has no suSite）"
 
 
 def run_su(index_path, run_name, site, rates, tasks_of=None):
-    if site is None and isinstance(rates, dict) and rates.get("default_site") is not None:
-        return _unknown([NO_SU_SITE])
     tasks = (tasks_of or run_tasks)(index_path, run_name)
     if tasks is None:
         return _unknown([NOT_STORED])

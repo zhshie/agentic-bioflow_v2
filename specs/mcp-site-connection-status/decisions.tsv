@@ -5,3 +5,4 @@ ts	phase	decision	why	evidence	result
 2026-11-07T20:40	GREEN	CE 存在但無 suSite 回 None；CE 找不到才用 default_site	計畫裁決	platform/abf_platform/su.py site_of_run	改兩個舊測試的預期
 2026-11-07T20:50	GREEN	閒置 agent 每次空 poll 後重送 hello 事實	讓 site_link 不會只停在啟動時	platform/abf_station/agent.py refresh_facts	待全套確認
 2026-11-07T22:04:10	fix	list_agents/compute_envs.get 補傳 owner	test_owner_guard 全套紅，動作層讀取必須帶呼叫者	platform/abf_platform/actions/__init__.py	owner_guard/site_connection/actions_layer 全綠
+2026-11-07T23:43:29	fix	無 suSite 的 CE 只在 get_run 回 null，用量頁維持 default_site	其他 35 個既有測試把 CE 不帶 suSite 當 taiwania3；裁決只提 get_run	su.py site_of_run strict; actions/__init__.py _su_of_run	su_usd/cost_by_env/web_cost 綠
