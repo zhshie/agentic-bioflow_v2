@@ -13,6 +13,7 @@ import datetime
 import hashlib
 import html
 import re
+import time
 import urllib.parse
 
 from . import web_devmode
@@ -87,7 +88,7 @@ STRINGS = {
         "th_name": "名稱", "th_exit": "結束代碼", "th_message": "錯誤訊息（第一行）", "th_workdir": "工作目錄",
         "th_log": "日誌", "l_nodir": "沒有記錄工作資料夾", "l_err": "錯誤", "l_out": "輸出", "l_all": "全部", "l_none": "目前沒有失敗任務",
         "l_title": "任務日誌", "l_task": "任務", "l_file": "檔案", "l_back": "回到日誌分頁", "l_retry": "重新讀取",
-        "l_loading": "讀取中：正在向站台取得日誌，頁面每 15 秒自動更新。", "l_ready": "已讀取", "l_lines": "共 %d 行",
+        "l_loading": "讀取中：正在向站台取得日誌，請稍後按「重新整理」。", "l_reload": "重新整理", "l_asof": "資料時間", "l_ready": "已讀取", "l_lines": "共 %d 行",
         "l_cut": "已截斷：只顯示最後 200 行或 64 KB。", "l_empty": "此檔案是空的。",
         "l_e_no_task": "此分析沒有該失敗任務，無法讀取日誌。", "l_e_no_workdir": "沒有記錄此任務的工作資料夾，無法讀取日誌。",
         "l_e_bad_which": "只能讀取錯誤、輸出、全部三種日誌。", "l_e_no_launch": "此分析沒有送出紀錄，無法讀取日誌。",
@@ -167,7 +168,7 @@ STRINGS = {
         "th_name": "Name", "th_exit": "Exit code", "th_message": "Error message (first line)", "th_workdir": "Work directory",
         "th_log": "Log", "l_nodir": "No work directory on record", "l_err": "Errors", "l_out": "Output", "l_all": "All", "l_none": "There are no failed tasks now",
         "l_title": "Task log", "l_task": "Task", "l_file": "File", "l_back": "Back to Logs", "l_retry": "Read again",
-        "l_loading": "Reading: fetching the log from the site; this page refreshes every 15 seconds.", "l_ready": "Loaded", "l_lines": "%d lines",
+        "l_loading": "Reading: fetching the log from the site. Press \"Refresh\" in a moment.", "l_reload": "Refresh", "l_asof": "Data as of", "l_ready": "Loaded", "l_lines": "%d lines",
         "l_cut": "Cut: only the last 200 lines or 64 KB are shown.", "l_empty": "This file is empty.",
         "l_e_no_task": "This analysis has no such failed task, so its log cannot be read.",
         "l_e_no_workdir": "No work directory is on record for this task, so its log cannot be read.",
@@ -1427,8 +1428,11 @@ def render_log_page(answer, run_id, task, which, lang="zh"):
              if name else "")
     here = _url(lang, run_id, path="/run/log", task=task, which=which)
     if answer.get("state") == "loading":
-        body = '<h1>%s</h1>%s<p class="ostat state-running"><span class="sym">◌</span> %s</p><p>%s</p>' % (esc(t["l_title"]), facts, esc(t["l_loading"]), back)
-        return 200, document(t["l_title"], body, refresh=True, lang=lang, refresh_url=here)
+        # No <meta refresh>: axe counts it as a critical finding. The person presses the link (tl06, ruling 2026-11-07).
+        asof = taipei_time(time.time()) or ""
+        body = ('<h1>%s</h1>%s<p class="ostat state-running"><span class="sym">◌</span> %s</p><p><a href="%s">%s</a> <small class="muted">%s: %s</small></p><p>%s</p>'
+                % (esc(t["l_title"]), facts, esc(t["l_loading"]), here, esc(t["l_reload"]), esc(t["l_asof"]), esc(asof), back))
+        return 200, document(t["l_title"], body, lang=lang)
     if answer.get("state") == "ready":
         text = answer.get("text") or ""
         status_line = '<p class="ostat state-succeeded"><span class="sym">✓</span> %s <small>%s</small></p>' % (esc(t["l_ready"]), esc(t["l_lines"] % (answer.get("lines") or 0)))
