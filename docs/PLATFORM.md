@@ -255,7 +255,7 @@ For a long value that starts with `--`, use the `=` form (`--head-job-options=--
 | `environment` | list of `{name, value, head, compute}` |
 | `nextflowConfig` | optional Nextflow configuration text |
 | `readRoots` | optional extra absolute paths the agent may list (`--read-root`) |
-| `suSite` | optional name of a site in `configs/sites/su_rates.json` (for example `nano4`); `get_run` uses it to work out the SU of a run launched on this environment. Without it the rates file's `default_site` is used. A name the rates file does not have is refused |
+| `suSite` | optional name of a site in `configs/sites/su_rates.json` (for example `nano4`); `get_run` uses it to work out the SU of a run launched on this environment. Without it the SU answers (`get_run`, `estimate_su`, the usage pages) say the site is unknown, and do not use the rates file's `default_site`; a run whose environment is gone still uses it. A name the rates file does not have is refused |
 
 Outside the config an environment also has `name` (1 to 100 characters, unique), `description`, `platform` (the type), `credentialsId` (the **name** of a credential), `agent` (the agent that serves it; with no `--agent` the only agent that has a token is used), `status`, `message`, `primary`, and the dates `dateCreated`, `lastUpdated`, `lastUsed`. The field names follow Seqera's (`specs/007-station-agent/research.md`).
 

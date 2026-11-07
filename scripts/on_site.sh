@@ -415,7 +415,11 @@ fi
 if [ "$MODE" = checkmaster ]; then
   # Read-only: the control channel only. No acquire_slot, no session, no needs-human text, no wait.
   [ "$REACH" = local ] && exit 0
-  master_is_up && exit 0
+  # Cut at the clock like every other ssh call here: a check that hangs answers 124 (unknown), never "closed" and never a long wait.
+  clocked "$CHECK_TMO" "$SSH" -O check -o ControlPath="$CP" "$HOST" >/dev/null 2>&1
+  rc=$?
+  [ "$rc" = 0 ] && exit 0
+  [ "$rc" = 124 ] && exit 124
   exit 1
 fi
 

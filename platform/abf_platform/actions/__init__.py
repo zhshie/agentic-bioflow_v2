@@ -128,7 +128,7 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
         view["cancel_requested_at"] = common.epoch_iso_ms(asked)
     view["failure"] = failures.summarize(view)
     view.pop("_no_resume", None)
-    view["su"] = _su_of_run(index_path, view, platform_path_for(index_path, platform_path), strict=True)
+    view["su"] = _su_of_run(index_path, view, platform_path_for(index_path, platform_path))
     return view
 
 
@@ -138,11 +138,11 @@ def run_environment(platform_path, run_name):
     return jobs.latest_launch_ce(platform_path, run_name)
 
 
-def _su_of_run(index_path, view, platform_path, strict=False):
+def _su_of_run(index_path, view, platform_path):
     """The `su` part of get_run: five fixed keys (and twd when the site has money rates per SU). Unknown, with the reason, when
     the run has not ended or fewer succeeded tasks have a usage row than the run counts; never a partial sum."""
     rates = su.load_rates()
-    site = su.site_of_run(platform_path, view["name"], rates, strict=strict)
+    site = su.site_of_run(platform_path, view["name"], rates, strict=True)
     if view["status"] in ("running", "lost"):
         out = su._unknown([su.RUN_NOT_ENDED])
     elif site is None and isinstance(rates, dict) and rates.get("default_site") is not None:
@@ -176,7 +176,9 @@ def estimate_su(index_path, run_name, *, caller=None, platform_path=None, site=N
     rates = rates if rates is not None else su.load_rates()
     if site is None:
         # the site of the compute environment the run was launched on (its suSite), else the rates file's default_site
-        site = su.site_of_run(platform_path_for(index_path, platform_path), run_name, rates)
+        site = su.site_of_run(platform_path_for(index_path, platform_path), run_name, rates, strict=True)
+        if site is None and isinstance(rates, dict) and rates.get("default_site") is not None:
+            return su._unknown([su.NO_SU_SITE])      # the one answer get_run gives: a known environment without suSite is not priced at the default site
     return su.run_su(index_path, run_name, site, rates, tasks_of)
 
 
@@ -258,7 +260,7 @@ def my_usage(index_path, platform_path=None, *, caller=None, month=None, tokens_
             for reason in x["unknown_reasons"]:
                 if reason not in reasons:
                     reasons.append(reason)
-        site = su.site_of_run(platform_path, items[0]["name"], rates) if unit == "SU" and isinstance(rates, dict) else None
+        site = su.site_of_run(platform_path, items[0]["name"], rates, strict=True) if unit == "SU" and isinstance(rates, dict) else None
         environments.append({
             "name": ce, "kind": compute_envs.KINDS.get(platform) if platform else None, "unit": unit, "site": site, "total": total,
             "usd_approx": su.usd_of(total, site, rates) if unit == "SU" and as_of else None,
@@ -544,7 +546,7 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
     top_path = folder.rstrip("/") + "/results"
     path = top_path + ("/" + sub if sub else "")
     ce = launch["ce"]
-    agent = launch["agent"] if "agent" in launch.keys() else None
+    agent = _agent_of_ce(plat, launch["ce"], _caller_id(caller))      # the agent that holds the connection now; a finished listing names the one that ran it
     answer.update(path=path, compute_env=ce, state="loading")
     if sub:      # the cards of the results stage need the first level too: only what is already known, no job is queued for it
         known = jobs.latest_listing(plat, ce, top_path)
@@ -591,7 +593,7 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
             answer["top"] = [f["name"] for f in files if f["type"] == "dir"]
         return answer
     answer.update(state="error", listed_at=job["finished_at"],
-                  reason=_OUTPUTS_NO_ANSWER if job["state"] == "expired" else _with_agent(_outputs_reason(result.get("message")), agent))
+                  reason=_OUTPUTS_NO_ANSWER if job["state"] == "expired" else _with_agent(_outputs_reason(result.get("message")), job.get("agent") or agent))
     return answer
 
 
