@@ -1430,7 +1430,7 @@ def render_log_page(answer, run_id, task, which, lang="zh"):
     if answer.get("state") == "loading":
         # No <meta refresh>: axe counts it as a critical finding. The person presses the link (tl06, ruling 2026-11-07).
         asof = taipei_time(time.time()) or ""
-        body = ('<h1>%s</h1>%s<p class="ostat state-running"><span class="sym">◌</span> %s</p><p><a href="%s">%s</a> <small class="muted">%s: %s</small></p><p>%s</p>'
+        body = ('<h1>%s</h1>%s<p class="ostat state-running"><span class="sym">◌</span> %s</p><p><a href="%s">%s</a></p><p class="muted">%s: %s</p><p>%s</p>'
                 % (esc(t["l_title"]), facts, esc(t["l_loading"]), here, esc(t["l_reload"]), esc(t["l_asof"]), esc(asof), back))
         return 200, document(t["l_title"], body, lang=lang)
     if answer.get("state") == "ready":

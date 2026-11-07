@@ -9,19 +9,15 @@ Playwright + axe-core, 1440 and 390 wide, zh and en: 6 pages x 4 = 24 screenshot
 | board-tasks | Tasks tab, failed rows: FASTQC has the "Errors" log link, TRIM has grey "No work directory on record" | moderate landmark-unique, critical meta-refresh |
 | board-logs | Logs tab (no longer "Coming later"): both failed tasks, 3 links each or the grey sentence | same two |
 | results-logs | the same Logs tab on the results page | same two |
-| log-loading | /run/log first visit: "waiting" with symbol + words | critical meta-refresh only |
+| log-loading | /run/log first visit: "waiting" with symbol + words, a Refresh link and the data time | none |
 | log-ready | /run/log with the log text in a `<pre>` | none |
 | log-error | /run/log for TRIM (no work folder): one plain sentence + way back | none |
 
-## serious / critical
+## serious / critical (redone after the lead's ruling of 2026-11-07)
 
-- There is no `serious`. The only `critical` is `meta-refresh` (`<meta http-equiv="refresh" content="15">`), on 3 + 1 pages:
-  - board-tasks, board-logs, results-logs: the existing 15-second tag of the board (docs/reports/cloud-burn-2026-11/UI2.md F1, DESIGN.md:93;
-    `render_board` adds it to every board page). It was already there before this task and is the same 8 hits ui_check gave on the plain board and results pages.
-  - log-loading: the new page's waiting state refreshes itself every 15 seconds. This is what TC-011 and plan tl06 require ("頁面含自動刷新") and the same way
-    the existing results "Outputs" loading page works; DESIGN.md allows no JS there. log-ready and log-error (the states that stay open) carry no refresh and are axe-clean.
-- So "no serious or critical" is not literally met: removing the tag would break TC-011 and DESIGN.md:93. Both are the maintainer's decision
-  (TESTING.md:1059 treats a board `meta-refresh` as an old finding to note, not count). Asked under 要問的問題.
+- The waiting page `/run/log` no longer carries `<meta http-equiv="refresh">`: it has a "Refresh" link (same address, no retry) and the line "Data as of HH:MM". log-loading is axe-clean in all 4 combos (the first try had a `link-in-text-block` serious hit at 1440 when the link shared a paragraph with the time; the link now has its own paragraph).
+- The only `critical` left is `meta-refresh` on board-tasks, board-logs and results-logs: the board's existing 15-second tag (`render_board` adds it to every board page; DESIGN.md:93). It was there before this task (the same hit ui_check gives on the plain board and results pages) and is outside this task by the ruling; docs/TESTING.md:1059 treats it as an older finding to note, not count. No `serious` hit on any page. `moderate landmark-unique` on the three board pages is also old.
+- log-ready, log-error, log-loading: no violations.
 
 ## DESIGN.md 7, 8 in plain words
 

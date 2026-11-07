@@ -11,3 +11,12 @@
 - GATE: full suite rerun at the new HEAD, marker written after.
 
 - Fix round 3 (2026-11-07): TC-010 gets its own test (test_tc010_failed_task_reason_is_readable_in_the_web_page): err link -> loading -> job done -> same link shows FASTQC and <pre>Error: out of memory</pre>. TC-036 meta-refresh vs TC-011 conflict NOT touched (needs maintainer: spec/TC choice). GATE: full suite rerun at the new HEAD.
+
+## Fix round 4 (2026-11-07): ruling on TC-036 vs TC-011 (plan 裁決 second block)
+- Waiting log page: `<meta http-equiv=refresh>` removed; it now shows a Refresh link (zh 重新整理 / en Refresh, same address, no retry) and the data time (資料時間 / Data as of, Taipei time of the page). web_board.py render_log_page, strings l_loading, l_reload, l_asof.
+- TC-011 assertion changed (allowed by the ruling), old -> new:
+  - old: waiting page contains `http-equiv="refresh"` and `content="15`; new: waiting page has the Refresh link and the data time and no `http-equiv` (helper `is_waiting` in test_web_run_log.py).
+  - same swap in the other waiting-page checks: TC-010 scenario first page, TC-013/014, TC-022/023, TC-024 (they asserted the bare word "refresh"). The finished page still asserts no refresh tag. No other assertion touched.
+- docs/TESTING.md step 3 of the manual case updated.
+- Screenshots: all 24 retaken with seed_failed_demo.py; log pages axe-clean. Remaining axe critical `meta-refresh` is the board's old tag on board-tasks, board-logs, results-logs (pages that already had it; outside this task by the ruling). Every board page built by `render_board` has it; also `document(..., refresh=True)` pages of other features (results outputs loading, /run/file loading, launch loading, waiting-for-run page).
+- GATE: full suite at the new HEAD, marker written after.

@@ -10,3 +10,5 @@ ts	phase	decision	why	evidence	result
 2026-11-07T13:50	blocked-item	meta-refresh critical 不改，交維護者決定	既有的 15 秒刷新（DESIGN.md:93）；loading 頁的刷新是 TC-011 要求，移除會違反 TC	screenshots/summary.md	已寫明並列為問題
 2026-11-07T12:40	fix3	補 TC-010 專屬測試（err 連結走完載入中到完成，斷言 FASTQC 與 <pre>Error: out of memory</pre>）	驗收指出原測試只斷言 <pre>，沒斷言 TC-010 的預期文字	platform/tests/test_web_run_log.py test_tc010_failed_task_reason_is_readable_in_the_web_page	test_web_run_log.py 29 passed
 2026-11-07T12:41	fix3	TC-036 meta-refresh 與 TC-011 的 15 秒刷新衝突：不改程式、不改 TC，留給維護者決定	TC-011 與 TC-036 是已確認的合約，執行者不得改；去掉刷新或改驗收規則屬維護者決定	specs/web-run-tasks-log/screenshots/summary.md:122-127	未處理，回報為待決
+2026-11-07T20:30	fix	等待中的日誌頁拿掉 meta-refresh，改放「重新整理」連結與資料時間	計畫裁決（lead 2026-11-07 晚）：axe 把 meta-refresh 當嚴重違規，本站不得新增	platform/abf_platform/web_board.py render_log_page; platform/tests/test_web_run_log.py is_waiting	29 個日誌測試全綠；24 張截圖重拍，日誌頁 axe 無違規
+2026-11-07T20:40	fix	連結與資料時間分成兩段	axe link-in-text-block（serious）：連結和文字同一段	web_board.py render_log_page	日誌頁 12 張 axe 無違規
