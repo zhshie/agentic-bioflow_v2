@@ -1050,6 +1050,101 @@ async def read_task_log(platform_path, index_path, run_name, task, which, *, cal
     return answer
 
 
+_LOG_CODES = ("not_found", "site_unreachable", "no_answer", "failed")
+
+
+def _failed_task(index_path, run_id, view, task_key):
+    """The failed task of the run that `task_key` names (its task_key as the index keeps it, or its name), as a dict with `workdir`, or None."""
+    keys = {}
+    con = status._open_readonly(index_path)
+    if con is not None:
+        try:
+            for row in con.execute("SELECT task_key, name FROM failed_tasks WHERE run_id = ?", (run_id,)).fetchall():
+                keys.setdefault(row["name"], set()).add(str(row["task_key"]))
+        except sqlite3.Error:
+            keys = {}
+        finally:
+            con.close()
+    for t in view.get("failed_tasks") or []:
+        if task_key == t["name"] or task_key in keys.get(t["name"], ()):
+            return t
+    return None
+
+
+def task_log_view(index_path, platform_path, run_id, task_key, which, *, caller=None, retry=False):
+    """One log file of one FAILED task of the caller's own run, for a page. It never waits: it queues one read_task_log job, says `loading`, and
+    reads the answer from the job row once it is there (kept for jobs.RUN_FILE_CACHE_SECONDS, then asked again; `retry` asks again at once, but a
+    job that is still running is never doubled). Returns {found: False, message} for a run that is not the caller's or not there (queues nothing),
+    else {found, state: loading|ready|error, code, reason, task, which, text, truncated, lines}. `code` of an error is one of no_task, no_workdir,
+    bad_which, no_launch, not_on_site, agent_offline, refused, no_answer, not_found, site_unreachable, failed. The workdir is the one the run
+    reported, never one the caller names."""
+    view = status.get_run(index_path, run_id, status.now()) if isinstance(run_id, str) else None
+    plat = platform_path_for(index_path, platform_path)
+    if view is None or (caller is not None and view["name"] not in jobs.owned_run_names(plat, caller.user_id)):
+        return {"found": False, "message": _OUTPUTS_NO_RUN}
+    answer = {"found": True, "state": "error", "code": None, "reason": None, "task": None, "which": which, "text": None, "truncated": False, "lines": 0}
+
+    def error(code, reason=None):
+        answer.update(state="error", code=code, reason=reason)
+        return answer
+    task = _failed_task(index_path, run_id, view, task_key) if isinstance(task_key, str) else None
+    if task is None:
+        return error("no_task")
+    answer["task"] = task["name"]
+    if which not in jobs.LOG_FILES:
+        return error("bad_which")
+    filename = jobs.LOG_FILES[which]
+    workdir = task.get("workdir")
+    if not workdir or compute_envs.path_problem(workdir):
+        return error("no_workdir")
+    workdir = compute_envs.normalize_path(workdir)
+    con = store.open_readonly(plat)
+    launch = None
+    if con is not None:
+        try:
+            launch = jobs.latest_launch(con, view["name"])
+        except sqlite3.Error:
+            launch = None
+        finally:
+            con.close()
+    if launch is None:
+        return error("no_launch")
+    now = status.now()
+    job = jobs.latest_task_log(plat, launch["ce"], workdir, filename)
+    if job is not None:
+        if job["state"] in ("queued", "claimed"):
+            if now <= job["deadline_at"]:
+                answer.update(state="loading")
+                return answer
+            if not retry and now - job["deadline_at"] < jobs.RUN_FILE_CACHE_SECONDS:
+                return error("no_answer")
+        elif not retry and now - (job["finished_at"] or 0) < jobs.RUN_FILE_CACHE_SECONDS:
+            return _log_answer(answer, job)
+    try:
+        jobs.enqueue_task_log(plat, view["name"], workdir, filename, status.now, caller_user_id=_caller_id(caller))
+    except jobs.JobRefused as e:
+        text = str(e)
+        code = "agent_offline" if "代理離線" in text else ("not_on_site" if "尚未支援" in text else "refused")
+        return error(code, _outputs_reason(text) if code == "refused" else None)
+    answer.update(state="loading")
+    return answer
+
+
+def _log_answer(answer, job):
+    """Read the finished job into the answer of task_log_view: the text, or the code of what went wrong."""
+    result = job["result"] or {}
+    if job["state"] == "expired":
+        answer.update(state="error", code="no_answer")
+    elif job["state"] == "done" and result.get("ok") and isinstance(result.get("text"), str):
+        answer.update(state="ready", text=result["text"], truncated=bool(result.get("truncated")), lines=result.get("lines", 0))
+    else:
+        code = result.get("error") if result.get("error") in _LOG_CODES else ("refused" if job["state"] == "refused" else "failed")
+        answer.update(state="error", code=code)
+        if code in ("refused", "failed"):
+            answer["reason"] = _outputs_reason(result.get("message"))
+    return answer
+
+
 # ---- write: only after a human's yes -------------------------------------------------------------------------------------
 
 def _require_human(confirmed_by):
