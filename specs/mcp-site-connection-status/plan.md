@@ -116,6 +116,15 @@ shell：`tests/on_site_check_master_test.sh`：用 `ON_SITE_SSH_BIN` 假 ssh，�
 3. 先確認線上 nano4 的 CE 紀錄是否缺 `suSite`（已知 nano4 的 config 無 `suSite` 鍵）；若缺，ledger 記錄，並在 SU 係數表補 nano4 的 `ngs*` 分區或明確標未知；`unknown_reasons` 依分區彙總成一行。
 4. 與 `mcp-site-keepalive-disconnect-ux` 同改 `on_site.sh`、`mcp_server.py`、`tools.json`、`test_refusal_visibility.py:138`：本件先合併；該 TC-090 斷言由本件修改（放行 site_link 欄位，不得放寬其他斷言）。
 
+## 裁決（自動補，2026-11-07）
+依據：repo 的 `scripts/inspect_sides.sh`（reach local → `site.reachable=yes`；reach none → `site.reachable=unknown`，註明 Platform 管理的 CE 沒有 login node）與 `scripts/launch_recheck.sh`（none 無 relay 可檢查）。
+1. `own_facts` 的 `site_link`：`reach: local` → 固定 `open`（與 `--check-master` 對 local 回 0 一致）；`reach: none` → 固定 `unknown`（沒有可連的站台，不能說 open；與 inspect_sides 的 none → unknown 一致）。`reach: ssh` 才看 `--check-master`。各加一條 TC（local→open、none→unknown），放入 `platform/tests/test_station_site_link.py`，且兩者都不呼叫 `--check-master`／`--check-reach`。
+2. 範圍加入 `docs/TESTING.md`：新增一段「mcp-site-connection-status：驗收者檢查三件事」——(a) 改動檔案都在「範圍：檔案」清單內；(b) 憲法與安全網（rules、確認流程、cancel 等）`git diff --stat` 零 diff；(c) 既有斷言只照「允許更新的既有斷言」清單更新。另附 PITFALLS 新條目與 nano4 CE `suSite` 實測紀錄的檢查步驟（併入 Procedure P2）。
+3. run／CE 沒有 `agent` 欄（或 agent 名未過 `_NAME` 字元限制）時：整句不追加，原訊息完整保留，不寫空的或佔位的 agent 名。TC-045 加一句此斷言：無 agent 欄時，訊息與追加前逐字相同。
+4. 沒有 spec.md：以本計畫條目（作法 (1)(2)(3)、完成標準、不做）取代 FR；維護者原話拆成案例 (a)(b)(c)，如計畫「維護者原話」段所列，不再改動。
+5. 風險等級以 L 為準（lead 裁決已推翻 M）；PASS 後跑對抗審，通過前不掛自動合併。不影響出題。
+6. 專長守則：本任務無 [backend] 守則，不需要對應 TC。
+
 ## 專長守則（[backend]）
 
 （工作區沒有 `.claude/dev-profiles/[backend].md`；本任務無專長守則。）
