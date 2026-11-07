@@ -1,0 +1,103 @@
+# Nothing existing: tests of the site_link fact an agent reports about the shared connection to the site (mcp-site-connection-status).
+"""own_facts site_link / site_link_at. TC numbers are in the comments, see the task's test case list."""
+import datetime
+import threading
+from types import SimpleNamespace
+
+from abf_station import agent as agent_mod, launch
+from abf_station.site import SiteResult
+
+
+class FakeSite:
+    def __init__(self, rc=0, timed_out=False, raises=None):
+        self.rc, self.timed_out, self.raises = rc, timed_out, raises
+        self.calls = []
+
+    def call(self, args, input=None, timeout=None):
+        self.calls.append((list(args), timeout))
+        if self.raises:
+            raise self.raises
+        return SiteResult(self.rc, b"", "", self.timed_out)
+
+
+def ctx(tmp_path, reach, site):
+    f = tmp_path / "env.yaml"
+    f.write_text("reach: %s\n" % reach)
+    return SimpleNamespace(site=site, settings_file=str(f), platform_url="https://p.example")
+
+
+def used(site):
+    return [c[0][0] for c in site.calls]
+
+
+def test_ssh_check_master_1_is_closed_0_is_open_never_check_reach(tmp_path):
+    # TC-015, TC-016, TC-019, TC-025
+    for rc, want in ((1, "closed"), (0, "open")):
+        s = FakeSite(rc=rc)
+        assert launch.own_facts(ctx(tmp_path, "ssh", s))["site_link"] == want
+        assert used(s) == ["--check-master"] and s.calls[0][1] == 3
+
+
+def test_ssh_timeout_and_errors_are_unknown(tmp_path):
+    # TC-017, TC-018, TC-019
+    for s in (FakeSite(rc=124, timed_out=True), FakeSite(rc=2), FakeSite(rc=127), FakeSite(raises=OSError("boom")),
+              FakeSite(raises=RuntimeError("x"))):
+        assert launch.own_facts(ctx(tmp_path, "ssh", s))["site_link"] == "unknown"
+        assert "--check-reach" not in used(s)
+
+
+def test_local_is_open_and_none_is_unknown_without_any_call(tmp_path):
+    # TC-020, TC-021
+    s = FakeSite()
+    assert launch.own_facts(ctx(tmp_path, "local", s))["site_link"] == "open"
+    assert launch.own_facts(ctx(tmp_path, "none", s))["site_link"] == "unknown"
+    assert s.calls == []
+
+
+def test_site_link_at_is_iso(tmp_path):
+    # TC-022
+    for reach in ("ssh", "local", "none"):
+        at = launch.own_facts(ctx(tmp_path, reach, FakeSite()))["site_link_at"]
+        datetime.datetime.strptime(at, "%Y-%m-%dT%H:%M:%SZ")
+
+
+class FakeClient:
+    name = "a1"
+
+    def __init__(self):
+        self.posts = []
+
+    def post(self, path, body, timeout):
+        self.posts.append(body)
+        return 200, {"agent": "a1"}
+
+
+def test_failing_check_does_not_stop_hello(tmp_path):
+    # TC-023
+    c = ctx(tmp_path, "ssh", FakeSite(raises=RuntimeError("x")))
+    a = agent_mod.Agent("https://p.example", "t", "a1", c)
+    a.client = FakeClient()
+    assert a.hello() == "a1"
+    assert a.client.posts[0]["facts"]["site_link"] == "unknown"
+
+
+def test_beat_recomputes_facts_each_time(tmp_path):
+    # TC-024
+    site = FakeSite(rc=0)
+    c = ctx(tmp_path, "ssh", site)
+    client = FakeClient()
+    done = threading.Event()
+    real_post = client.post
+
+    def post(path, body, timeout):
+        out = real_post(path, body, timeout)
+        site.rc = 1       # after the first beat the connection is gone
+        if len(client.posts) >= 2:
+            done.set()
+        return out
+    client.post = post
+    beat = agent_mod.Beat(client, 0.01, lambda: launch.own_facts(c))
+    beat.start()
+    assert done.wait(5)
+    beat.finish()
+    assert [p["facts"]["site_link"] for p in client.posts[:2]] == ["open", "closed"]
