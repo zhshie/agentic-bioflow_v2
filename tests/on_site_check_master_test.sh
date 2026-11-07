@@ -48,4 +48,11 @@ settings 'reach: none'
 mkfake 0; out=$(run); rc=$?
 check "none: exit 1 and ssh never called" "$([ "$rc" = 1 ] && [ ! -s "$TMP/ssh.log" ]; echo $?)"
 
+# TC-031-A (fix round): a hung -O check is cut at ON_SITE_TIMEOUT and answers "unknown" (124), not closed (1) and not a long wait
+settings "reach: ssh" "site_host: me@example.org" "ssh_control_path: $CPATH"
+printf '#!/bin/bash\ncase "$*" in *"-O check"*) sleep 20 ;; esac\nexit 0\n' > "$TMP/fake-ssh"; chmod +x "$TMP/fake-ssh"
+t0=$SECONDS; out=$(ON_SITE_TIMEOUT=1 run); rc=$?; took=$((SECONDS-t0))
+check "hung -O check: exit 124 (unknown), not 0 or 1" "$([ "$rc" = 124 ]; echo $?)"
+check "hung -O check: gives up within 4 seconds (took ${took}s)" "$([ "$took" -le 4 ]; echo $?)"
+
 [ "$fails" = 0 ] && echo "all ok" || { echo "$fails failed"; exit 1; }

@@ -105,7 +105,8 @@ def test_listing_connection_is_read_only(tmp_path):
 
 # ---- US2 -------------------------------------------------------------------------------------------------------
 
-def _outputs_world(tmp_path, agent="desktop", ce_agent="desktop", message=DOWN):
+def _outputs_world(tmp_path, agent="desktop", ce_agent="desktop", message=DOWN, job_agent=False):
+    job_agent = agent if job_agent is False else job_agent      # the agent that ran the listing job (the CE's agent when it was queued)
     from abf_platform import compute_envs, store
     db, pdb = tmp_path / "index.db", tmp_path / "platform.db"
     con = store.connect_index(db)
@@ -123,7 +124,7 @@ def _outputs_world(tmp_path, agent="desktop", ce_agent="desktop", message=DOWN):
         con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES ('r', '/f', 'nano4', ?, 1, 1)", (agent or "",))
         con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, result_json, created_at, deadline_at, finished_at) "
                     "VALUES (?, 'nano4', 'list_site_files', ?, 'done', ?, ?, ?, ?)",
-                    (agent or "x", json.dumps({"path": "/f/results"}), json.dumps({"ok": False, "message": message}),
+                    (job_agent or "", json.dumps({"path": "/f/results"}), json.dumps({"ok": False, "message": message}),
                      time.time(), time.time() + 60, time.time()))
     con.close()
     return db, pdb
@@ -147,6 +148,13 @@ def test_run_outputs_names_the_agent_of_the_run_not_another(tmp_path):
     # TC-034
     got = _outputs(*_outputs_world(tmp_path, agent="desktop-gcb", ce_agent="desktop"))
     assert 'agent "desktop-gcb"' in got["reason"] and 'agent "desktop"' not in got["reason"]
+
+
+def test_run_outputs_names_the_agent_that_ran_the_job_after_ce_moved(tmp_path):
+    # TC-034 (fix round): launched by desktop-gcb, the CE now belongs to desktop and the listing ran on desktop: the person must be
+    # sent to desktop, the machine that reported "No open connection", not to the launch agent
+    got = _outputs(*_outputs_world(tmp_path, agent="desktop-gcb", ce_agent="desktop", job_agent="desktop"))
+    assert got["reason"].endswith(WSL_SENTENCE % ("desktop", "desktop")) and "desktop-gcb" not in got["reason"]
 
 
 def _fake_listing(monkeypatch):
@@ -279,3 +287,14 @@ def test_ce_gone_keeps_default_site(tmp_path):
     from abf_platform import su as su_mod
     got = _get(*_su_world(tmp_path, [("ngs62g", 1, H)], ce=False))
     assert got["site"] == su_mod.load_rates()["default_site"]
+
+
+def test_estimate_su_and_usage_say_no_suSite_like_get_run(tmp_path):
+    # TC-047 (fix round): one answer about the site of a run: a CE without suSite is said once, never priced at default_site
+    from abf_platform import su as su_mod
+    db, pdb = _su_world(tmp_path, [("ngs62g", 1, H)], su_site=None)
+    a = actions()
+    want = [su_mod.NO_SU_SITE]
+    got = a.estimate_su(db, "r", platform_path=pdb)
+    assert got["su"] is None and got["unknown_reasons"] == want
+    assert a.run_usage(db, "id-r", caller=a.Caller(1, "u1", "lab"), platform_path=pdb)["unknown_reasons"] == want
