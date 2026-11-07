@@ -14,3 +14,10 @@
 - TC-008 證明：暫時在 store.py confirmations 加假欄位 fake_col，test_tcm_47 轉紅；git checkout 還原後 38 passed 全綠；未留下假欄位。
 - TC-023: 不需要 migration；本件只改測試基準值，沒有改資料結構。
 - TC-014: 未碰 gitleaks/pip-audit 或 .github；若仍紅是 v3 既有問題（依計畫查證）。
+
+## 全套測試狀態 (executor handoff)
+- 在 b8a3b12e：第一次全套 148/150：platform_shard_4 一支失敗（test_no_schema_change），shard_6 逾時 300s。
+- shard_4 失敗原因是 WSL 鏡像 ~/abf-mirror/chat-confirm-rebase-fix 的 origin/v3 ref 過舊（非本件程式問題）；已在鏡像重抓 origin/v3 後，test_mcp_launch_pipeline.py 21 passed。
+- shard_6 單跑 ok 280s（逼近 300s 上限，機器忙時會逾時）。
+- 第三次全套在 shard_6 之前全部 ok（shard 1-5 ok），但 2 小時背景上限在 shard_6 還在跑時到了，沒拿到完整綠燈。
+- 下一步：機器較空時重跑全套；若 shard_6 仍逾時，需 lead 決定。未寫 GREEN。
