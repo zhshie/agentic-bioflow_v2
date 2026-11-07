@@ -133,6 +133,15 @@ source: 維護者 11-07 定案（Q1）；DESIGN.md 畫面 8（Results）、9（D
 5. 「RStudio 介面要能看」由 `cli-fetch-publish-figure` 負責，本件不做。
 6. 交付包其他列維持「之後開放」，圖庫相關由 `mcp-publish-figure` 處理——接受。
 
+## 裁決（自動補，2026-11-07）
+1. va04 與「不讀檔」矛盾：採選項一。清單（輸出頁、完成頁）只看副檔名／白名單、不讀檔，所以偽裝檔（`.png` 內容是 HTML、`.svg` 無 `<svg`）在清單**照樣出現**「預覽」連結；點進 `/run/preview` 才由 `kind_of` 讀位元組判斷，回「此檔類型不提供預覽」頁，`/run/image`、`/run/report` 對偽裝檔回 404。va04 的「清單沒有預覽連結」只適用副檔名不符或非白名單的檔（`.txt .tsv .bam .pdf .htm .jpg`、非白名單 `.html`）；偽裝檔只斷言預覽頁與 `/run/image`、`/run/report`。不採選項二（會增加站台讀取量）。
+2. `kind_of` 簽名：兩段式。`kind_of(path)` 只看名稱，傳回候選類型（`png|svg|html|None`），供清單用；`kind_of(path, data)` 傳入位元組時再驗魔術位元組／`<svg`，不符傳回 None，供三條路由用。TC 只驗行為。
+3. `/run/preview` 的 CSP：只有 PNG／SVG ready 頁帶 `img-src 'self'`；不提供預覽、等待、too_large、錯誤、站台連不上頁一律用不含 `img-src`、`frame-src`、`script-src` 的基礎 CSP。HTML ready 頁加 `frame-src 'self'`、無 `img-src`。TC 只斷言「無 frame-src、無 script-src」，不釘 img-src 有無。
+4. vb04 語意更正：白名單看 basename，`multiqc/multiqc_report.html` 等子目錄下的白名單檔名**應通過**（TC-052 照此）；應 404 的是 `evil.html`、`multiqc_report.html.txt`、`multiqc_report.htm`。刪去原句「在 `x/` 之外仍通過」。
+5. 作法 B-5：以上方「裁決（lead）4」為準，不動 STYLE、`STYLE_SHA256` 不變，iframe 用 `width`／`height` 屬性、無 `style=`；B-5 的「擇一」作廢。
+6. 步驟歸屬與 skip：`va06`、`va09` 中涉及 `/run/report` 的斷言移到步驟 B（擁有者規則、未登入行為隨路由在步驟 B 驗）；步驟 A 只驗 `/run/preview`、`/run/image`。瀏覽器層 vb03（TC-053 至 TC-057）依 lead 裁決 3：不得 skip 當通過，沒真的跑出來標 UNVERIFIED。
+7. 維護者原話第 1 條後半（R Studio 介面看圖）：依 lead 裁決 5 由 `cli-fetch-publish-figure` 負責，本件不做，列為不在範圍（TC-039）。lead 已裁決，視為同意。
+
 ## 專長守則（ui）
 
 ### executor
