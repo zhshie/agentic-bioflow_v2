@@ -113,6 +113,11 @@ source: 同事測試員回報缺口；維護者 2026-11-06 核准順序答「好
 - lead 2026-11-07（回應 web-run-tasks-log-fail-1「UNVERIFIED needs human」）：TC-035、TC-036 屬「PR 階段交付」，不是推送的前置條件。處理：(1) 測試已綠（0d05064d）就推分支、開 PR；(2) 由閱卷者（verifier）依本計畫「專長守則（ui）」跑 `scripts/ui_check.py`（無則用 Playwright＋with_server.py）拍 4 張截圖、跑 axe，結果附 PR；(3) axe 若跑不出來，標 axe：UNVERIFIED 並寫缺什麼，不當作 FAIL；(4) TC-035 閱卷者對 docs/TESTING.md 手動步驟逐字讀一遍，標 PASS／FAIL。(5) 網頁畫面 B 級：verifier 通過＋CI 綠即掛自動合併，截圖進每日清單讓維護者事後看（10-24、10-29 他定）。
 - 此件不需要維護者事前點頭。
 
+## 裁決（lead 補，2026-11-07 晚，回應 TC-036 與 TC-011 衝突）
+- axe 的 `meta-refresh`（頁面用 <meta http-equiv=refresh> 自動重新整理）是無障礙嚴重違規；本站其他頁不得新增這個違規。**選「拿掉自動重新整理」**：載入中的紀錄頁不再每 15 秒自動刷新，改在頁面顯眼處放一個「重新整理」連結（zh／en 各一句），並顯示「資料時間」。
+- TC-011 的斷言由「15 秒自動刷新」改為「有重新整理連結且無 meta-refresh」——這是允許的斷言變動，須在 ledger 列出新舊斷言；其餘斷言一條都不准動。
+- 若既有其他頁已使用 meta-refresh，不在本件處理，ledger 列出清單即可。
+
 ## 專長守則（ui）
 
 ### executor
