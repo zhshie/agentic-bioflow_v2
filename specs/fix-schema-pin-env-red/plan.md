@@ -49,6 +49,13 @@ risk: M
 - 不刪這條測試，不改成永遠綠。
 - 不動 CI 設定。
 
+## 裁決（lead 補，2026-11-07 晚，回應 BLOCKED：鏡像 origin/v3 與 worktree 不同）
+- 選 **(a) 測試內先 fetch 最新 origin/v3**：`test_no_schema_change` 在比對前先執行 `git fetch origin v3`（失敗＝skip 並印原因，不當通過）。不改斷言本身、不放寬 schema 釘版的檢查範圍。
+- 不採 (b)（鏡像帶入 refs 仍會落後）與 (c)（first-parent 底會改變比對語意）。
+- 允許修改的既有測試：僅 `test_no_schema_change` 的比對前置步驟；其餘一條都不准動。
+- 完成標準不變：在 WSL worktree 全套綠，且故意改 store.py schema 時該測試仍會紅（ledger 附證明）。
+- 注意：abf-fast-suite 的鏡像 origin/v3 若無網路無法 fetch，測試印出明確原因並 skip，ledger 記錄；不得因此把測試改弱成永遠通過。
+
 ## 專長守則（backend）
 
 ### executor
@@ -73,8 +80,3 @@ risk: M
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
-
-## 裁決（lead，2026-11-07 午後，回應 BLOCKED：鏡像 origin/v3 落後）
-- 選「測試內先 fetch 最新 origin/v3」：`test_no_schema_change` 在比對前先執行 `git fetch origin v3`（失敗＝skip 並印原因，不當通過）；不改斷言本身，不放寬 schema 釘版的檢查範圍。
-- 不採用「改用 mirror ref」與「first-parent base」：前者仍會落後，後者改變比對語意。
-- 完成標準不變：在 WSL worktree 全套綠，且故意改 store.py schema 時該測試仍會紅（ledger 附證明）。
