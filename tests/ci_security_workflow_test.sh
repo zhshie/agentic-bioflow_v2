@@ -122,13 +122,80 @@ test_pip_audit_targets_both_files() { # TC-032..036
   ! cg -Eq -- '--ignore-vuln +[A-Za-z]'
 }
 
+# ---- gitleaks-classify: JSON report, redacted, uploaded as artifact ----
+scan_line() { code | grep -A1 -F 'name: Scan full history' | grep 'run:' | head -1; }
+report_path() { scan_line | sed -n 's/.*--report-path[[:space:]]\{1,\}\([^[:space:]]\{1,\}\).*/\1/p'; }
+upload_block() { # the upload-artifact step, from its "- uses" line to the next "- " step
+  code | awk '/^      - /{inb=0} /uses: actions\/upload-artifact@/{inb=1} inb{print}'
+}
+test_gitleaks_full_scan_writes_json_report() { # TC-001, TC-002
+  local l p; l="$(scan_line)"
+  [ -n "$l" ] || return 1
+  grep -Fq -- '--report-format json' <<<"$l" || return 1
+  p="$(report_path)"
+  [ "$p" = "gitleaks-report.json" ]
+}
+test_gitleaks_report_stays_redacted() { # TC-004, TC-005
+  local n r
+  n="$(cg -c 'gitleaks git ')"
+  r="$(code | grep 'gitleaks git ' | grep -c -- '--redact')"
+  [ "$n" -ge 2 ] && [ "$n" = "$r" ] || return 1
+  ! cg -q -- '--no-redact'
+}
+test_report_is_uploaded_always_as_artifact() { # TC-006, TC-008..TC-014
+  local b p order; b="$(upload_block)"
+  [ -n "$b" ] || return 1
+  grep -Eq 'uses: actions/upload-artifact@[0-9a-f]{40}  # v[0-9]+\.[0-9]+\.[0-9]+' <<<"$b" || return 1
+  grep -Eq '^        if: always\(\)$' <<<"$b" || return 1
+  p="$(report_path)"
+  [ -n "$p" ] && grep -Eq "^          path: $p\$" <<<"$b" || return 1
+  grep -Eq '^          name: gitleaks-report$' <<<"$b" || return 1       # TC-011
+  grep -Eq '^          if-no-files-found: ignore$' <<<"$b" || return 1   # TC-012
+  grep -Eq '^          retention-days: 14$' <<<"$b" || return 1          # TC-013
+  grep -Eq 'upload-artifact@[0-9a-f]{40}  # v4\.' <<<"$b" || return 1   # TC-008
+  # TC-014: order scan -> upload -> PR scan, all inside the gitleaks job
+  order="$(code | awk '/^  pip-audit:/{exit} /name: Scan full history/{print "S"} /actions\/upload-artifact@/{print "U"} /name: Scan this PR/{print "P"}' | tr -d '\n')"
+  [ "$order" = "SUP" ]
+}
+test_upload_artifact_is_sha_pinned() { # TC-007
+  local l; l="$(cg 'uses: actions/upload-artifact@')"
+  [ -n "$l" ] || return 1
+  grep -Eq '^[[:space:]]*- uses: actions/upload-artifact@[0-9a-f]{40}  # v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$l" || return 1
+  ! grep -Eq '@v[0-9]|@main|@master' <<<"$l"
+}
+test_permissions_stay_read_only_after_report() { # TC-026, TC-027
+  [ "$(cg -c '^[[:space:]]*permissions:')" = 1 ] || return 1
+  cg -Eq '^permissions:$' || return 1
+  [ "$(code | awk '/^permissions:/{f=1;next} f&&/^[^ ]/{exit} f&&NF{print}')" = "  contents: read" ] || return 1
+  ! cg -q 'secrets\.' && ! cg -q 'pull_request_target'
+}
+test_pr_scan_has_no_report() { # TC-025
+  local l; l="$(code | grep -A3 -F "name: Scan this PR's commits")"
+  grep -Fq "if: github.event_name == 'pull_request'" <<<"$l" || return 1
+  ! code | grep -F -- '--log-opts' | grep -Eq -- '--report-(format|path)'
+}
+test_gitleaks_toml_has_no_new_allowlist() { # TC-021 (origin/v3 baseline: 0 entries)
+  [ "$(grep -c '^\[\[allowlists\]\]' "$GL")" = 0 ]
+}
+test_pip_audit_job_unchanged() { # TC-023
+  local cur base
+  base="$(MSYS_NO_PATHCONV=1 git -C "$ROOT" show "origin/v3:.github/workflows/security.yml" 2>/dev/null)" || base=""
+  if [ -z "$base" ]; then echo "skipped test_pip_audit_job_unchanged (no origin/v3)"; return 0; fi
+  cur="$(awk '/^  pip-audit:/{f=1} f' "$WF")"
+  [ "$cur" = "$(awk '/^  pip-audit:/{f=1} f' <<<"$base")" ]
+}
+
 for t in test_security_workflow_exists_and_is_separate \
          test_job_names_do_not_collide_with_required_check test_triggers \
          test_permissions_are_read_only_and_no_pull_request_target \
          test_every_uses_is_pinned_to_full_sha test_no_way_to_turn_checks_off \
          test_allowlist_entries_have_reason_and_are_not_blanket \
          test_gitleaks_download_is_verified test_gitleaks_scans test_gitleaks_uses_redact \
-         test_existing_tests_yml_untouched test_pip_audit_targets_both_files; do
+         test_existing_tests_yml_untouched test_pip_audit_targets_both_files \
+         test_gitleaks_full_scan_writes_json_report test_gitleaks_report_stays_redacted \
+         test_report_is_uploaded_always_as_artifact test_upload_artifact_is_sha_pinned \
+         test_permissions_stay_read_only_after_report test_pr_scan_has_no_report \
+         test_gitleaks_toml_has_no_new_allowlist test_pip_audit_job_unchanged; do
   check "$t"
 done
 [ "$FAILS" = 0 ] || { echo "$FAILS check(s) failed"; exit 1; }
