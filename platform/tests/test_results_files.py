@@ -601,7 +601,7 @@ def test_tc037_038_only_one_new_route_and_no_bulk_download(w):
     paths = sorted({r.path for r in c.app.routes if isinstance(r, Route)})
     assert "/run/file" in paths
     new = [p for p in paths if "run" in p or "download" in p or "zip" in p or "deliver" in p]
-    assert new == ["/run/file"]
+    assert new == ["/run/file", "/run/image", "/run/preview"]      # web-result-viewer: the picture and its page; step B adds /run/report
 
 
 # ---- wording: both languages ----------------------------------------------------------------------------------------------

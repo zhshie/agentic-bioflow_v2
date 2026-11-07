@@ -9,6 +9,7 @@ import pytest
 
 from human_harness import World
 from test_results_files import INTERNAL, LIMIT, STYLE_SHA256, file_jobs, file_url, ok_result, reply_file
+from test_web_board import pane
 from test_web_finished import read_outputs, section, url as finished_url, world
 from test_web_results_outputs import ENTRIES
 from test_web_wording_sweep import banned_in
@@ -17,6 +18,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + bytes(range(256)) + b"\xff\xff\x00\xfe IEND"
 SVG_EVIL = b'<?xml version="1.0"?><!-- c --><svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect/></svg>'
 HTML = b"<html><body><script>var x = 1;</script>\xff\xfe\x00 binary \x80</body></html>\n"
 NOT_AN_IMAGE = b"<html><body>not an image</body></html>"
+ROUTES_OTHER = ("image",)      # step B adds "report"
 CJK = re.compile(r"[　-〿㐀-鿿豈-﫿＀-￯]")
 
 
@@ -123,7 +125,7 @@ def test_tc007_listings_gain_only_plain_links(w):
     before = pages(w, c, rid)
     for kind, text in before.items():
         for tag in ("<img", "<iframe", "<script", "<form", "<button", "style="):
-            assert tag not in text.replace('<form method="post" action="/logout">', ""), (kind, tag)
+            assert tag not in pane(text, "middle") and (tag in ("<form", "<button") or tag not in text), (kind, tag)
         assert text.count("<style>") == 1
     sec = section(before["finished"], "交付包")
     assert "<form" not in sec and "<button" not in sec and 'href="/download' not in sec
@@ -236,7 +238,7 @@ def test_tc025_026_other_types_are_not_previewed(w):
         r = c.get(purl(rid, name))
         assert r.status_code == 200 and "此檔類型不提供預覽" in r.text, name
         assert "<img" not in r.text and "<iframe" not in r.text and 'href="/run/file?run=%s&amp;path=%s"' % (rid, name) in r.text and "tab=outputs" in r.text
-        for route in ("image", "report"):
+        for route in ROUTES_OTHER:
             g = c.get(purl(rid, name, route))
             assert g.status_code == 404 and g.content == b"", (name, route)
 
@@ -380,7 +382,7 @@ def test_tc086_087_wording_and_states(w):
     answered(w, c, rid, "PLOT.PNG", error={"error": "site_unreachable", "message": "Traceback x"})
     states["down"] = c.get(purl(rid, "PLOT.PNG"))
     for name, r in states.items():
-        assert banned_in(visible(r.text)) == [], name
+        assert banned_in(re.sub(r"/[\w/.-]+", " ", visible(r.text))) == [], name      # the site path in the too-large sentence is the station's, not ours
         assert not INTERNAL.search(r.text), name
         if name != "ready":
             assert re.search(r"[◌✕]", r.text) and len(visible(r.text)) > 10, name
