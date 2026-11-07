@@ -374,7 +374,7 @@ BASE_TOOLS = ["cancel", "describe_module", "find_module", "forget", "get_compute
 BASE_CONFIRMATION_COLUMNS = ["id", "sha256", "kind", "created_at", "used_at", "caller_user_id", "state", "channel", "confirmed_at",
                              "expires_at", "ce_name", "bundle_json", "screen_text", "void_reason", "forgotten_at", "forgotten_by"]
 BASE_TABLES = ["agents", "compute_envs", "confirmations", "jobs", "launches", "meta"]
-BASE_SCHEMA_SHA256 = "b401f98b6b2db172fe8ef3e73155482424bc5f6da569a17a204e3a1085f75415"
+BASE_SCHEMA_SHA256 = "34670e36fdb2ae46813b6f97cc7570f01cf5ddc347a139a84c7f2c762335652a"
 BASE_ROUTES = [
     ("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")), ("/act/{verb}", ("POST",)),
     ("/act/{verb}/edit", ("GET", "HEAD")), ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")),

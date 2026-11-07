@@ -1,3 +1,2 @@
 ts	phase	decision	why	evidence	result
-2026-11-07	merge	合併 PR376 分支進本分支	PR 已含 v3 tip，無衝突	merge commit	完成
-2026-11-07	tc047	停下不改基準	實際差異是 jobs.kind 加 lint_pipeline，不是計畫說的三項 (TC-005)	platform/abf_platform/store.py jobs CHECK; test_chat_confirm.py:399	BLOCKED
+2026-11-07T20:10	green	只把 BASE_SCHEMA_SHA256 改成含 lint_pipeline 的新值	裁決允許；差異只有 jobs.kind CHECK	platform/tests/test_chat_confirm.py:377	38 passed
