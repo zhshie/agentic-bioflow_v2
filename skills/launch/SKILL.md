@@ -8,6 +8,7 @@ argument-hint: [pipeline] [path to input data]
 > or the MCP `launch` tool; neither needs Seqera (`docs/PLATFORM.md`). Everything
 > below that uses `tw` (the Seqera command line) is the v2 flow and applies to v2
 > only. The v2 text is kept as it was for people still on v2 (`docs/MIGRATION.md`).
+> On v3 the MCP `launch` only asks; in a client with no form the person's own yes may come in the chat: call `launch` again with the `request_id` it returned and `user_confirmed=true`, only after they answered.
 
 Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under

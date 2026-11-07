@@ -61,7 +61,7 @@ grep -qiE 'scheduler is doing' "$SK" && grep -qiE 'refused to send' "$SK"; chk "
 
 # TC-012/013: tool names are real; arguments are the real ones
 tools=$(grep -oE 'name="[a-z_]+"' "$SERVER" | sed 's/name="//;s/"//' | sort -u)
-args="run_id run_name compute_env"
+args="run_id run_name compute_env request_id user_confirmed"    # the CHAT channel arguments (specs/mcp-chat-confirm)
 badnames=""
 for t in $(grep -oE '`[a-z]+_[a-z_]+`' "$SK" | tr -d '`' | sort -u); do
     case "$t" in tool_bug|failure_reason|peak_rss|peak_vmem|ssh_max_parallel|cancel_requested_at) continue;; esac

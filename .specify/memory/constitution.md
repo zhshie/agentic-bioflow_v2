@@ -30,9 +30,12 @@ exists.
   submission path of our own: the station agent's launch job, which hands the Nextflow head job
   to the site's own scheduler the way Seqera Platform does, and runs only after the user has
   seen the full launch command and confirmed it, through a channel a person operates: the
-  terminal, the form of the person's MCP client, or the platform's confirmation page as the
-  same logged-in user (the three are the only ones; a pending request, a token, or any answer
-  the model itself can give is none of them). A form answer is accepted from whatever MCP
+  terminal, the form of the person's MCP client, the platform's confirmation page as the
+  same logged-in user, or the person's own reply in the chat (CHAT: the AI cannot answer for them;
+  it can only relay the person's own reply on the request id with `user_confirmed=true`, accepted
+  for the same user, the same content and ten minutes, and never over stdio; it is the weakest of
+  the four, since a client an AI controls can set that argument without asking). The four are the
+  only ones; a pending request, a token, or any answer the model itself can give is none of them. A form answer is accepted from whatever MCP
   client holds the person's token and declares forms, so a client program an AI controls can
   answer it: the token is what must be kept where an AI cannot read it. Over stdio there is no
   caller, so the same-user check does not apply there; over HTTP and on the page there always
@@ -184,15 +187,17 @@ plan, and change only by a MAJOR amendment of this constitution.
 - A launch command is shown in full and waits for explicit confirmation before it runs
   (`hooks/confirm_launch.sh` in the Claude Code kit; on the platform, the gate in
   `platform/abf_platform/actions`, which takes a person's yes only from the terminal, the form
-  of an MCP client or the confirmation page).
+  of an MCP client, the confirmation page or the person's own reply in the chat).
 - Every write tool of the platform (today `launch`, `launch_pipeline`, `cancel`, `resume`, `relaunch` and `forget`) refuses
-  until a person has answered on one of those channels; a token, a pending request or the
-  model's own answer is never that answer. A new write tool joins this rule with its own
+  until a person has answered on one of those four channels; a token, a pending request or the
+  model's own answer is never that answer. A chat reply counts only as the person's own, relayed with the
+  request id and `user_confirmed=true`. A new write tool joins this rule with its own
   refusal test before it ships.
   *Check:* `platform/tests/test_actions_layer.py` (`test_tcb04_*` to `test_tcb08_*`),
   `platform/tests/test_human_channel.py` (`test_tch09_*`, `test_tca14_*`),
   `platform/tests/test_resume_entrypoints.py` (`test_tc142_*`, `test_tc144_*`),
-  `platform/tests/test_keep_submissions.py` (`test_tc034_*`, `test_tc037_*`, `test_tc038_*`), run by `tests/run_all.sh` (through its four platform parts).
+  `platform/tests/test_keep_submissions.py` (`test_tc034_*`, `test_tc037_*`, `test_tc038_*`),
+  `platform/tests/test_chat_confirm.py` (`test_tcm_*`), run by `tests/run_all.sh` (through its four platform parts).
 - Credentials and personal details live only in the deployment's own settings area, readable by
   the owner only; never printed, never in git, never in a params file. The plugin never fills in one
   member's credential from another member's settings: it asks the user for the value.
@@ -707,6 +712,48 @@ protected-path review); no principle or Safety Net rule is removed or redefined.
 **Approval.** The maintainer approved this change in his own words on 2026-11-03 (「合併規則同意」);
 the development lead merges the pull request after CI is green and the acceptance passes.
 
+### 7.0.0 (2026-11-05): a fourth human-yes channel, the person's own reply in the chat
+
+**Rationale.** A person who works through an AI chat client that cannot show a form was sent to a
+page or the terminal for every yes. On 2026-11-05 the maintainer chose the design in which the
+person answers in the chat and the AI relays that reply on the request's id, in his words: 「照3.」
+(he chose the option, then agreed to the full text on 2026-11-06). The relay is honest about what it is:
+the platform cannot tell a person's reply from an AI that sets the argument without asking, so
+this channel is weaker than the form and the page, and the amendment says so.
+
+**What changes.**
+- Principle I.2: the channels a person's yes may come through are four, not three. The fourth,
+  CHAT, is the person's own reply in the chat, relayed by the AI as a second call of the same
+  tool with `request_id` (the id of a pending request that the first call returned) and
+  `user_confirmed=true`. The AI cannot answer for the person; it can only relay the person's own
+  reply on the request id. The platform accepts it only for the same logged-in user, the same
+  content and kind as the request, and within ten minutes; over stdio there is no caller, so CHAT
+  is refused there. Its limit: a client program an AI controls can set `user_confirmed=true`
+  without asking, so for the AI itself this channel rests on its instructions, not on a barrier.
+- Its relation to 5.0.0: the sentence in 5.0.0, "A pending request, a token, and anything the
+  model can answer are not a channel", no longer applies to CHAT. A pending request and a token
+  are still not a channel by themselves; CHAT is a channel only as the person's own reply relayed
+  on the request id, and the platform cannot check that the reply was a person's. The 5.0.0 entry
+  is left as it was written; this entry supersedes it for CHAT.
+- The Safety Net rule on write tools names the fourth channel and says a chat reply counts only as
+  the person's own, relayed with the request id and `user_confirmed=true`; the line that lists
+  the write tools is unchanged.
+- The check line of the rule adds `test_tcm_*` of `platform/tests/test_chat_confirm.py`.
+
+**Sync Impact Report.** Updated together: `docs/PLATFORM.md`, `docs/TESTING.md`, `CHANGELOG.md`,
+the `launch`, `runs` and `operational` skills, the MCP routing sentence in
+`platform/abf_platform/guidance.py`, the tool descriptions, and the tests that pin the version
+(`tests/charter_v4_workflow_test.sh`, `tests/constitution_scope_test.sh`,
+`tests/platform_direction_docs_test.sh`).
+
+**Impact on existing deployments.** None that must be done. The `confirmations` table needs no
+migration (its `channel` is a free string). A client that never sends `request_id` behaves as
+before. The browser chat page does not offer the two new arguments to its model.
+
+**Version.** MAJOR, under Governance: Principle I.2 and a Safety Net rule are redefined (a new way
+for a yes to be given).
+**Approval.** The maintainer approved the full text of this amendment in his own words on 2026-11-06 (「好」), after it was explained to him that the channel is the weakest of the four; the development lead merges the pull request after CI is green and the acceptance passes.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -722,4 +769,4 @@ the development lead merges the pull request after CI is green and the acceptanc
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 6.2.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-03
+**Version**: 7.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-05

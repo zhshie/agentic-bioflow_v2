@@ -5,7 +5,9 @@ Every entry of the platform (the MCP tools, the confirmation page, later the cha
 The read actions are the bodies the MCP tools had. launch and cancel check who said yes, then call confirm.py, which writes the
 confirmation and the job in one transaction. `confirmed_by` must be one of three objects, each a person's yes through a channel
 a person operates: TERMINAL (y typed at the question of abf_launch/cli.py), ELICITED (the form of the person's MCP client, below)
-and PAGE (the confirmation page, as the same logged-in user). Anything else is refused before a database is opened.
+and PAGE (the confirmation page, as the same logged-in user). Anything else is refused before a database is opened. A fourth
+channel, CHAT, is the person's own reply in the chat, relayed by the AI on a second tool call with the request id and
+user_confirmed=true; it is accepted only by the MCP request tools (_ask), never by approve() or _require_human below.
 
 The MCP tools launch and cancel do not call launch and cancel. They call request_launch and request_cancel, which build the same
 bundle and screen as the terminal, write a pending request (no job), and ask the person: through the client's form if it has one
@@ -49,6 +51,7 @@ class _Channel:
 TERMINAL = _Channel("TERMINAL")
 ELICITED = _Channel("ELICITED")
 PAGE = _Channel("PAGE")
+CHAT = _Channel("CHAT")     # the person's own reply in the chat, relayed by the AI with the request id: only _ask uses it; the public approve() and _require_human do not accept it
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1361,13 +1364,45 @@ def form_is_trusted(caller):
     return caller is None or getattr(caller, "form_ok", True)
 
 
-async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None):
-    """The yes of a person for a bundle that is built and checked: through the form, else by the page; never by the caller itself.
+_CHAT_NEXT = "請先不帶 user_confirmed 呼叫一次、把工具回的網址與摘要給本人看，等本人在聊天裡回覆後，再帶 request_id 與 user_confirmed=true 呼叫"
+
+
+def _chat_refusal(status, tool):
+    """What the AI is told when a CHAT confirmation queued nothing: one plain reason and one next step; no job id, path or SQL."""
+    again = "請從頭再呼叫一次 %s（不帶 user_confirmed），讓本人重新看過摘要" % tool
+    if status == "not_found":
+        return "未送出：查無這個申請編號。%s。" % again
+    if status == "not_yours":
+        return "未送出：這個申請不是目前這位使用者提出的（或這個連線沒有登入的使用者），不能代他確認。請由提出申請的人自己的連線來確認。"
+    if status == "changed":
+        return "未送出：這次的內容與當初給本人看的不同，所以不能算本人的同意。請改回原參數，或重新發起一次。"
+    if status == "expired":
+        return "未送出：這個申請已逾時（十分鐘內要確認）。%s。" % again
+    if status == "void":
+        return "未送出：這個申請已經作廢，不能再使用。%s。" % again
+    return "未送出：平台沒有接受這次確認。%s。" % again
+
+
+async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None, request_id=None,
+               user_confirmed=False):
+    """The yes of a person for a bundle that is built and checked: through the form, else by the page, else (CHAT) the person's own
+    reply in the chat, relayed by the AI with the request id and user_confirmed=true on a second call; never by the caller itself.
     `kind` is the kind of confirmation; `tool` is the name the person knows it by (resume, relaunch), the kind when none is given."""
     caller_id = _caller_id(caller)
     form = person is not None and person.can_ask() and form_is_trusted(caller)
     tool = tool or kind
-    nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單）。請改用終端機指令 `abf-platform %s`，或用帶權杖的 HTTP 連線 "
+    if user_confirmed is True:
+        if not (isinstance(request_id, str) and request_id):
+            return _no("未送出：user_confirmed=true 要同時帶 request_id（第一次呼叫回的申請編號）。%s。" % _CHAT_NEXT)
+        try:
+            _, job_id = confirm.approve(platform_path, request_id, CHAT.name, caller_id, clock,
+                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind)
+        except confirm.NotApproved as e:
+            if e.status == "already":
+                return _queued(request_id, e.job_id, what)
+            return _no(_chat_refusal(e.status, tool))
+        return _queued(request_id, job_id, what)
+    nobody =("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單）。請改用終端機指令 `abf-platform %s`，或用帶權杖的 HTTP 連線 "
               "(no one can say yes here: use the terminal command, or HTTP with a token)" % tool)
     if caller is None and not form:
         return _no(nobody)
@@ -1401,8 +1436,10 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
         unreachable = unreachable % base
     return {"ok": True, "sent": False, "state": "pending", "id": rid, "confirmation_url": url, "summary": text,
             "message": unreachable + "還沒送出 (not sent yet)。請本人打開這個網址、用自己的帳號登入、看過摘要後按「送出」：%s ——按了之後，用同樣的參數再呼叫 `%s` "
-                       "一次，就會得到工作編號。AI 不能代按。 (open the address, log in as yourself and press 送出; then call `%s` "
-                       "again with the same arguments)" % (url, tool, tool)}
+                       "一次，就會得到工作編號。或者，把摘要給本人看，本人在聊天裡親口回覆同意之後，用同樣的參數加上 request_id=%s 與 user_confirmed=true "
+                       "再呼叫 `%s` 一次；在本人回覆之前不可自己填 true。 (open the address, log in as yourself and press 送出; or, once the person "
+                       "has answered yes in the chat, call `%s` again with the same arguments plus request_id=%s and user_confirmed=true; never "
+                       "set it true before they answer)" % (url, tool, rid, tool, tool, rid)}
 
 
 def caller_area(platform_path, caller):
@@ -1560,7 +1597,7 @@ def _profiles_problem(platform_path, ce, bundle):
 
 async def request_launch(platform_path, *, pipeline, revision, run_name, samplesheet=None, samplesheet_text=None, ce_name=None, params=None,
                          path_columns=None, dataset=None, dataset_version=None, profiles=None, caller=None, person=None, clock=time.time,
-                         remote=False):
+                         remote=False, request_id=None, user_confirmed=False):
     """Ask for a launch the way the terminal command does: same choices, same bundle, same screen, same refusals. Writes a pending
     request and asks the person; the answer says whether a job exists. Nothing is queued without a person's yes. The samplesheet is
     given as a file (`samplesheet`) or as the CSV itself (`samplesheet_text`, read from memory, never written), exactly one of the two - or
@@ -1605,7 +1642,7 @@ async def request_launch(platform_path, *, pipeline, revision, run_name, samples
             if listed:
                 return _no("未送出：%s" % listed)
         return _no("未送出：%s" % e)
-    return await _finish_launch(platform_path, ce, bundle, caller, person, clock, remote)
+    return await _finish_launch(platform_path, ce, bundle, caller, person, clock, remote, request_id, user_confirmed)
 
 
 def _sheet_and_area(platform_path, samplesheet, samplesheet_text, caller, need_sheet=True):
@@ -1632,7 +1669,7 @@ def _cloud_check(platform_path, ce, bundle, caller):
     return None, _cost.launch_estimate(platform_path, bundle, caller.user_id)
 
 
-async def _finish_launch(platform_path, ce, bundle, caller, person, clock, remote):
+async def _finish_launch(platform_path, ce, bundle, caller, person, clock, remote, request_id=None, user_confirmed=False):
     """The back half of every launch request: the yes that already exists, the run name, the screen, the question. Both entries end here."""
     found = confirm.find_approved(platform_path, "launch", bundle, _caller_id(caller), clock, include_spent=True)
     if found:
@@ -1645,7 +1682,8 @@ async def _finish_launch(platform_path, ce, bundle, caller, person, clock, remot
     if problem:
         return _no("未送出：%s" % problem)
     text = build.as_text(build.launch_screen(bundle, ce, cost))
-    return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote)
+    return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote,
+                      request_id=request_id, user_confirmed=user_confirmed)
 
 
 async def request_pipeline_launch(platform_path, *, pipeline_id, version=None, run_name, samplesheet=None, samplesheet_text=None, ce_name=None,
@@ -1667,7 +1705,8 @@ async def request_pipeline_launch(platform_path, *, pipeline_id, version=None, r
     return await _finish_launch(platform_path, ce, bundle, caller, person, clock, remote)
 
 
-async def request_cancel(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False):
+async def request_cancel(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False, request_id=None,
+                         user_confirmed=False):
     """Ask for the cancel of one run of this platform, the way the terminal command does."""
     try:
         ce, bundle, row = build.prepare_cancel(platform_path, run_name, owner=_caller_id(caller))
@@ -1679,7 +1718,8 @@ async def request_cancel(platform_path, *, run_name, caller=None, person=None, c
     if found:
         return _queued(found["id"], found["job_id"], run_name)
     text = build.as_text(build.cancel_screen(bundle, row))
-    return await _ask(platform_path, "cancel", ce, bundle, text, run_name, caller, person, clock, remote)
+    return await _ask(platform_path, "cancel", ce, bundle, text, run_name, caller, person, clock, remote, request_id=request_id,
+                      user_confirmed=user_confirmed)
 
 
 def _same_edits_as(params, extra_config):
@@ -1691,7 +1731,8 @@ def _same_edits_as(params, extra_config):
     return match
 
 
-async def _request_attempt(verb, platform_path, run_name, caller, person, clock, remote, index_path, params=None, extra_config=None):
+async def _request_attempt(verb, platform_path, run_name, caller, person, clock, remote, index_path, params=None, extra_config=None,
+                           request_id=None, user_confirmed=False):
     word = build.WORDS[verb]
     caller_id = _caller_id(caller)
     try:
@@ -1710,21 +1751,25 @@ async def _request_attempt(verb, platform_path, run_name, caller, person, clock,
     except build.Refusal as e:
         return _no("未%s：%s" % (word, e))
     text = build.as_text(screen(bundle, row))
-    return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote, tool=verb)
+    return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote, tool=verb,
+                      request_id=request_id, user_confirmed=user_confirmed)
 
 
 async def request_resume(platform_path, *, run_name, params=None, extra_config=None, caller=None, person=None, clock=time.time, remote=False,
-                         index_path=None):
+                         index_path=None, request_id=None, user_confirmed=False):
     """Ask for the resume of a failed or cancelled run of this platform: the same folder, Nextflow goes on where it stopped, the samples and
     parameters of the first launch. params (only the keys to change, laid over the first launch's) and extra_config (settings text, e.g.
     `process.memory = '16 GB'`) are optional; the pipeline, revision, samples and environment cannot be said again. The person is shown
     each change and the last line that runs. Nothing is queued without a person's yes."""
-    return await _request_attempt("resume", platform_path, run_name, caller, person, clock, remote, index_path, params, extra_config)
+    return await _request_attempt("resume", platform_path, run_name, caller, person, clock, remote, index_path, params, extra_config,
+                                  request_id, user_confirmed)
 
 
-async def request_relaunch(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False, index_path=None):
+async def request_relaunch(platform_path, *, run_name, caller=None, person=None, clock=time.time, remote=False, index_path=None,
+                           request_id=None, user_confirmed=False):
     """Ask for the relaunch of a failed or cancelled run: a new folder under a new name, the same samples and parameters, from the start."""
-    return await _request_attempt("relaunch", platform_path, run_name, caller, person, clock, remote, index_path)
+    return await _request_attempt("relaunch", platform_path, run_name, caller, person, clock, remote, index_path, None, None, request_id,
+                                  user_confirmed)
 
 
 def approve(platform_path, request_id, *, confirmed_by, caller=None, clock=time.time, deadline_seconds=None, offline_after=None):

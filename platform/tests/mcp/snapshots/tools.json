@@ -2,9 +2,28 @@
   {
     "inputSchema": {
       "properties": {
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat.",
+          "title": "Request Id"
+        },
         "run_name": {
           "title": "Run Name",
           "type": "string"
+        },
+        "user_confirmed": {
+          "default": false,
+          "description": "True only after the person themselves answered yes in the chat to this request; never fill it in for them.",
+          "title": "User Confirmed",
+          "type": "boolean"
         }
       },
       "required": [
@@ -240,6 +259,19 @@
           "description": "The pipeline's own Config profiles, e.g. [\"test\"]. With test, test_full or test_* no samplesheet is needed: the pipeline runs on its own test data (a pipeline installed on the site, Slurm only).",
           "title": "Profiles"
         },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat.",
+          "title": "Request Id"
+        },
         "revision": {
           "title": "Revision",
           "type": "string"
@@ -271,6 +303,12 @@
           ],
           "default": null,
           "title": "Samplesheet Text"
+        },
+        "user_confirmed": {
+          "default": false,
+          "description": "True only after the person themselves answered yes in the chat to this request; never fill it in for them.",
+          "title": "User Confirmed",
+          "type": "boolean"
         }
       },
       "required": [
@@ -501,9 +539,28 @@
   {
     "inputSchema": {
       "properties": {
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat.",
+          "title": "Request Id"
+        },
         "run_name": {
           "title": "Run Name",
           "type": "string"
+        },
+        "user_confirmed": {
+          "default": false,
+          "description": "True only after the person themselves answered yes in the chat to this request; never fill it in for them.",
+          "title": "User Confirmed",
+          "type": "boolean"
         }
       },
       "required": [
@@ -542,9 +599,28 @@
           "default": null,
           "title": "Params"
         },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat.",
+          "title": "Request Id"
+        },
         "run_name": {
           "title": "Run Name",
           "type": "string"
+        },
+        "user_confirmed": {
+          "default": false,
+          "description": "True only after the person themselves answered yes in the chat to this request; never fill it in for them.",
+          "title": "User Confirmed",
+          "type": "boolean"
         }
       },
       "required": [
