@@ -36,3 +36,9 @@ Then run `bash tests/ci_security_workflow_test.sh` (expect all ok) and the full 
 - Report redaction: pending TC-017 experiment. Report holds Author/Email (personal data); artifact readable only by people with repo read access; email is already in public git log if the repo is public.
 - Required checks: `tests.yml`, `.gitleaks.toml`, pip-audit job untouched.
 - Removal: delete the upload step and the two appended flags, or revert the commit.
+
+## Developer-agent follow-up (2026-11-07)
+- Applied the `security.yml` edit above verbatim (gitleaks job only; `git diff --stat`: 8 insertions, 1 deletion). upload-artifact SHA re-verified by lead: `gh api repos/actions/upload-artifact/git/ref/tags/v4.6.2` -> commit `ea165f8d65b6e75b540449e92b4886f43607fa02`.
+- `bash tests/ci_security_workflow_test.sh` (WSL): all 20 ok, "all ci_security_workflow checks passed".
+- **TC-017/018 fake-key experiment (done, WSL, gitleaks 8.30.1, sha256 verified):** temp repo with fake `AKIA…` + secret-key line, `--redact --report-format json`: 2 findings (`aws-access-token`, `generic-api-key`), `Secret` = `REDACTED`, `Match` = `REDACTED` / `aws_secret_access_key = REDACTED`; raw-key occurrences in report = 0.
+- Blast radius confirmed: only new capability is uploading one redacted artifact; top-level `permissions: contents: read` unchanged; no `secrets.`; trigger stays `pull_request`; tests.yml / .gitleaks.toml / pip-audit untouched. Report contains Author/Email (readable only with repo read access).
