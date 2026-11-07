@@ -18,3 +18,8 @@
 - 站台只有一種答案：`estimate_su`、`run_usage`／`my_usage`（`_su_of_run`）也用 strict，CE 無 suSite 一律 NO_SU_SITE；撤回上一輪「用量頁維持 default_site」。CE 已不存在的舊 run 仍用 default_site（TC-053）。
 - 既有測試改動：`test_web_cost.py` 的 `seed` 讓 Slurm CE 預設帶 `suSite: taiwania3`（只補輸入，斷言不動；test_cost_by_env、test_su_usd 共用）。`test_site_connection_status.py` 夾具對沒有 agent 的 job 寫空字串（原為 "x"）。
 - 文件：PITFALLS 第 60 條、PLATFORM.md suSite 列同步。
+
+## 驗收退回修正輪（TC-060、TC-068）
+- 補測試：`test_idle_agent_says_facts_again_after_an_empty_poll`、`test_idle_refresh_failure_is_ignored`（refresh_facts 先前無測試）。實作早已存在，故這兩個測試一寫就綠，沒有紅燈步驟。
+- plan.md 追加「修訂」段：補列 jobs.py、agent.py refresh_facts、estimate_su／用量頁 strict、四個既有測試檔的輸入調整；標明待維護者或 developer-agent 認可，不自行核可。
+- 未做：TC-065 線上 nano4 CE 紀錄實測（需有權限的人）；ledger 先前寫的是 repo 內設定檔，不是線上紀錄。

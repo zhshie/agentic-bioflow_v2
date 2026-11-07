@@ -131,3 +131,18 @@ shell：`tests/on_site_check_master_test.sh`：用 `ON_SITE_SSH_BIN` 假 ssh，�
 
 ## 裁決 (2026-11-08)
 test_no_schema_change 失敗原因：分支基底 87107ae9 落後 origin/v3 (fcb26614)，v3 對 store.py 的改動被當成本分支差異。先 `git fetch origin v3` 並把分支 rebase（或 merge）到 origin/v3，再跑全套；不可修改或弱化該測試。aws_ce 偶發失敗重跑即可。
+
+## 修訂（executor 補列，2026-11-08，驗收者 TC-060／TC-068 退回後；待維護者或 developer-agent 認可）
+對抗審修正輪做了下列超出原清單的事。executor 無權自行核可範圍，這裡只把事實補進計畫，讓 `git diff --stat` 與計畫對得上；若不認可，要退回對應改動（見每項「退回的代價」）。
+
+**範圍：檔案（追加）**
+- `platform/abf_platform/jobs.py`（4 行）：`latest_listing` 多回 `agent` 欄，讓 `run_outputs` 的連線錯誤指到「跑 listing job 的那台」而不是 CE 換 agent 之前的那台。退回的代價：CE 換 agent 後，錯誤訊息會指錯機器（對抗審實跑重現）。
+- `platform/abf_station/agent.py`：原清單寫「Beat 每次重算 facts，確認即可」，實際新增 `refresh_facts`（閒置 agent 每次空 poll 後重送 hello，約每 25 秒）。原因：Beat 只在執行 job 時跳，閒置 agent 的 `site_link` 會停在啟動時的值，MCP 看到的狀態就是舊的。已補測試 `test_idle_agent_says_facts_again_after_an_empty_poll`、`test_idle_refresh_failure_is_ignored`（`platform/tests/test_station_site_link.py`）。退回的代價：閒置時連線狀態不更新。
+- 行為範圍：`estimate_su`、用量頁／`my_usage`（`_su_of_run`）也改成「CE 沒設 `suSite` 就顯示未知」（`site_of_run(strict=True)`），不只 `get_run`；同一個 run 不可有兩種站台答案。CE 已不存在的舊 run 仍用 default_site（TC-053）。
+
+**允許更新的既有斷言（追加，皆只補輸入或縮減缺口，斷言數值未動）**
+- `platform/tests/test_su_in_get_run.py:159`（`test_default_site_run_has_no_twd_key`）：fixture 由「CE 存在但無 `suSite`」改成「CE 不存在」，因為前者的行為依裁決 2 刻意改成未知；`:326-327` 新增 strict 斷言（只加不減）。
+- `platform/tests/test_su_usd.py`：`seed` 包一層，Slurm CE 預設帶 `suSite: taiwania3`。
+- `platform/tests/test_web_cost.py:76-79`：`seed` 的 Slurm CE 預設帶 `{"suSite": "taiwania3"}`（`test_cost_by_env`、`test_su_usd`、`test_web_cost` 共用輸入）。
+- `platform/tests/test_refusal_visibility.py:138`：`_absent("site_link") == []` 改成白名單過濾；裁決 4 已允許，白名單除原預期外還放 `mcp_server.py`、`agent.py`、`launch.py`、`actions`（這些檔案的文字或欄位名含 `site_link`）。
+- `platform/tests/mcp/test_mcp_contract_tools.py`：`ASPECT_GAPS` 移除 `('list_agents','when_not')`、`('my_usage','when')` 兩行（縮減已知缺口，不是放寬；stale 檢查會把關）。

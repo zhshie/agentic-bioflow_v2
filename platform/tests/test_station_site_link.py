@@ -101,3 +101,35 @@ def test_beat_recomputes_facts_each_time(tmp_path):
     assert done.wait(5)
     beat.finish()
     assert [p["facts"]["site_link"] for p in client.posts[:2]] == ["open", "closed"]
+
+
+def test_idle_agent_says_facts_again_after_an_empty_poll(tmp_path):
+    # TC-024 (idle side, plan amendment 2026-11-08): refresh_facts sends hello with the facts computed now, every time
+    site = FakeSite(rc=0)
+    c = ctx(tmp_path, "ssh", site)
+    c.agent_name = "a1"
+    a = agent_mod.Agent("https://p.example", "t", "a1", c)
+    a.client = FakeClient()
+    a.refresh_facts("a1")
+    site.rc = 1
+    a.refresh_facts("a1")
+    assert [p["facts"]["site_link"] for p in a.client.posts] == ["open", "closed"]
+    assert all(p["name"] == "a1" for p in a.client.posts)
+
+
+def test_idle_refresh_failure_is_ignored(tmp_path):
+    # TC-024 (idle side): a failing post or a failing check never stops the poll loop
+    c = ctx(tmp_path, "ssh", FakeSite(rc=0))
+    a = agent_mod.Agent("https://p.example", "t", "a1", c)
+
+    class Down:
+        name = "a1"
+
+        def post(self, path, body, timeout):
+            raise OSError("network down")
+    a.client = Down()
+    a.refresh_facts("a1")       # must not raise
+    a.client = FakeClient()
+    a.context = ctx(tmp_path, "ssh", FakeSite(raises=RuntimeError("x")))
+    a.refresh_facts("a1")
+    assert a.client.posts[0]["facts"]["site_link"] == "unknown"
