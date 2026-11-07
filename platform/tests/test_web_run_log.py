@@ -148,13 +148,18 @@ def test_tc047_config_and_metrics_stay_soon(w):
         assert '<section class="soon">' in mid(c.get("/?run=%s&tab=%s" % (rid, tab)).text)
 
 
+def is_waiting(text):
+    """The waiting page (tl06, ruling 2026-11-07): a Refresh link and the time of the data, and no <meta refresh> (axe: critical)."""
+    return ("重新整理" in text or "Refresh" in text) and ("資料時間" in text or "Data as of" in text) and "http-equiv" not in text.lower()
+
+
 # ---- US2: reading and showing --------------------------------------------------------------------------------------------
 
 def test_tc010_011_012_019_020_first_request_queues_one_job_and_waits(w):
     # TC-010, TC-011, TC-012, TC-019, TC-020, tl06
     ann, c, rid = world(w)
     r = c.get(log_url(rid, extra="&workdir=/evil"))
-    assert r.status_code == 200 and 'http-equiv="refresh"' in r.text and "content=\"15" in r.text and "Error: out of memory" not in r.text
+    assert r.status_code == 200 and is_waiting(r.text) and "Error: out of memory" not in r.text
     [job] = log_jobs(w)
     args = json.loads(job["args_json"])
     assert args["file"] == ".command.err" and args["workdir"] == WD and job["state"] == "queued"
@@ -172,7 +177,7 @@ def test_tc010_failed_task_reason_is_readable_in_the_web_page(w):
     # TC-010: the task's own log link -> loading page -> job done -> the same link shows the task name and the error text
     ann, c, rid = world(w)
     first = c.get(log_url(rid, which="err"))
-    assert 'http-equiv="refresh"' in first.text and "Error: out of memory" not in first.text
+    assert is_waiting(first.text) and "Error: out of memory" not in first.text
     assert len(log_jobs(w)) == 1
     reply(w, ok("Error: out of memory"), state="done")
     last = c.get(log_url(rid, which="err"))
@@ -186,12 +191,12 @@ def test_tc013_014_a_waiting_or_running_job_is_not_doubled(w):
     # TC-013, TC-014, tl07
     ann, c, rid = world(w)
     c.get(log_url(rid))
-    assert "refresh" in c.get(log_url(rid)).text and len(log_jobs(w)) == 1
+    assert is_waiting(c.get(log_url(rid)).text) and len(log_jobs(w)) == 1
     con = sqlite3.connect(str(w.ip.state_db))
     with con:
         con.execute("UPDATE jobs SET state = 'claimed', claimed_at = ? WHERE kind = 'read_task_log'", (time.time(),))
     con.close()
-    assert "refresh" in c.get(log_url(rid)).text and len(log_jobs(w)) == 1
+    assert is_waiting(c.get(log_url(rid)).text) and len(log_jobs(w)) == 1
 
 
 def test_tc015_to_018_021_the_text_is_a_page_escaped_with_the_same_headers(w):
@@ -217,7 +222,7 @@ def test_tc022_023_a_fresh_answer_is_reused_and_retry_asks_again(w):
     reply(w, ok("done text"))
     assert "done text" in c.get(log_url(rid)).text and len(log_jobs(w)) == 1
     r = c.get(log_url(rid, extra="&retry=1"))
-    assert len(log_jobs(w)) == 2 and "done text" not in r.text and "refresh" in r.text
+    assert len(log_jobs(w)) == 2 and "done text" not in r.text and is_waiting(r.text)
 
 
 def test_tc024_task_key_or_name_are_both_accepted(w):
@@ -225,7 +230,7 @@ def test_tc024_task_key_or_name_are_both_accepted(w):
     ann, c, rid = world(w, tasks=[("ab/123456", "FASTQC", WD)])
     for ident in ("ab%2F123456", "FASTQC"):
         r = c.get("/run/log?run=%s&task=%s&which=err" % (rid, ident))
-        assert r.status_code == 200 and "refresh" in r.text, ident
+        assert r.status_code == 200 and is_waiting(r.text), ident
     assert len(log_jobs(w)) == 1 and json.loads(log_jobs(w)[0]["args_json"])["workdir"] == WD
 
 
