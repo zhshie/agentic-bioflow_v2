@@ -71,6 +71,3 @@ PR #376（分支見 `gh pr view 376 -R zhshie/agentic-bioflow_v2`）把憲法升
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
-
-## 裁決 (2026-11-07, dev-worker)
-test_tcm_47 實際差異只有一項：jobs.kind CHECK 多了 'lint_pipeline'（v3 的 017c2a-validate-lint，commit b1dadfe9）；/settings/personal 路由已在 BASE_ROUTES，step_mode/dev_mode 不在該雜湊內。裁決：此差異是 v3 合法變更，允許把 BASE_SCHEMA_SHA256 更新為 34670e36fdb2ae46813b6f97cc7570f01cf5ddc347a139a84c7f2c762335652a（去掉 lint_pipeline 後等於舊基準，已驗）；TC-005／TC-007／ledger 的差異清單改為只有「jobs.kind CHECK 加 lint_pipeline」一項。用 merge、不 force（以步驟 4 為準）。其餘照原計畫，TC-008 紅綠證明與全套測試照做。
