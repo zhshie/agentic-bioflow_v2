@@ -20,6 +20,7 @@ risk: M
 ## 裁決
 - lead 2026-11-07：允許修改這條被釘住的測試，理由是只改「比對的基準」，不放寬「store.py／migrations／schema.sql 不准被這個分支改動」這個斷言。verifier 必須確認：分支若真的改了這三處，測試仍然紅。
 - 作法定案：基準改成 `git diff --stat origin/v3...HEAD`（三個點＝與 merge-base 比，只看分支自己的改動），不再受 origin/v3 快照新舊影響。
+- lead 2026-11-07（兩次被當孤兒的原因）：不是本任務的問題。supervise 的 Setup 小幫手（Haiku）漏跑用量讀取指令、回報 usage -1，閘門 fail closed 判 `SKIPPED(usage)`，worker 便 `release --outcome pause`，任務變成沒有 owner 的孤兒。已修在 supervise.js（`ensureUsage` 重讀）與 dev-worker.md（SKIPPED(usage) 遇 unknown/stale 且 `ready` 的 pacing 正常時先重跑一次）。本任務計畫不必改，直接重派即可。
 
 ## 範圍：檔案
 - `platform/tests/test_mcp_launch_pipeline.py`（只改 `test_no_schema_change`）
