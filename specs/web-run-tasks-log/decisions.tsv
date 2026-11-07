@@ -6,3 +6,5 @@ ts	phase	decision	why	evidence	result
 2026-11-06T23:50	green	test_results_files 的新路由清單加 /run/log	全套測試第二輪才露出，只是加法，仍無整批下載	test_results_files.py:604	通過
 2026-11-07T00:20	green	test_web_downstream 的路由與動作名單加 /run/log、task_log_view	全套第三輪才露出，只是加法	test_web_downstream.py:22,33	通過
 2026-11-07T01:00	green	test_confirm_page 路由清單加 /run/log；test_web_settings_ce_mobile 的 web_board 字串摘要依新字串重算	全套第四輪才露出，只加不減	test_confirm_page.py:312; test_web_settings_ce_mobile.py:100	聚焦 34 pass
+2026-11-07T13:40	fix	TC-036 補拍：用種子失敗任務拍任務分頁、日誌分頁、/run/log 三種狀態共 24 張並跑 axe	上一輪種子 run 沒有失敗任務，新頁沒被拍到	specs/web-run-tasks-log/screenshots/seed_failed_demo.py	24 頁皆 200；ready/error 無違規
+2026-11-07T13:50	blocked-item	meta-refresh critical 不改，交維護者決定	既有的 15 秒刷新（DESIGN.md:93）；loading 頁的刷新是 TC-011 要求，移除會違反 TC	screenshots/summary.md	已寫明並列為問題

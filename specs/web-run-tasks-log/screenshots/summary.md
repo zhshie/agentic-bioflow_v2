@@ -1,43 +1,29 @@
-# ui_check summary
+# TC-036 evidence: web-run-tasks-log
 
-Base: http://127.0.0.1:44087  |  2026-11-07 13:15
+Made with `screenshots/seed_failed_demo.py` (throwaway platform of `scripts/dev/ui_check.py` + a FAILED run `ui-fail-run` with two failed tasks:
+FASTQC with a recorded work folder, TRIM without; an online agent; the agent's answer for the log is injected with `jobs.take_result`).
+Playwright + axe-core, 1440 and 390 wide, zh and en: 6 pages x 4 = 24 screenshots (`<page>-<width>-<lang>.png`). HTTP 200 on all 24.
 
-| page | width | lang | HTTP | critical | serious | moderate | minor |
-|---|---|---|---|---|---|---|---|
-| board | 1440 | zh | 200 | 1 | 0 | 1 | 0 |
-| results | 1440 | zh | 200 | 1 | 0 | 1 | 0 |
-| board | 1440 | en | 200 | 1 | 0 | 1 | 0 |
-| results | 1440 | en | 200 | 1 | 0 | 1 | 0 |
-| board | 390 | zh | 200 | 1 | 0 | 1 | 0 |
-| results | 390 | zh | 200 | 1 | 0 | 1 | 0 |
-| board | 390 | en | 200 | 1 | 0 | 1 | 0 |
-| results | 390 | en | 200 | 1 | 0 | 1 | 0 |
+| page | what it shows | axe (all 4 width/lang combos) |
+|---|---|---|
+| board-tasks | Tasks tab, failed rows: FASTQC has the "Errors" log link, TRIM has grey "No work directory on record" | moderate landmark-unique, critical meta-refresh |
+| board-logs | Logs tab (no longer "Coming later"): both failed tasks, 3 links each or the grey sentence | same two |
+| results-logs | the same Logs tab on the results page | same two |
+| log-loading | /run/log first visit: "waiting" with symbol + words | critical meta-refresh only |
+| log-ready | /run/log with the log text in a `<pre>` | none |
+| log-error | /run/log for TRIM (no work folder): one plain sentence + way back | none |
 
-## Serious / critical violations
+## serious / critical
 
-- **critical** meta-refresh (1440, zh) - board - 1 node(s), e.g. meta[http-equiv="refresh"]
-- **critical** meta-refresh (1440, zh) - results - 1 node(s), e.g. meta[http-equiv="refresh"]
-- **critical** meta-refresh (1440, en) - board - 1 node(s), e.g. meta[http-equiv="refresh"]
-- **critical** meta-refresh (1440, en) - results - 1 node(s), e.g. meta[http-equiv="refresh"]
-- **critical** meta-refresh (390, zh) - board - 1 node(s), e.g. meta[http-equiv="refresh"]
-- **critical** meta-refresh (390, zh) - results - 1 node(s), e.g. meta[http-equiv="refresh"]
-- **critical** meta-refresh (390, en) - board - 1 node(s), e.g. meta[http-equiv="refresh"]
-- **critical** meta-refresh (390, en) - results - 1 node(s), e.g. meta[http-equiv="refresh"]
+- There is no `serious`. The only `critical` is `meta-refresh` (`<meta http-equiv="refresh" content="15">`), on 3 + 1 pages:
+  - board-tasks, board-logs, results-logs: the existing 15-second tag of the board (docs/reports/cloud-burn-2026-11/UI2.md F1, DESIGN.md:93;
+    `render_board` adds it to every board page). It was already there before this task and is the same 8 hits ui_check gave on the plain board and results pages.
+  - log-loading: the new page's waiting state refreshes itself every 15 seconds. This is what TC-011 and plan tl06 require ("頁面含自動刷新") and the same way
+    the existing results "Outputs" loading page works; DESIGN.md allows no JS there. log-ready and log-error (the states that stay open) carry no refresh and are axe-clean.
+- So "no serious or critical" is not literally met: removing the tag would break TC-011 and DESIGN.md:93. Both are the maintainer's decision
+  (TESTING.md:1059 treats a board `meta-refresh` as an old finding to note, not count). Asked under 要問的問題.
 
-## Screenshots (8)
+## DESIGN.md 7, 8 in plain words
 
-- board-1440-zh.png
-- results-1440-zh.png
-- board-1440-en.png
-- results-1440-en.png
-- board-390-zh.png
-- results-390-zh.png
-- board-390-en.png
-- results-390-en.png
-
-## 各頁改動（白話）
-
-- board：分析頁的「任務」分頁失敗任務列多一格「日誌」連結，「日誌」分頁不再是灰色「之後開放」。
-- results：結果頁的「日誌」分頁同樣列出失敗任務並附錯誤／輸出／全部三個連結。
-- 備註：種子資料的 run 沒有失敗任務，截圖只看得到頁面外框；新的 /run/log 整頁未被截圖。
-- axe：8 筆 critical 全是 meta-refresh（頁面自動 15 秒刷新，既有設計），非本任務新增。
+- 7 (state is never colour alone): waiting is "◌ + 等待中", read is "✓ + 已讀取", error is "✕ + one sentence"; the Logs tab links are text.
+- 8 (phone width): at 390 wide the log page is one column, the log text wraps inside its box, nothing scrolls sideways; the Tasks row shows the log link in its own cell.
