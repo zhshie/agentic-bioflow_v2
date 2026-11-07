@@ -128,3 +128,6 @@ shell：`tests/on_site_check_master_test.sh`：用 `ON_SITE_SSH_BIN` 假 ssh，�
 ## 專長守則（[backend]）
 
 （工作區沒有 `.claude/dev-profiles/[backend].md`；本任務無專長守則。）
+
+## 裁決 (2026-11-08)
+test_no_schema_change 失敗原因：分支基底 87107ae9 落後 origin/v3 (fcb26614)，v3 對 store.py 的改動被當成本分支差異。先 `git fetch origin v3` 並把分支 rebase（或 merge）到 origin/v3，再跑全套；不可修改或弱化該測試。aws_ce 偶發失敗重跑即可。
