@@ -201,6 +201,16 @@ class Agent:
             job = body.get("job")
             if job is not None:
                 self.run_job(job)
+            else:
+                self.refresh_facts(name)
+
+    def refresh_facts(self, name):
+        """An idle agent says its facts again after each empty poll (about every 25 seconds) so site_link is not as old as the agent.
+        Best effort: a failure is ignored, the next poll tells the same story."""
+        try:
+            self.client.post("/agent/hello", {"name": name, "version": __version__, "facts": launch.own_facts(self.context)}, 10)
+        except Exception:
+            pass
 
 
 def _on_term(signum, frame):

@@ -66,7 +66,10 @@ def build_server(index_path, platform_path=None):
 
     @server.tool(name="list_compute_envs", annotations=_READ_ONLY,
                  description="List the compute environments: name, type, credential name, status, message, primary, "
-                             "dates and config. A credential itself is never stored, only its name.")
+                             "dates and config. A credential itself is never stored, only its name. Each one also has site_connection "
+                             "{state, as_of, agent}: whether its agent last reported the shared connection to the site as open, closed or "
+                             "unknown. It is the agent's own report as of as_of (not checked now); open means only the control channel is "
+                             "there, it does not promise the next session will not hang.")
     def list_compute_envs(ctx: Context) -> dict:
         return actions.list_compute_envs(platform_path, caller=_caller(ctx))
 
@@ -77,7 +80,10 @@ def build_server(index_path, platform_path=None):
 
     @server.tool(name="list_agents", annotations=_READ_ONLY,
                  description="List the agents that have connected: name, version, online or offline, and the time of "
-                             "their last contact. Offline means no contact for three heartbeats.")
+                             "their last contact. Offline means no contact for three heartbeats. site_link (open, closed or unknown) and "
+                             "site_link_at are the agent's own report of the shared connection to the site as of site_link_at, not checked "
+                             "now; unknown when it is offline or never said. open means only the control channel is there, it does "
+                             "not promise the next session will not hang.")
     def list_agents(ctx: Context) -> dict:
         return actions.list_agents(platform_path, caller=_caller(ctx))
 

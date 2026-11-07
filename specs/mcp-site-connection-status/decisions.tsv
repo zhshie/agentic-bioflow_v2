@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-11-07T20:00	RED	先寫三組測試再實作	測試先行	fa1afa1b	紅
+2026-11-07T20:20	GREEN	過期判定用 agent 離線而非 site_link_at 的年齡	與計畫文字一致	platform/abf_platform/agents.py site_link_of	通過
+2026-11-07T20:30	GREEN	錯誤補 agent 名只在訊息含 SITE_DOWN 且名字合 agents._NAME	避免拼接怪字元	platform/abf_platform/actions/__init__.py _with_agent	通過
+2026-11-07T20:40	GREEN	CE 存在但無 suSite 回 None；CE 找不到才用 default_site	計畫裁決	platform/abf_platform/su.py site_of_run	改兩個舊測試的預期
+2026-11-07T20:50	GREEN	閒置 agent 每次空 poll 後重送 hello 事實	讓 site_link 不會只停在啟動時	platform/abf_station/agent.py refresh_facts	待全套確認

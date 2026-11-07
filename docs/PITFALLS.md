@@ -2554,3 +2554,11 @@ Symptom: a run whose Slurm head job ended as NODE_FAIL showed `lost` with no rea
 Root cause: the head job is killed before Nextflow writes a completion record, and the platform never asked the scheduler again
 Check: `platform/tests/test_head_nodefail.py`, `platform/tests/test_station_head_state.py`
 Touches: NODE_FAIL, lost, squeue, sacct, overlay
+
+**60. The MCP could not say whether the site connection was open, an error did not say which machine to log in on, and a 125-task SU answer was 125 lines (2026-11-07, mcp-site-connection-status).**
+What was seen: an LLM asked "is nano4 connected?" and the tools had no answer; "No open connection to the site" did not name the WSL terminal (the agent's machine) to log in on; `get_run` listed one unknown reason per task. Rule: the agent reports `site_link` (open, closed, unknown) and `site_link_at` in its facts, from `on_site.sh --check-master` (a read-only `ssh -O check`, never a session, never `--check-reach`); the platform only serves it (agents and `site_connection` of each compute environment). It is the agent's own word as of `site_link_at`, `unknown` once the agent is offline. `open` means only that the control channel is there; it does not promise the next session will not hang (16e). A connection error through the actions layer gets one sentence naming the agent, only when the agent name is a plain agent name. Unknown SU reasons are one line per partition; a compute environment without `suSite` gives `su.site` null and one reason, not the default site.
+
+Symptom: the connection state of a site was invisible to the MCP, "No open connection to the site" named no machine, and unknown SU reasons filled the answer
+Root cause: the platform never calls an agent, and no fact carried the connection state; the SU reasons were per task; a compute environment without `suSite` fell back to taiwania3 silently
+Check: `platform/tests/test_site_connection_status.py`, `platform/tests/test_station_site_link.py`, `tests/on_site_check_master_test.sh`
+Touches: site_link, site_link_at, site_connection, --check-master, list_agents, list_compute_envs, unknown_reasons, suSite, WSL terminal

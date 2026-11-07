@@ -289,7 +289,14 @@ def run_usage(index_path, run_id, *, caller=None, platform_path=None):
 
 
 def list_compute_envs(platform_path, *, caller=None):
-    return {"compute_envs": compute_envs.list_all(platform_path, owner=_caller_id(caller))}
+    envs = compute_envs.list_all(platform_path, owner=_caller_id(caller))
+    # what each environment's own agent last said about the shared connection to the site: self-reported, read-only (agents.view)
+    by_agent = {a["name"]: a for a in agents.list_agents(platform_path, status.now())}
+    for env in envs:
+        a = by_agent.get(env.get("agent"))
+        env["site_connection"] = {"state": a["site_link"] if a else "unknown", "as_of": a["site_link_at"] if a else None,
+                                  "agent": env.get("agent")}
+    return {"compute_envs": envs}
 
 
 def get_compute_env(platform_path, name, *, caller=None):
@@ -430,6 +437,24 @@ def _uploads_problem(platform_path, caller, path):
     return None
 
 
+def _with_agent(message, agent):
+    """A "no open connection to the site" message gets one more sentence naming the agent whose machine holds the connection, so a
+    person (or an LLM) knows which WSL terminal to open. Any other message, and an agent name that is absent or odd, leaves it as it was."""
+    if not isinstance(message, str) or jobs.SITE_DOWN not in message:
+        return message
+    if not isinstance(agent, str) or not agents._NAME.match(agent):
+        return message
+    return message + ' Run it in the WSL terminal of the machine running agent "%s" (請在執行 agent「%s」那台機器的 WSL 終端機執行).' % (agent, agent)
+
+
+def _agent_of_ce(platform_path, compute_env):
+    try:
+        ce = compute_envs.get(platform_path, compute_env) if isinstance(compute_env, str) else None
+    except (sqlite3.Error, OSError):
+        return None
+    return ce.get("agent") if ce else None
+
+
 async def list_site_files(platform_path, compute_env, path, *, caller=None):
     answer = {"compute_env": compute_env, "path": path}
     if caller is not None:
@@ -440,7 +465,7 @@ async def list_site_files(platform_path, compute_env, path, *, caller=None):
     try:
         job_id = jobs.enqueue_listing(platform_path, compute_env, path, status.now, caller_user_id=_caller_id(caller))
     except jobs.JobRefused as e:
-        answer.update(ok=False, message=str(e))
+        answer.update(ok=False, message=_with_agent(str(e), _agent_of_ce(platform_path, compute_env)))
         return answer
     out = await jobs.wait_for_result(platform_path, job_id, status.now)
     result = out["result"]
@@ -448,7 +473,7 @@ async def list_site_files(platform_path, compute_env, path, *, caller=None):
         answer.update(result)
         answer["path"] = result.get("path", path)
         return answer
-    answer.update(ok=False, message=out["message"])
+    answer.update(ok=False, message=_with_agent(out["message"], _agent_of_ce(platform_path, compute_env)))
     if result and result.get("error"):
         answer["error"] = result["error"]
     return answer
@@ -517,6 +542,7 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
     top_path = folder.rstrip("/") + "/results"
     path = top_path + ("/" + sub if sub else "")
     ce = launch["ce"]
+    agent = launch["agent"] if "agent" in launch.keys() else None
     answer.update(path=path, compute_env=ce, state="loading")
     if sub:      # the cards of the results stage need the first level too: only what is already known, no job is queued for it
         known = jobs.latest_listing(plat, ce, top_path)
@@ -529,7 +555,7 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
         try:
             jobs.enqueue_listing(plat, ce, path, status.now, caller_user_id=_caller_id(caller))
         except jobs.JobRefused as e:
-            answer.update(state="error", reason=str(e))
+            answer.update(state="error", reason=_with_agent(str(e), agent))
         return answer
     result = job["result"] or {}
     if enqueue and not relist and _listing_is_error(job):      # an error is the last try that failed, not an answer: ask again after a while
@@ -538,7 +564,7 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
             try:
                 jobs.enqueue_listing(plat, ce, path, status.now, caller_user_id=_caller_id(caller))
             except jobs.JobRefused as e:
-                answer.update(state="error", reason=str(e))
+                answer.update(state="error", reason=_with_agent(str(e), agent))
             return answer
     if job["state"] in ("queued", "claimed"):
         if status.now() > job["deadline_at"]:      # nobody marks it expired when nobody waits: the page says so, and queues nothing
@@ -563,7 +589,7 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
             answer["top"] = [f["name"] for f in files if f["type"] == "dir"]
         return answer
     answer.update(state="error", listed_at=job["finished_at"],
-                  reason=_OUTPUTS_NO_ANSWER if job["state"] == "expired" else _outputs_reason(result.get("message")))
+                  reason=_OUTPUTS_NO_ANSWER if job["state"] == "expired" else _with_agent(_outputs_reason(result.get("message")), agent))
     return answer
 
 

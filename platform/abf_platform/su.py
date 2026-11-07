@@ -68,7 +68,7 @@ def su_of_tasks(tasks, site, rates):
     partitions = site_rates.get("partitions")
     if not isinstance(partitions, dict):
         return _unknown(["找不到站點 %s 的費率 (no rates for site %s)" % (site, site)])
-    total, reasons = 0.0, []
+    total, reasons, no_factor = 0.0, [], {}
     for i, t in enumerate(tasks):
         label = "task %s" % (t.get("name") or t.get("taskId") or i + 1)
         part = t.get("queue")
@@ -79,11 +79,13 @@ def su_of_tasks(tasks, site, rates):
         if not _number(t.get("realtime")):
             missing.append("缺 realtime (no realtime)")
         if not _number(factor):
-            missing.append("分區 %s 沒有 SU 係數 (no SU factor for partition %s)" % (part, part))
+            no_factor[part] = no_factor.get(part, 0) + 1      # one line per partition, however many tasks ran there
         if missing:
             reasons.append("%s: %s" % (label, "; ".join(missing)))
-        else:
+        elif _number(factor):
             total += t["cpus"] * (t["realtime"] / MS_PER_HOUR) * factor
+    reasons += ["分區 %s 沒有 SU 係數，共 %d 個 task（no SU factor for partition %s: %d tasks）" % (p, n, p, n)
+                for p, n in sorted(no_factor.items(), key=lambda kv: str(kv[0]))]
     if reasons:
         return _unknown(reasons)
     per_su = site_rates.get("twd_per_su")
@@ -166,11 +168,18 @@ def site_of_run(platform_path, run_name, rates):
         ce = compute_envs.get(platform_path, ce_name) if ce_name else None
     except (sqlite3.Error, OSError):
         return default
-    site = ce["config"].get("suSite") if ce else None
-    return site if isinstance(site, str) and site else default
+    if ce is None:
+        return default
+    site = ce["config"].get("suSite")
+    return site if isinstance(site, str) and site else None      # a known environment without suSite: not guessed as the default site
+
+
+NO_SU_SITE = "計算環境未設定 suSite，無法判定站台（compute environment has no suSite）"
 
 
 def run_su(index_path, run_name, site, rates, tasks_of=None):
+    if site is None and isinstance(rates, dict) and rates.get("default_site") is not None:
+        return _unknown([NO_SU_SITE])
     tasks = (tasks_of or run_tasks)(index_path, run_name)
     if tasks is None:
         return _unknown([NOT_STORED])

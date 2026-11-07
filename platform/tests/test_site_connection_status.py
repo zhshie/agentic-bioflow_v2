@@ -120,7 +120,7 @@ def _outputs_world(tmp_path, agent="desktop", ce_agent="desktop", message=DOWN):
     compute_envs.create(pdb, rec)
     con = store.connect_state(pdb)
     with con:
-        con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES ('r', '/f', 'nano4', ?, 1, 1)", (agent,))
+        con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES ('r', '/f', 'nano4', ?, 1, 1)", (agent or "",))
         con.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, result_json, created_at, deadline_at, finished_at) "
                     "VALUES (?, 'nano4', 'list_site_files', ?, 'done', ?, ?, ?, ?)",
                     (agent or "x", json.dumps({"path": "/f/results"}), json.dumps({"ok": False, "message": message}),
@@ -177,7 +177,7 @@ def test_list_site_files_failure_names_agent(tmp_path, monkeypatch):
 def test_agent_name_with_odd_chars_not_spliced(tmp_path, monkeypatch):
     # TC-036
     odd = 'my "box"'
-    got = _outputs(*_outputs_world(tmp_path, agent=odd, ce_agent=odd))
+    got = _outputs(*_outputs_world(tmp_path, agent=odd, ce_agent=None))
     assert got["reason"] == DOWN
     plat, _, _ = setup(tmp_path / "x")
     _set_ce_agent(plat, odd)

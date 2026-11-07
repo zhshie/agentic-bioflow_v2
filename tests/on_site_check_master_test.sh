@@ -6,7 +6,7 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 . "$(dirname "${BASH_SOURCE[0]}")/lib/nowsl_path.sh"
 PATH=$(nowsl_path "$TMP") || { echo "cannot build a PATH without wsl.exe"; exit 1; }
 fails=0
-SLOTS="$TMP/slots"
+CPATH="$TMP/cm"; SLOTS="$CPATH.slots"
 
 settings() { printf '%s\n' "$@" > "$TMP/env.yaml"; }
 # a fake ssh that logs every argument line and answers -O check with $1
@@ -14,13 +14,13 @@ mkfake() {
   printf '#!/bin/bash\necho "$*" >> "%s/ssh.log"\ncase "$*" in *"-O check"*) exit %s ;; esac\nexit 0\n' "$TMP" "$1" > "$TMP/fake-ssh"
   chmod +x "$TMP/fake-ssh"; : > "$TMP/ssh.log"
 }
-run() { LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" ON_SITE_SLOT_DIR="$SLOTS" bash "$S" --check-master 2>&1; }
+run() { LAB_SETTINGS_FILE="$TMP/env.yaml" ON_SITE_SSH_BIN="$TMP/fake-ssh" bash "$S" --check-master 2>&1; }
 check() { # check <label> <condition-status>
   printf '%-60s ' "$1"
   if [ "$2" = 0 ]; then echo ok; else echo FAIL; fails=$((fails+1)); fi
 }
 
-settings 'reach: ssh' 'site_host: me@example.org'
+settings "reach: ssh" "site_host: me@example.org" "ssh_control_path: $CPATH"
 
 # TC-026, TC-028: the channel is there -> 0, and only -O check was asked
 mkfake 0; out=$(run); rc=$?

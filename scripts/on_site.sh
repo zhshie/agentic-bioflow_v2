@@ -20,6 +20,10 @@
 #   on_site.sh <command...>              run a command
 #   on_site.sh --script <path> [args]    run one of this plugin's own scripts
 #   on_site.sh --check-reach             can the site be reached right now?
+#   on_site.sh --check-master            is the shared connection open? Read-only: asks the control channel (ssh -O check) and
+#                                        nothing else - no session, no slot, no login, no wait. Exit 0 open, 1 not. reach: local is 0
+#                                        (mcp-site-connection-status). "Open" is only the channel; it does not promise the next session
+#                                        will not hang (docs/PITFALLS.md 16e).
 #   on_site.sh --forward <local port>    ask the shared connection for a reverse forward: the site's sshd chooses the
 #                                        port (on the site's loopback only), which is printed and recorded in
 #                                        <deployment>/_personal/forward_port (mode 600). ssh mode only (007b)
@@ -152,6 +156,7 @@ acquire_slot() {   # acquire_slot <timeout-seconds> -> 0 (SLOT_DIR set) or 1
 MODE=command SCRIPT=""
 case "${1:-}" in
   --check-reach) MODE=check;  shift ;;
+  --check-master) MODE=checkmaster; shift ;;
   --script)      MODE=script; SCRIPT="${2:?--script needs a path}"; shift 2 ;;
   --forward)       MODE=forward; FWD_LOCAL="${2:?--forward needs the local port}"; shift 2 ;;
   --unforward)     MODE=unforward; shift ;;
@@ -161,6 +166,7 @@ esac
 case "$REACH" in
   local|ssh) ;;
   none)
+    [ "$MODE" = checkmaster ] && exit 1   # no site to be connected to: never "open"
     [ "$MODE" = check ] && exit 0   # nothing to reach is a normal answer
     die 2 "reach is 'none': this site has nothing to reach." \
           "A Platform-managed compute environment has no login node, so a" \
@@ -404,6 +410,13 @@ if [ "$MODE" = unforward ]; then
   rm -f -- "$FWD_PORT_FILE" "$FWD_STATE_FILE"
   echo "reverse forward cancelled and its records removed"
   exit 0
+fi
+
+if [ "$MODE" = checkmaster ]; then
+  # Read-only: the control channel only. No acquire_slot, no session, no needs-human text, no wait.
+  [ "$REACH" = local ] && exit 0
+  master_is_up && exit 0
+  exit 1
 fi
 
 if [ "$MODE" = check ]; then

@@ -1677,6 +1677,22 @@ RESUME_KEYS = {"of_run", "of_slurm_job_id", "session_id", "attempt", "origin"}
 SUBMITTED = re.compile(r"Submitted batch job ([0-9]+)\s*$", re.M)
 
 
+def _site_link(ctx, reach):
+    """open | closed | unknown for the shared connection to the site, by a read-only look (on_site.sh --check-master: ssh -O check,
+    3 seconds at most, no session, no slot). Never raises; anything unexpected is unknown. `open` is only the control channel."""
+    if reach == "local":
+        return "open"
+    if reach != "ssh":
+        return "unknown"
+    try:
+        r = ctx.site.call(["--check-master"], timeout=3)
+        if getattr(r, "timed_out", False):
+            return "unknown"
+        return {0: "open", 1: "closed"}.get(r.rc, "unknown")
+    except Exception:
+        return "unknown"
+
+
 def own_facts(ctx):
     """What this agent says about itself in hello, from the deployment's settings; the same shape the platform stores."""
     sf = ctx.settings_file
@@ -1691,7 +1707,9 @@ def own_facts(ctx):
     if way_back not in ("forward", "direct"):
         way_back = "forward" if reach not in ("local", "none") else None
     forward_file = storage + "/_relay/forward_port" if storage and reach not in ("local", "none") else None
-    return common.clean_facts({"slurm_account": rules.read_setting(sf, "slurm_account") or None, "reach": reach,
+    link = _site_link(ctx, reach)
+    return common.clean_facts({"site_link": link, "site_link_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                               "slurm_account": rules.read_setting(sf, "slurm_account") or None, "reach": reach,
                                "platform_local": (urlparse(url).hostname or "") in LOOPBACK, "endpoint": url or None,
                                "forward_file": forward_file, "storage_root": storage, "way_back": way_back,
                                "platform_public_url": rules.read_setting(sf, "platform_public_url") or None})
