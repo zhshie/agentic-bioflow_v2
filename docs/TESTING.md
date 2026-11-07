@@ -1135,3 +1135,17 @@ Take 12 screenshots (1440 and 390 px wide, zh and en each time), and attach them
 3. `/usage` with a single compute environment: 4 shots. Check: its fold is open at once.
 
 At 390 px also check `document.documentElement.scrollWidth === document.documentElement.clientWidth` and that the axe scan reports nothing serious or critical.
+
+## 任務日誌（失敗任務） (web-run-tasks-log): the reviewer checks by hand
+
+Automatic tests: `platform/tests/test_web_run_log.py` (new), with the changed `test_web_running.py`, `test_web_results_outputs.py`, `test_web_board.py` and `test_web_parity.py`.
+
+Make a run fail and read its log on the page (no need to go back to the chat):
+
+1. Send an analysis that is sure to fail (for example a samplesheet with a missing column on a small pipeline) and wait until its page says it failed.
+2. Open the run, then the Tasks tab. Each failed task has a Log cell with a link. A task without a recorded work directory shows grey words instead of a link.
+3. Click the link. The first time the page says it is reading, with a Refresh link and the time of the data (it does not refresh itself: an automatic refresh tag is an axe critical finding). Press Refresh after a moment. When the agent has answered, the page shows the end of the file (at most 200 lines or 64 KB) and says if it was cut.
+4. Open the Logs tab. It lists the failed tasks, each with three links: Errors, Output, All.
+5. Stop the agent and click a link again: the page says the agent is offline in plain words and offers Read again.
+
+Take 4 screenshots of the log page and 4 of the Logs tab (1440 and 390 px wide, zh and en) and attach them to the PR; the axe scan must report nothing serious or critical (`scripts/dev/ui_check.py`).
