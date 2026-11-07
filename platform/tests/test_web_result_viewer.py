@@ -18,7 +18,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + bytes(range(256)) + b"\xff\xff\x00\xfe IEND"
 SVG_EVIL = b'<?xml version="1.0"?><!-- c --><svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect/></svg>'
 HTML = b"<html><body><script>var x = 1;</script>\xff\xfe\x00 binary \x80</body></html>\n"
 NOT_AN_IMAGE = b"<html><body>not an image</body></html>"
-ROUTES_OTHER = ("image",)      # step B adds "report"
+ROUTES_OTHER = ("image", "report")
 CJK = re.compile(r"[　-〿㐀-鿿豈-﫿＀-￯]")
 
 
@@ -349,13 +349,13 @@ def test_tc080_081_101_routes_are_read_only(w):
     # TC-080, TC-081, TC-101
     ann, c, rid = world(w)
     routes = {r.path: r for r in c.app.routes if getattr(r, "path", "").startswith("/run/")}
-    for path in ("/run/preview", "/run/image"):
+    for path in ("/run/preview", "/run/image", "/run/report"):
         assert set(routes[path].methods) == {"GET", "HEAD"}, path
     kinds = {r["kind"] for r in w.sql("SELECT kind FROM jobs")}
     rows_before = [w.sql("SELECT COUNT(*) FROM %s" % t)[0][0] for t in ("confirmations", "launches")]
     ready(w, c, rid, "plot.png", PNG)
     c.get(purl(rid, "plot.png", "image"))
-    for path in ("/run/preview", "/run/image"):
+    for path in ("/run/preview", "/run/image", "/run/report"):
         assert c.post(path + "?run=%s&path=plot.png" % rid).status_code == 405
     assert {r["kind"] for r in w.sql("SELECT kind FROM jobs")} <= kinds | {"read_run_file"}
     assert [w.sql("SELECT COUNT(*) FROM %s" % t)[0][0] for t in ("confirmations", "launches")] == rows_before
@@ -386,3 +386,287 @@ def test_tc086_087_wording_and_states(w):
         assert not INTERNAL.search(r.text), name
         if name != "ready":
             assert re.search(r"[◌✕]", r.text) and len(visible(r.text)) > 10, name
+
+
+# ---- Step B: the white-listed HTML reports in a sandboxed iframe ---------------------------------------------------------
+
+REPORT_SCRIPT = b"<html><head><style>p{color:red}</style></head><body><p>hi</p><script>var x = 1;</script>\xff\xfe\x00 binary \x80</body></html>\n"
+
+
+def iframes(text):
+    return re.findall(r"<iframe\b[^>]*>", text)
+
+
+def report_page(w, c, rid, path="multiqc_report.html", extra=""):
+    return ready(w, c, rid, path, REPORT_SCRIPT, extra=extra)
+
+
+def test_tc040_041_042_043_the_iframe(w):
+    # TC-040, TC-041, TC-042, TC-043
+    ann, c, rid = world(w)
+    r = report_page(w, c, rid)
+    assert r.status_code == 200
+    tags = iframes(r.text)
+    assert len(tags) == 1 and r.text.count("<iframe") == 1
+    assert re.search(r'\ssandbox="allow-scripts"(\s|>)', tags[0])
+    assert "allow-same-origin" not in r.text
+    for word in ("allow-forms", "allow-popups", "allow-top-navigation", "allow-modals", "allow-downloads", "by-user-activation"):
+        assert word not in r.text, word
+    assert 'src="/run/report?run=%s&amp;path=multiqc_report.html"' % rid in tags[0]
+    assert 'title="multiqc_report.html"' in tags[0] and 'referrerpolicy="no-referrer"' in tags[0]
+
+
+def test_tc044_045_page_and_its_headers(w):
+    # TC-044, TC-045
+    ann, c, rid = world(w)
+    r = report_page(w, c, rid)
+    tag = iframes(r.text)[0]
+    assert re.search(r'\swidth="\d+%?"', tag) and re.search(r'\sheight="\d+"', tag)
+    assert "style=" not in r.text and "<script" not in r.text and r.text.count("<style>") == 1
+    assert "隔離" in visible(r.text) and "不能讀取本站資料" in visible(r.text)
+    assert 'href="/run/file?run=%s&amp;path=multiqc_report.html"' % rid in r.text and "tab=outputs" in r.text
+    csp = csp_of(r)
+    assert csp == base_csp(c) + "; frame-src 'self'"
+    assert "img-src" not in csp and "script-src" not in csp and "unsafe-eval" not in csp
+    assert r.headers["x-frame-options"] == "DENY"
+
+
+def test_tc046_no_other_page_has_frame_src(w):
+    # TC-046
+    ann, c, rid = world(w)
+    answered(w, c, rid, "a.txt", b"x")
+    got = [ready(w, c, rid, "plot.png", PNG), c.get(purl(rid, "a.txt")), c.get(purl(rid, "multiqc_report.html")), ready(w, c, rid, "fake.png", NOT_AN_IMAGE)]
+    answered(w, c, rid, "multiqc/summary_report.html", error={"error": "too_large", "size": LIMIT + 1})
+    got.append(c.get(purl(rid, "multiqc/summary_report.html")))
+    answered(w, c, rid, "summary_report.html", error={"error": "site_unreachable", "message": "x"})
+    got.append(c.get(purl(rid, "summary_report.html")))
+    for r in got:
+        assert "frame-src" not in csp_of(r) and "script-src" not in csp_of(r) and "<iframe" not in r.text
+
+
+def test_tc047_048_049_050_report_route_headers(w):
+    # TC-047, TC-048, TC-049, TC-050
+    ann, c, rid = world(w)
+    r = ready(w, c, rid, "multiqc_report.html", REPORT_SCRIPT, "report")
+    assert r.status_code == 200
+    h = r.headers
+    assert h["content-type"] == "text/html; charset=utf-8" and h["x-content-type-options"] == "nosniff"
+    assert h["cache-control"] == "private, no-store" and h["referrer-policy"] == "no-referrer"
+    assert h["x-frame-options"] == "SAMEORIGIN"
+    csp = csp_of(r)
+    assert "frame-ancestors 'self'" in csp and "frame-ancestors 'none'" not in csp
+    assert csp.startswith("sandbox allow-scripts;") and "allow-same-origin" not in csp
+    for part in ("connect-src 'none'", "form-action 'none'", "default-src 'none'", "frame-src 'none'", "base-uri 'none'"):
+        assert part in csp, part
+
+
+@pytest.mark.parametrize("path", ["summary_report.html", "multiqc/multiqc_report.html"])
+def test_tc051_052_other_white_listed_names(w, path):
+    # TC-051, TC-052
+    ann, c, rid = world(w)
+    r = report_page(w, c, rid, path)
+    assert len(iframes(r.text)) == 1 and 'sandbox="allow-scripts"' in r.text
+    g = c.get(purl(rid, path, "report"))
+    assert g.status_code == 200
+
+
+def test_tc058_report_bytes_are_untouched(w):
+    # TC-058
+    ann, c, rid = world(w)
+    g = ready(w, c, rid, "multiqc_report.html", REPORT_SCRIPT, "report")
+    assert g.content == REPORT_SCRIPT
+
+
+def test_tc059_other_names_get_no_report(w):
+    # TC-059
+    ann, c, rid = world(w)
+    for name in ("evil.html", "multiqc_report.html.txt", "multiqc_report.htm"):
+        g = ready(w, c, rid, name, REPORT_SCRIPT, "report")
+        assert g.status_code == 404 and g.content == b"", name
+
+
+def test_tc060_061_062_not_ready_gives_no_report(w):
+    # TC-060, TC-061, TC-062
+    ann, c, rid = world(w)
+    g = c.get(purl(rid, "multiqc_report.html", "report"))
+    assert g.status_code == 404 and g.content == b""
+    answered(w, c, rid, "summary_report.html", error={"error": "site_unreachable", "message": "x"})
+    g = c.get(purl(rid, "summary_report.html", "report"))
+    assert g.status_code == 404 and g.content == b""
+    answered(w, c, rid, "multiqc/multiqc_report.html", error={"error": "too_large", "size": LIMIT + 1})
+    p = c.get(purl(rid, "multiqc/multiqc_report.html"))
+    assert "大於網頁下載上限 25 MB" in visible(p.text) and "<iframe" not in p.text
+    g = c.get(purl(rid, "multiqc/multiqc_report.html", "report"))
+    assert g.status_code == 404 and g.content == b""
+
+
+def test_tc063_064_owner_and_login(w):
+    # TC-063, TC-064
+    ann, c, rid = world(w)
+    bob, cb, rid_b = world(w, name="bob-done", who="bob")
+    before = len(file_jobs(w))
+    r = c.get(purl(rid_b, "multiqc_report.html"))
+    ref = c.get(file_url(rid_b, "multiqc_report.html"))
+    assert r.status_code == 404 and r.text == ref.text and "<iframe" not in r.text
+    g = c.get(purl(rid_b, "multiqc_report.html", "report"))
+    assert g.status_code == 404 and g.content == b""
+    assert len(file_jobs(w)) == before
+    anon = w.web()
+    base = anon.get(file_url(rid, "multiqc_report.html"))
+    a = anon.get(purl(rid, "multiqc_report.html", "report"))
+    assert (a.status_code, a.headers.get("location")) == (base.status_code, base.headers.get("location")) and a.content == base.content
+
+
+def test_tc065_hostile_path_is_escaped(w):
+    # TC-065 (the path is only ever in the page as an escaped or percent-coded value, so the quoted word never stands alone)
+    ann, c, rid = world(w)
+    path = 'a"<b>"allow-same-origin"/multiqc_report.html'
+    r = report_page(w, c, rid, path)
+    assert r.status_code == 200 and len(iframes(r.text)) == 1 and 'sandbox="allow-scripts"' in iframes(r.text)[0]
+    assert '"allow-same-origin"' not in r.text and "<b>" not in r.text and 'sandbox="allow-scripts allow-same-origin' not in r.text
+
+
+def test_tc066_no_parameter_chooses_the_report_type(w):
+    # TC-066
+    ann, c, rid = world(w)
+    answered(w, c, rid, "multiqc_report.html", REPORT_SCRIPT)
+    for extra in ("&type=text/plain", "&mime=image/png", "&content_type=application/zip", "&download=1"):
+        g = c.get(purl(rid, "multiqc_report.html", "report", extra))
+        assert g.headers["content-type"] == "text/html; charset=utf-8" and g.content == REPORT_SCRIPT, extra
+
+
+def test_tc067_english_report_page(w):
+    # TC-067
+    ann, c, rid = world(w)
+    r = report_page(w, c, rid, extra="&lang=en")
+    assert '<html lang="en">' in r.text and not CJK.search(r.text) and "isolated" in visible(r.text)
+    assert len(iframes(r.text)) == 1 and 'sandbox="allow-scripts"' in r.text and "allow-same-origin" not in r.text
+    assert 'src="/run/report?run=%s&amp;path=multiqc_report.html"' % rid in r.text
+
+
+def test_tc068_waiting_report_page(w):
+    # TC-068
+    ann, c, rid = world(w)
+    r = c.get(purl(rid, "multiqc_report.html"))
+    assert r.status_code == 200 and "◌" in r.text and "<iframe" not in r.text
+    assert 'http-equiv="refresh" content="15;url=/run/preview?run=%s&amp;path=multiqc_report.html"' % rid in r.text
+
+
+def test_tc074_075_report_headers_are_the_only_exception(w):
+    # TC-074, TC-075
+    ann, c, rid = world(w)
+    page = report_page(w, c, rid)
+    rep = c.get(purl(rid, "multiqc_report.html", "report"))
+    img = ready(w, c, rid, "plot.png", PNG, "image")
+    assert "frame-src 'self'" in csp_of(page) and "frame-src 'none'" in csp_of(rep)
+    assert "img-src" not in csp_of(page) and "frame-src" not in csp_of(img)
+    assert page.headers["x-frame-options"] == "DENY" and "frame-ancestors 'none'" in csp_of(page)
+    assert img.headers["x-frame-options"] == "DENY"
+    for url in ("/", "/settings", "/usage", "/?run=%s&stage=finished" % rid, "/?run=%s&stage=results&tab=outputs" % rid):
+        r = c.get(url)
+        assert "frame-src" not in csp_of(r) and r.headers["x-frame-options"] == "DENY", url
+
+
+def test_tc100_no_credential_in_the_three_routes(w):
+    # TC-100
+    ann, c, rid = world(w)
+    secrets = [v for v in c.cookies.values() if v]
+    assert secrets
+    got = [report_page(w, c, rid), c.get(purl(rid, "multiqc_report.html", "report")), ready(w, c, rid, "plot.png", PNG), c.get(purl(rid, "plot.png", "image"))]
+    for r in got:
+        blob = (r.text if r.headers["content-type"].startswith("text/") else "") + repr(dict(r.headers))
+        for s in secrets:
+            assert s not in blob
+        assert 'name="csrf"' not in blob
+
+
+def test_tc086_report_wording():
+    # TC-086 (step B strings)
+    from abf_platform import web_preview
+    assert "p_note" in web_preview.STRINGS["zh"] and web_preview.STRINGS["en"].keys() == web_preview.STRINGS["zh"].keys()
+    assert banned_in(" ".join(web_preview.STRINGS["zh"].values())) == []
+
+
+# ---- the real browser (TC-053 .. TC-057): a Chromium opens the preview page; the report's own script attacks the site -------
+
+ATTACK = b"""<html><body><pre id="out">pending</pre><script>
+var r = {};
+try { r.cookie = "READ:" + document.cookie; } catch (e) { r.cookie = "ERR:" + e.name; }
+try { r.parent = "READ:" + window.parent.document.title; } catch (e) { r.parent = "ERR:" + e.name; }
+try { var f = document.createElement("form"); f.action = "/settings"; f.method = "post"; document.body.appendChild(f); f.submit(); r.form = "called"; } catch (e) { r.form = "ERR:" + e.name; }
+function one(key, url) { return fetch(url).then(function (x) { return x.text(); }).then(function (t) { r[key] = "GOT:" + t.length; }).catch(function (e) { r[key] = "ERR:" + e.name; }); }
+one("settings", "/settings").then(function () { return one("file", "/run/file?run=RID&path=a.txt"); }).then(function () {
+  var o = document.getElementById("out"); o.textContent = JSON.stringify(r); o.setAttribute("data-done", "1"); });
+</script></body></html>
+"""
+
+DRIVER = r'''
+import json, sys
+from playwright.sync_api import sync_playwright
+base, name, value, rid = sys.argv[1:5]
+with sync_playwright() as p:
+    b = p.chromium.launch()
+    ctx = b.new_context()
+    ctx.add_cookies([{"name": name, "value": value, "url": base}])
+    page = ctx.new_page()
+    page.goto(base + "/run/preview?run=" + rid + "&path=multiqc_report.html")
+    frame = [f for f in page.frames if f != page.main_frame][0]
+    frame.wait_for_function("document.getElementById('out') && document.getElementById('out').getAttribute('data-done') === '1'", timeout=15000)
+    page.wait_for_timeout(1500)
+    print(json.dumps({"out": frame.inner_text("#out"), "url": page.url, "top_has_iframe": page.locator("iframe").count()}))
+    b.close()
+'''
+
+
+def test_tc053_054_055_056_057_the_report_cannot_reach_the_site(w, tmp_path):
+    # TC-053, TC-054, TC-055, TC-056, TC-057 (a real Chromium through Playwright; without one the result is UNVERIFIED, never a pass)
+    import json
+    import os
+    import shutil
+    import socket
+    import subprocess
+    import threading
+    import time
+    ann, c, rid = world(w)
+    answered(w, c, rid, "multiqc_report.html", ATTACK.replace(b"RID", rid.encode()))
+    answered(w, c, rid, "a.txt", b"secret file text")
+    py = os.environ.get("ABF_PLAYWRIGHT_PYTHON") or shutil.which("python3")
+    probe = subprocess.run([py, "-c", "import playwright"], capture_output=True) if py else None
+    if probe is None or probe.returncode != 0:
+        pytest.skip("UNVERIFIED: no Python with playwright (set ABF_PLAYWRIGHT_PYTHON)")
+    import uvicorn
+    from abf_platform import web
+    app = web.create_app(w.ip.index, w.ip.tokens, w.ip.state_db, clock=w.clock, public_url=None)
+    seen = []
+
+    async def logged(scope, receive, send):
+        if scope["type"] == "http":
+            seen.append((scope["method"], scope["path"] + ("?" + scope["query_string"].decode() if scope["query_string"] else "")))
+        await app(scope, receive, send)
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    server = uvicorn.Server(uvicorn.Config(logged, host="127.0.0.1", port=port, log_level="warning", lifespan="off"))
+    t = threading.Thread(target=server.run, daemon=True)
+    t.start()
+    for _ in range(100):
+        if server.started:
+            break
+        time.sleep(0.1)
+    assert server.started
+    try:
+        name, value = next(iter(c.cookies.items()))
+        done = subprocess.run([py, "-c", DRIVER, "http://127.0.0.1:%d" % port, name, value, rid], capture_output=True, text=True, timeout=90)
+    finally:
+        server.should_exit = True
+        t.join(10)
+    assert done.returncode == 0, done.stderr[-2000:]
+    got = json.loads(done.stdout.strip().splitlines()[-1])
+    res = json.loads(got["out"])
+    assert value not in got["out"] and (res["cookie"] == "READ:" or res["cookie"].startswith("ERR:"))      # TC-053
+    assert res["settings"].startswith("ERR:") and res["file"].startswith("ERR:")                             # TC-054, TC-055
+    assert res["parent"].startswith("ERR:")                                                                  # TC-056
+    assert [x for x in seen if x[1] == "/settings" or x[1].startswith("/run/file")] == []                    # TC-054, TC-055, TC-057
+    assert [x for x in seen if x[0] != "GET"] == [] and got["url"].endswith("path=multiqc_report.html") and got["top_has_iframe"] == 1   # TC-057
