@@ -33,7 +33,7 @@ site refused to send out. Both are reached through the site adapter
 `run_name`) do not stop or start anything: each writes a request and shows the
 person what would happen, and the person says yes on their own channel - a form
 in their client or a page whose address the tool returns. You cannot say it for
-them. After the person has pressed send, call the same tool again with the same
+them. A client with no form may take the person's own yes in the chat: show the summary, wait for their reply, then call the same tool again with the `request_id` the first call returned and `user_confirmed=true`; never set it before they answer. After the person has pressed send, call the same tool again with the same
 `run_name` to get the job number: the same changes after the yes give the same job number; different changes, or changes swapped with a plain resume, are refused because a resume is only for the latest one, and the message names the one that exists. Wherever this file says "relaunch" or "resume",
 it means asking this way.
 
