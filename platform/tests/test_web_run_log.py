@@ -168,6 +168,20 @@ def test_tc010_011_012_019_020_first_request_queues_one_job_and_waits(w):
     assert r.status_code == 200 and "<pre>" in r.text
 
 
+def test_tc010_failed_task_reason_is_readable_in_the_web_page(w):
+    # TC-010: the task's own log link -> loading page -> job done -> the same link shows the task name and the error text
+    ann, c, rid = world(w)
+    first = c.get(log_url(rid, which="err"))
+    assert 'http-equiv="refresh"' in first.text and "Error: out of memory" not in first.text
+    assert len(log_jobs(w)) == 1
+    reply(w, ok("Error: out of memory"), state="done")
+    last = c.get(log_url(rid, which="err"))
+    assert last.status_code == 200 and "<html" in last.text.lower()
+    assert "FASTQC" in last.text and "Error: out of memory" in last.text
+    assert re.search(r"<pre>Error: out of memory</pre>", last.text) and 'http-equiv="refresh"' not in last.text
+    assert len(log_jobs(w)) == 1          # nobody had to ask again
+
+
 def test_tc013_014_a_waiting_or_running_job_is_not_doubled(w):
     # TC-013, TC-014, tl07
     ann, c, rid = world(w)

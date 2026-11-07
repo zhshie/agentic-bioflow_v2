@@ -9,3 +9,5 @@
 ## Fix round 2 (2026-11-07)
 - TC-036: screenshots redone with a seeded failed run (24 pages: board tasks/logs, results logs, /run/log loading/ready/error; 1440/390 x zh/en). ready and error pages axe-clean. Only critical left is meta-refresh (existing board tag; loading page tag is required by TC-011); left for the maintainer, see screenshots/summary.md.
 - GATE: full suite rerun at the new HEAD, marker written after.
+
+- Fix round 3 (2026-11-07): TC-010 gets its own test (test_tc010_failed_task_reason_is_readable_in_the_web_page): err link -> loading -> job done -> same link shows FASTQC and <pre>Error: out of memory</pre>. TC-036 meta-refresh vs TC-011 conflict NOT touched (needs maintainer: spec/TC choice). GATE: full suite rerun at the new HEAD.
