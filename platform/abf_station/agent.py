@@ -126,6 +126,7 @@ class Agent:
         self.poll = common.poll_seconds()
         self.facts_every = FACTS_EVERY       # an idle agent says its facts at most this often (seconds)
         self.facts_last = None
+        self.beat_last = None                # (clock, facts) of the last look made for a heartbeat
         self.clock = time.monotonic
         self.failures = 0
 
@@ -175,7 +176,7 @@ class Agent:
         if isinstance(job_id, bool) or not isinstance(job_id, int):
             say("a job without a usable id was ignored")
             return
-        beat = Beat(self.client, self.heartbeat, lambda: launch.own_facts(self.context))
+        beat = Beat(self.client, self.heartbeat, self.beat_facts)
         beat.start()
         self.context.job_started = time.monotonic()
         self.context.agent_name = self.client.name
@@ -207,6 +208,14 @@ class Agent:
                 self.run_job(job)
             else:
                 self.refresh_facts_if_due(name)
+
+    def beat_facts(self):
+        """The facts a heartbeat carries: the same ones again until facts_every seconds have passed, so the shared connection is asked
+        at most that often however short the heartbeat is."""
+        now = self.clock()
+        if self.beat_last is None or now - self.beat_last[0] >= self.facts_every:
+            self.beat_last = (now, launch.own_facts(self.context))
+        return self.beat_last[1]
 
     def refresh_facts_if_due(self, name):
         """refresh_facts, but never more often than facts_every seconds, however fast the polls come back (the check asks the shared connection)."""

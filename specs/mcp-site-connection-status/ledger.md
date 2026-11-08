@@ -26,3 +26,7 @@
 
 ## 裁決5 修正輪
 - agent 閒置重送事實加 FACTS_EVERY=25 秒下限（refresh_facts_if_due），新增 test_idle_refresh_is_rate_limited。
+
+## 對抗審修正輪 2（裁決5 補洞）
+- 有 job 時的心跳事實改走 `Agent.beat_facts`：FACTS_EVERY 內重用上次事實，不再每次心跳做 ssh -O check（test_beat_facts_are_rate_limited）。
+- site_link 的檢查改走 `Site.call_quiet`（不寫終端機 log），閒置時不再每 25 秒印一行 `site: --check-master`（test_site_link_check_is_silent）。

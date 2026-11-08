@@ -1688,7 +1688,7 @@ def _site_link(ctx, reach):
     if reach == "none" or reach not in REACH_VALUES:      # no site to reach, or a value not known here: never claimed open
         return "unknown"
     try:
-        r = ctx.site.call(["--check-master"], timeout=3)
+        r = getattr(ctx.site, "call_quiet", ctx.site.call)(["--check-master"], timeout=3)      # quiet: it repeats on a timer
         if getattr(r, "timed_out", False):
             return "unknown"
         return {0: "open", 1: "closed"}.get(r.rc, "unknown")
