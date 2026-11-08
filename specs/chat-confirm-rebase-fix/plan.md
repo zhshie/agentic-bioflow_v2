@@ -52,6 +52,12 @@ PR #376（分支見 `gh pr view 376 -R zhshie/agentic-bioflow_v2`）把憲法升
 2. **shard_6 逼近 300 秒**：不是本件程式問題。機器閒時單跑 280 秒，視為通過；若 CI 上逾時，gh run rerun --failed 一次即可，不要為此改逾時上限。
 3. 本件不碰 .github/、gitleaks、pip-audit。
 
+## 裁決（lead，2026-11-08 10:30，回應第 3 次退回：修正已綠但未推）
+4. **先合入再推**：PR #376 分支（feat/chat-confirm-rebase-fix 的遠端）已前進到 aed240d9。在 worktree 先 `git fetch` 後 `git merge origin/feat/chat-confirm-rebase-fix`（不 rebase、不 force、不重寫歷史），衝突只解「基準常數」那幾行，其餘一律保留遠端版本；合入後重跑全套，全綠才推。
+5. **「計畫差異說法」**：以本計畫裁決 1 為準（只改兩個基準＋/run/log），PR 描述照寫，不另發明說法。
+6. **v3 上的 gitleaks／pip-audit 紅燈不屬本件**：另件處理，本件不碰也不因它退回；tests 工作流綠即可。
+7. 不得放寬任何斷言、不得改憲法條文。
+
 ## 專長守則（backend）
 
 ### executor
