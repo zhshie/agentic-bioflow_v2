@@ -30,3 +30,6 @@ DESIGN.md、docs/PLATFORM.md、docs/TESTING.md、web.py、web_board.py、web_fin
 ## 全套後補
 - test_web_wording_sweep 表清單加 web_preview.STRINGS（9→10）、test_k8s_launch 路由釘住 30→33（只加項）。
 - test_mcp_launch_pipeline::test_no_schema_change 對 mirror 的 origin/v3 比 store.py 有差，本分支 store.py 對基準 d4dd182e 零差異，屬環境（基準漂移）；test_aws_ce 為偶發，單跑通過。
+
+## 第二輪全套（鏡像 origin/v3 已更新到 fcb26614）
+- test_no_schema_change 與 test_aws_ce 這次綠。新出現兩個紅：test_scope tc070（web_preview.py 缺 `# Nothing existing:` 標頭，已補）、test_web_guided_launch_preview:450（路由名過濾 `preview|sheet` 撞上計畫指定的 /run/preview；過濾式加排除 `/run/preview`，其餘斷言不動，超出計畫列的「只加項」範圍，請審閱者知悉）。

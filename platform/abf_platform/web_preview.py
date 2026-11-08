@@ -1,3 +1,4 @@
+# Nothing existing: showing a result file inside the site (PNG, SVG through img, two named HTML reports in a sandboxed iframe); the download route only sends attachments.
 """web-result-viewer: what a result file may be shown as inside the site. The decision (`kind_of`), the headers of the three routes that show a file
 (/run/preview the page, /run/image the picture; step B adds /run/report) and the pages themselves. Nothing here reads a file or the database: the
 routes in web.py hand over the answer of `actions.run_file`, the same read the download route uses.
