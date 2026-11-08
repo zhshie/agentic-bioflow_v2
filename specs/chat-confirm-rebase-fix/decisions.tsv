@@ -1,3 +1,4 @@
 ts	phase	decision	why	evidence	result
 2026-11-07T20:10	green	只把 BASE_SCHEMA_SHA256 改成含 lint_pipeline 的新值	裁決允許；差異只有 jobs.kind CHECK	platform/tests/test_chat_confirm.py:377	38 passed
 2026-11-08T00:50	green	merge 新 v3 並把 /run/log 納入 BASE_ROUTES	v3 新增路由使 tcm_47 紅，非 CHAT 行為	platform/tests/test_chat_confirm.py:383	38 passed
+2026-11-08	final	全套重跑	前次 shard_6 逾時未取得綠燈	abf-fast-suite 150/150	GREEN

@@ -25,3 +25,6 @@
 ## 續作 2 (executor)
 - origin/v3 又前進 28 commits (fcb26614)，已 merge 進分支，無衝突，沒有 force。
 - 新差異只有一項：v3 加入 GET /run/log (web-run-tasks-log)；BASE_ROUTES 加入該路由。結構雜湊不變。test_chat_confirm.py 38 passed。
+
+## 續作 3 (executor)
+- origin/v3 無新 commit；全套在 HEAD 150/150 全綠（retry-failed-once）。
