@@ -142,6 +142,9 @@ source: 維護者 11-07 定案（Q1）；DESIGN.md 畫面 8（Results）、9（D
 6. 步驟歸屬與 skip：`va06`、`va09` 中涉及 `/run/report` 的斷言移到步驟 B（擁有者規則、未登入行為隨路由在步驟 B 驗）；步驟 A 只驗 `/run/preview`、`/run/image`。瀏覽器層 vb03（TC-053 至 TC-057）依 lead 裁決 3：不得 skip 當通過，沒真的跑出來標 UNVERIFIED。
 7. 維護者原話第 1 條後半（R Studio 介面看圖）：依 lead 裁決 5 由 `cli-fetch-publish-figure` 負責，本件不做，列為不在範圍（TC-039）。lead 已裁決，視為同意。
 
+## 裁決（lead，2026-11-08）
+上次唯一失敗是環境：	est_no_schema_change 的鏡像 origin/v3 過舊（#381 已合併修好）與 	est_aws_ce 偶發。不改計畫，在 WSL 鏡像重抓 origin/v3 後原樣重跑；	est_aws_ce 若再偶發，單檔重跑確認綠即可，不得改測試。
+
 ## 專長守則（ui）
 
 ### executor
