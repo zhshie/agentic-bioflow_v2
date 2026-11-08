@@ -133,3 +133,19 @@ def test_idle_refresh_failure_is_ignored(tmp_path):
     a.context = ctx(tmp_path, "ssh", FakeSite(raises=RuntimeError("x")))
     a.refresh_facts("a1")
     assert a.client.posts[0]["facts"]["site_link"] == "unknown"
+
+
+def test_idle_refresh_is_rate_limited(tmp_path):
+    # TC-024 (ruling 2026-11-08 no.5): the idle refresh runs at most once per facts_every seconds, whatever the poll rate
+    a = agent_mod.Agent("https://p.example", "t", "a1", ctx(tmp_path, "ssh", FakeSite(rc=0)))
+    a.client = FakeClient()
+    assert a.facts_every == agent_mod.FACTS_EVERY == 25
+    t = [100.0]
+    a.clock = lambda: t[0]
+    a.refresh_facts_if_due("a1")
+    t[0] += 24
+    a.refresh_facts_if_due("a1")
+    assert len(a.client.posts) == 1
+    t[0] += 1
+    a.refresh_facts_if_due("a1")
+    assert len(a.client.posts) == 2
