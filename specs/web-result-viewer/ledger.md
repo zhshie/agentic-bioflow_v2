@@ -33,3 +33,8 @@ DESIGN.md、docs/PLATFORM.md、docs/TESTING.md、web.py、web_board.py、web_fin
 
 ## 第二輪全套（鏡像 origin/v3 已更新到 fcb26614）
 - test_no_schema_change 與 test_aws_ce 這次綠。新出現兩個紅：test_scope tc070（web_preview.py 缺 `# Nothing existing:` 標頭，已補）、test_web_guided_launch_preview:450（路由名過濾 `preview|sheet` 撞上計畫指定的 /run/preview；過濾式加排除 `/run/preview`，其餘斷言不動，超出計畫列的「只加項」範圍，請審閱者知悉）。
+
+## 修正輪（2026-11-08）
+- 截圖重拍為真預覽頁（PNG、iframe 報告、輸出分頁、完成頁）共 16 張；舊的 results/board 同圖已刪。
+- axe：新預覽頁 0 違規；meta-refresh 是基準 d4dd182e 就有（screenshots/base-summary.md），非本任務新增。
+- 無程式碼改動；在新 HEAD 重跑全套。
