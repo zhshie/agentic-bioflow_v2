@@ -298,3 +298,19 @@ def test_estimate_su_and_usage_say_no_suSite_like_get_run(tmp_path):
     got = a.estimate_su(db, "r", platform_path=pdb)
     assert got["su"] is None and got["unknown_reasons"] == want
     assert a.run_usage(db, "id-r", caller=a.Caller(1, "u1", "lab"), platform_path=pdb)["unknown_reasons"] == want
+
+
+def test_run_page_never_cuts_the_agent_name(tmp_path):
+    # TC-034 (fix round): the web page keeps 300 characters of a reason; a cut must not fall inside the agent sentence and leave a partial name
+    from abf_platform import web_board
+    long_ssh = "ssh -o ControlMaster=auto -o ControlPath=/home/u/.ssh/cm-%C -o ControlPersist=8h -o ServerAliveInterval=60 site_user_longname@ln01.nano4.nchc.org.tw true"
+    for opener in ("", "wsl.exe -e "):
+        base = ("No open connection to the site. Log in once in a WSL terminal first (請先在 WSL 終端機登入站台): " + opener + long_ssh)
+        new = actions()._with_agent(base, "desktop-gcb")
+        for lang in ("zh", "en"):
+            shown = web_board.plain_reason(new, lang)
+            assert 'agent "desktop"' not in shown and not shown.rstrip("。.").endswith('agent "desktop')
+            if "agent" in shown:
+                assert 'agent "desktop-gcb"' in shown or 'agent「desktop-gcb」' in shown, shown
+            if lang == "zh":
+                assert 'agent "desktop-gcb"' in shown and "agent「desktop-gcb」" in shown, shown
