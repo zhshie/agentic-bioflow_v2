@@ -122,13 +122,22 @@ test_pip_audit_targets_both_files() { # TC-032..036
   ! cg -Eq -- '--ignore-vuln +[A-Za-z]'
 }
 
+test_pip_audit_project_line_has_no_no_deps() { # TC-001..004: --no-deps only works with -r
+  [ -f "$WF" ] || return 1
+  local line
+  line=$(cg -E 'pip-audit .*(\./platform|platform/pyproject\.toml)')
+  [ -n "$line" ] || return 1
+  ! grep -q -- '--no-deps' <<<"$line"
+}
+
 for t in test_security_workflow_exists_and_is_separate \
          test_job_names_do_not_collide_with_required_check test_triggers \
          test_permissions_are_read_only_and_no_pull_request_target \
          test_every_uses_is_pinned_to_full_sha test_no_way_to_turn_checks_off \
          test_allowlist_entries_have_reason_and_are_not_blanket \
          test_gitleaks_download_is_verified test_gitleaks_scans test_gitleaks_uses_redact \
-         test_existing_tests_yml_untouched test_pip_audit_targets_both_files; do
+         test_existing_tests_yml_untouched test_pip_audit_targets_both_files \
+         test_pip_audit_project_line_has_no_no_deps; do
   check "$t"
 done
 [ "$FAILS" = 0 ] || { echo "$FAILS check(s) failed"; exit 1; }
