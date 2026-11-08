@@ -21,6 +21,7 @@ from .site import Site
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 EXIT_REJECTED = 3
 BACKOFF = (2, 4, 8, 16, 30)
+FACTS_EVERY = 25    # seconds between an idle agent's fact refreshes (ruling 2026-11-08: a constant, never more often)
 
 
 def say(text):
@@ -123,6 +124,9 @@ class Agent:
         self.context = context
         self.heartbeat = common.heartbeat_seconds()
         self.poll = common.poll_seconds()
+        self.facts_every = FACTS_EVERY       # an idle agent says its facts at most this often (seconds)
+        self.facts_last = None
+        self.clock = time.monotonic
         self.failures = 0
 
     def wait_or_retry(self, why):
@@ -202,7 +206,15 @@ class Agent:
             if job is not None:
                 self.run_job(job)
             else:
-                self.refresh_facts(name)
+                self.refresh_facts_if_due(name)
+
+    def refresh_facts_if_due(self, name):
+        """refresh_facts, but never more often than facts_every seconds, however fast the polls come back (the check asks the shared connection)."""
+        now = self.clock()
+        if self.facts_last is not None and now - self.facts_last < self.facts_every:
+            return
+        self.facts_last = now
+        self.refresh_facts(name)
 
     def refresh_facts(self, name):
         """An idle agent says its facts again after each empty poll (about every 25 seconds) so site_link is not as old as the agent.
