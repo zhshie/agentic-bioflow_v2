@@ -58,6 +58,12 @@ PR #376（分支見 `gh pr view 376 -R zhshie/agentic-bioflow_v2`）把憲法升
 6. **v3 上的 gitleaks／pip-audit 紅燈不屬本件**：另件處理，本件不碰也不因它退回；tests 工作流綠即可。
 7. 不得放寬任何斷言、不得改憲法條文。
 
+## 裁決（lead，2026-11-08 12:25，回應第 4 次退回：測試綠未推）
+8. **推送目標確認**：是 PR #376 的分支 `feat/mcp-chat-confirm-v5`（遠端多兩個 merge 提交）。作法：在 worktree `git fetch origin`、`git merge origin/feat/mcp-chat-confirm-v5`（不 rebase、不 force），衝突只解基準常數，全綠後 `git push origin HEAD:feat/mcp-chat-confirm-v5`。這是 lead 明確授權的推送目標，不需再問。
+9. **合約 TC-005／007 與實際差異**：接受，理由同裁決 1（跟著已合併事實更新基準，不放寬斷言）；PR 描述逐條寫出差異。
+10. **gitleaks／pip-audit 紅是 v3 既有**（v3 最近 5 次 security 全紅，已另有 PR #380 與 fix-pip-audit-workflow 處理），本件不因它退回。
+11. 計畫裁決修改（1–7）全部接受。
+
 ## 專長守則（backend）
 
 ### executor
