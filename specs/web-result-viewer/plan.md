@@ -145,6 +145,12 @@ source: 維護者 11-07 定案（Q1）；DESIGN.md 畫面 8（Results）、9（D
 ## 裁決（lead，2026-11-08）
 上次唯一失敗是環境：	est_no_schema_change 的鏡像 origin/v3 過舊（#381 已合併修好）與 	est_aws_ce 偶發。不改計畫，在 WSL 鏡像重抓 origin/v3 後原樣重跑；	est_aws_ce 若再偶發，單檔重跑確認綠即可，不得改測試。
 
+## 裁決（lead，2026-11-08 14:30，回應 verifier FAIL：TC-078／086／099／095–098）
+1. **核可三處既有測試的調整**（路由清單多 `/run/preview` 類新路由、路由表摘要值隨之更新、wording sweep 的表數 9→10 並納入 `web_preview.STRINGS`）：限「只因新增路由或新字串表而改」，斷言本身不得變弱；任何其他既有斷言被改一律退回。ledger 要逐處列出「改前→改後」讓 verifier 對照。
+2. **TC-099 的 meta-refresh（自動重整）**：基準就有、不是本件造成，本件豁免；新增的預覽頁必須維持 0 個 serious／critical。lead 另開維護任務處理既有自動重整，不在本件做。
+3. **TC-095–098（真 MultiQC 報告與圖片要人眼驗）**：改為合併後由 lead 以操作者身分用真實 run 驗，不是合併條件；verifier 標 UNVERIFIED(operator) 不算 FAIL，其餘條全 PASS 即可過關。
+4. 推送、開 PR：網頁畫面 B 級，附 1440／390 × zh／en 四張截圖，掛自動合併（既有規則）。
+
 ## 專長守則（ui）
 
 ### executor
