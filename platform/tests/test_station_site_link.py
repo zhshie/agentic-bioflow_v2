@@ -149,3 +149,33 @@ def test_idle_refresh_is_rate_limited(tmp_path):
     t[0] += 1
     a.refresh_facts_if_due("a1")
     assert len(a.client.posts) == 2
+
+
+def test_beat_facts_are_rate_limited(tmp_path):
+    # TC-024 (job side, ruling 2026-11-08 no.5): the heartbeat of a running job asks the shared connection at most once per facts_every seconds
+    s = FakeSite(rc=0)
+    a = agent_mod.Agent("https://p.example", "t", "a1", ctx(tmp_path, "ssh", s))
+    t = [100.0]
+    a.clock = lambda: t[0]
+    first = a.beat_facts()
+    for _ in range(5):
+        t[0] += 4
+        assert a.beat_facts() == first
+    assert len(s.calls) == 1
+    t[0] += 10          # 30 s since the first look
+    a.beat_facts()
+    assert len(s.calls) == 2
+
+
+def test_site_link_check_is_silent(tmp_path):
+    # TC-024 (adversary): the read-only look prints nothing to the agent's terminal
+    root = tmp_path / "plug"
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts" / "on_site.sh").write_text("exit 0\n")
+    lines = []
+    f = tmp_path / "env.yaml"
+    f.write_text("reach: ssh\n")
+    from abf_station.site import Site
+    c = SimpleNamespace(site=Site(root, f, log=lines.append), settings_file=str(f), platform_url="https://p.example")
+    assert launch.own_facts(c)["site_link"] == "open"
+    assert lines == []
