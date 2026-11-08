@@ -7,3 +7,5 @@ ts	phase	decision	why	evidence	result
 2026-11-08T00:00	fix	加入 web_preview.STRINGS 到措辭掃描表、k8s 路由釘住改為 33 條	全套測試紅：新表未涵蓋、路由數 30→33	platform/tests/test_web_wording_sweep.py, test_k8s_launch.py:1434	單檔 163 通過
 2026-11-08T10:00	fix	test_scope 要求新原始檔有 Nothing existing 標頭，web_preview.py 補上；test_web_guided_launch_preview 的「無 preview 路由」過濾排除 /run/preview	計畫指定 /run/preview 路由名，該測試本意是向導不得新增樣本表預覽路由，排除值只此一條	platform/tests/test_scope.py tc070; test_web_guided_launch_preview.py:450	兩檔單跑通過
 2026-11-08T11:40	FIX-UI	截圖改拍真預覽頁並補基準 axe 比對	舊截圖 results 與 board 位元組相同；meta-refresh 需證明為既有	screenshots/summary.md, base-summary.md	預覽頁 axe 0 違規；基準同樣 8 筆 meta-refresh
+2026-11-08T13:00	FIX-UI2	補拍 too_large 等四種預覽狀態截圖，並對全部狀態跑 axe	TC-093 漏拍、TC-099 未掃全部狀態	screenshots/summary.md 補拍一節	新增 16 張；無 serious／critical（除既有 meta-refresh）
+2026-11-08T13:10	FIX-TEST	不自行核可三處既有測試改動，改在 ledger 請 lead 核可	TC-078／086 要求計畫點名；新路由與新表使它們必然改變，executor 無權核可	ledger.md 修正輪二	等待核可

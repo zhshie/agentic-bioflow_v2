@@ -38,3 +38,12 @@ DESIGN.md、docs/PLATFORM.md、docs/TESTING.md、web.py、web_board.py、web_fin
 - 截圖重拍為真預覽頁（PNG、iframe 報告、輸出分頁、完成頁）共 16 張；舊的 results/board 同圖已刪。
 - axe：新預覽頁 0 違規；meta-refresh 是基準 d4dd182e 就有（screenshots/base-summary.md），非本任務新增。
 - 無程式碼改動；在新 HEAD 重跑全套。
+
+## 修正輪二（2026-11-08，回應 TC-078／086／093／099）
+- TC-093：補拍 too_large 預覽頁 4 張，另補 none、site-unreachable、waiting 各 4 張（共 +16 張）。見 screenshots/summary.md。
+- TC-099：預覽頁全部狀態都已掃描。serious／critical 只有既有的 meta-refresh（等待頁、輸出頁、完成頁），基準 d4dd182e 就有；本任務新增的 PNG／報告預覽頁為 0。不改既有自動重整（超出計畫範圍），是否另開任務由維護者決定。
+- TC-078／TC-086：下列三處既有測試的改動是新增路由與新字串表的必然結果，我不能自行核可，請 lead／維護者補核可。沒有任何斷言被弱化成讓錯誤結果通過：
+  1. test_web_guided_launch_preview.py:450，過濾式排除 `/run/preview`（計畫指定該路由名；此測試本意是向導不得新增「樣本表預覽」路由，排除值只此一條）。
+  2. test_web_wording_sweep.py：`web_preview.STRINGS` 加入 tables()、9 改 10。`test_every_zh_table_is_covered` 掃描 `web*.py` 全部中文表，與 tables() 做集合相等比較，新檔 `web_preview.py` 依計畫命名就一定使這個測試紅，不改它就不可能綠。TC-086 的措辭檢查本身已在 test_web_result_viewer.py（`test_tc086_087_wording_and_states`）自己呼叫 `banned_in`，不依賴 sweep 檔。
+  3. test_k8s_launch.py:1434，路由數 30 改 33、換雜湊（新增 /run/preview、/run/image、/run/report 三條路由）。
+- 無程式碼改動。
