@@ -82,6 +82,11 @@ serves: maintenance
 2. 本輪只做：確認 RED 測試現在全綠、跑全套、補 ledger、驗證重點（TC 全 PASS）；push 分支。不得再動 security.yml，不得放寬斷言。
 3. 實跑驗證（workflow_dispatch）合併前由 worker 在 PR 開出後觸發一次 security 工作；L 級仍照流程做 Opus 對抗審。
 
+## 裁決（lead，2026-11-08 14:30，回應第 2 次退回：本機綠未推）
+4. **推送並開 PR**：這是 lead 明確授權的做法（維護者「你決定」）。推 `fix/pip-audit-workflow`，開 PR 到 v3，PR 描述寫明「只改 security.yml 一行」。受保護路徑，**不掛自動合併**，等 L 級對抗審通過後由 lead 合併。
+5. **CI 驗證**：PR 開出後 security 工作會自己跑，看 pip-audit 那一步結果。若仍紅：不得用 `--ignore-vuln` 或 `|| true` 蓋掉，退回 lead 看真實原因（可能是真的有漏洞，那是另一件事）。
+6. **review**：L 級，以 Opus 對抗審為準（計畫 frontmatter 的 review 寫法不改變此要求）。
+
 ## 專長守則（backend）
 
 ### executor
