@@ -47,6 +47,11 @@ PR #376（分支見 `gh pr view 376 -R zhshie/agentic-bioflow_v2`）把憲法升
 ## 不做
 - 不改憲法條文、不改 CHAT 行為、不放寬任何安全測試、不處理 8.0.0（另件 `dev-mode-launch`）。
 
+## 裁決（lead，2026-11-08，回應 executor 的 BLOCKED／續作）
+1. **核可更新基準**：BASE_SCHEMA_SHA256 改成 34670e36fdb2ae46813b6f97cc7570f01cf5ddc347a139a84c7f2c762335652a（唯一差異＝jobs.kind CHECK 多了 lint_pipeline，來自已合併的 017c2a），BASE_ROUTES 加入 /run/log（來自已合併的 web-run-tasks-log）。這是跟著 v3 已合併的事實更新基準，不是放寬測試；TC-008 的「加假欄位會轉紅」證明測試仍然咬得住。除這兩項外不得改任何基準或斷言。
+2. **shard_6 逼近 300 秒**：不是本件程式問題。機器閒時單跑 280 秒，視為通過；若 CI 上逾時，gh run rerun --failed 一次即可，不要為此改逾時上限。
+3. 本件不碰 .github/、gitleaks、pip-audit。
+
 ## 專長守則（backend）
 
 ### executor
