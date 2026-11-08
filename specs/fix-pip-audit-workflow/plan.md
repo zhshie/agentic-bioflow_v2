@@ -77,6 +77,11 @@ serves: maintenance
 - 不升級 pip-audit 版本、不改 `constraints.txt`、不新增 requirements 檔。
 - 不把 security 設成必要檢查（`docs/TESTING.md` 寫它仍在觀察期）。
 
+## 裁決（lead，2026-11-08 12:25，回應 executor 被 hook 擋 .github）
+1. **security.yml 那一行已由 lead 改好並 commit**（3c512fca：`pip-audit ./platform $IGNORES`，維護者授權）。executor 不需也不得再改 .github；`tests/ci_security_workflow_test.sh` 在 lead 本機已全過。
+2. 本輪只做：確認 RED 測試現在全綠、跑全套、補 ledger、驗證重點（TC 全 PASS）；push 分支。不得再動 security.yml，不得放寬斷言。
+3. 實跑驗證（workflow_dispatch）合併前由 worker 在 PR 開出後觸發一次 security 工作；L 級仍照流程做 Opus 對抗審。
+
 ## 專長守則（backend）
 
 ### executor
