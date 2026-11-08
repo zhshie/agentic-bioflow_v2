@@ -303,7 +303,7 @@ def test_estimate_su_and_usage_say_no_suSite_like_get_run(tmp_path):
 def test_run_page_never_cuts_the_agent_name(tmp_path):
     # TC-034 (fix round): the web page keeps 300 characters of a reason; a cut must not fall inside the agent sentence and leave a partial name
     from abf_platform import web_board
-    long_ssh = "ssh -o ControlMaster=auto -o ControlPath=/home/u/.ssh/cm-%C -o ControlPersist=8h -o ServerAliveInterval=60 site_user_longname@ln01.nano4.nchc.org.tw true"
+    long_ssh = "ssh -o ControlMaster=auto -o ControlPath=/tmp/cm-%C -o ControlPersist=8h -o ServerAliveInterval=60 site_user_longname@ln01.nano4.nchc.org.tw true"
     for opener in ("", "wsl.exe -e "):
         base = ("No open connection to the site. Log in once in a WSL terminal first (請先在 WSL 終端機登入站台): " + opener + long_ssh)
         new = actions()._with_agent(base, "desktop-gcb")
