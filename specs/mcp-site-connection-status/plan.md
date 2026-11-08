@@ -126,13 +126,21 @@ shell：`tests/on_site_check_master_test.sh`：用 `ON_SITE_SSH_BIN` 假 ssh，�
 6. 專長守則：本任務無 [backend] 守則，不需要對應 TC。
 
 ## 裁決（lead，2026-11-08，回應 executor 的 UNVERIFIED／擴大範圍）
-1. **核可擴大範圍**：estimate_su、un_usage／my_usage 一併用 strict（CE 無 suSite 一律顯示 NO_SU_SITE／未知，舊 run 的 CE 已不存在時仍用 default_site）。理由：get_run 與用量頁對同一個 run 不能給兩種站台答案。plan.md 的「修訂」段視為已認可。
+1. **核可擴大範圍**：estimate_su、
+un_usage／my_usage 一併用 strict（CE 無 suSite 一律顯示 NO_SU_SITE／未知，舊 run 的 CE 已不存在時仍用 default_site）。理由：get_run 與用量頁對同一個 run 不能給兩種站台答案。plan.md 的「修訂」段視為已認可。
 2. **核可既有測試的輸入調整**（	est_su_usd、	est_web_cost.py seed、	est_site_connection_status.py 夾具、pitfalls_format 釘數 95→96）——限「只補輸入、斷言不動」；任何斷言被放寬就退回。
 3. **TC-065（線上 nano4 CE 實測）改為合併後由 lead 以操作者身分實機驗**，不是合併條件；verifier 對 TC-065 標 UNVERIFIED(operator) 不算 FAIL，其餘條全 PASS 即可過關。lead 驗完會把結果寫進本檔。
+
+## 裁決（lead，2026-11-08 11:30，回應第二次退回：本機綠但未推）
+4. **可以推**：lead 已看 worktree 的差異統計（27 檔、測試占大宗、功能改動限站台答案統一與連線狀態）；裁決 1–3 全部維持有效，不用再等 lead 讀 diff。直接推 feat 分支、開 PR（不 force）。
+5. **agent 每約 25 秒跑一次 `ssh -O check`**：核可。它只問本機已開的共用連線（不重新驗證、不送 OTP、不耗 SU）；唯一條件＝頻率寫成可設定常數且有測試，不得更頻繁。
+6. **L 級**：PR 開出後，worker 照 L 級流程跑 Opus 對抗審；有實跑證據的發現就轉 FAIL 走修正輪。審過才掛自動合併。
+7. 不得放寬任何斷言；TC-065 照裁決 3 處理。
+
+<!-- routine-ruling:unverified-operator -->
+## 裁決（標準，自動補充：UNVERIFIED(operator) 實機條款）
+依本計畫上方既有的裁決，標為 UNVERIFIED(operator) 的實機條款不是合併條件；其餘測試案例仍須全部 PASS，閱卷照常。不得放寬任何既有測試斷言、不得改受保護路徑。
 
 ## 專長守則（[backend]）
 
 （工作區沒有 `.claude/dev-profiles/[backend].md`；本任務無專長守則。）
-
-## 裁決 (2026-11-08)
-test_no_schema_change 失敗原因：分支基底 87107ae9 落後 origin/v3 (fcb26614)，v3 對 store.py 的改動被當成本分支差異。先 `git fetch origin v3` 並把分支 rebase（或 merge）到 origin/v3，再跑全套；不可修改或弱化該測試。aws_ce 偶發失敗重跑即可。
