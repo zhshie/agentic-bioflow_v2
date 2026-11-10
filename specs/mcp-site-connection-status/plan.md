@@ -150,3 +150,8 @@ un_usage／my_usage 一併用 strict（CE 無 suSite 一律顯示 NO_SU_SITE／�
 
 （工作區沒有 `.claude/dev-profiles/[backend].md`；本任務無專長守則。）
 
+
+## 裁決（lead，2026-11-10 22:00，國網用量空值已實機修好）
+11. **TC-065 已由 lead 實機驗過**：平台資料庫的運算環境 
+ano4 原本沒有 suSite，已補 suSite=nano4（備份 platform.db.bak-1110-presusite）；estimate_su(tp_ampliseq_1105) 回 su≈4.7154、twd_nstc≈0.4715、twd_academic≈0.9431、無 unknown_reasons。TC-065 視為 PASS（operator 驗證）。
+12. 裁決 1–10 全部維持。不要再等實機；本機測試全綠就推送、開 PR（不 force），L 級照裁決 6。
