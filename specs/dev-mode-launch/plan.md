@@ -145,6 +145,18 @@ NCHC 驗收期間每次送出都要本人按確認，維護者成為瓶頸。這
 - 憲法 8.0.0（BUDGET 通道，五點）：維護者回「同意，但4)按照1)」。lead 的解讀：第 4 點（只有本人能設數字）就是第 1 點的方式——兩個數字由本人在登入後的網頁設定頁自己填，AI、MCP、聊天頁模型都碰不到、不能調高；條文照第 1 點寫，不另加其他設定管道。若解讀有誤請維護者更正。
 - Approval 欄可寫維護者 2026-11-07 同意（引用上列原話）；PR 流程仍照 A 級：先合 #376，再開 8.0.0 的 PR。
 
+## 裁決（自動補，2026-11-10）
+針對 verifier 對本計畫提出的五點，逐點定案（以下蓋過前文任何不一致處）：
+1. **Approval 欄唯一內容＝`PENDING`**。「維護者同意紀錄」最後一條「Approval 欄可寫維護者 2026-11-07 同意」作廢。Approval 欄只寫裁決 G 的 PENDING 句；PR 只開 draft、不合併；不得引用「同意，但4)按照1)」當作對憲法全文的同意。TC-076 與 `tests/budget_doc_test.sh` 的預期結果因此唯一：Approval 含 `PENDING`、不含任何維護者引言、PR 為 draft、未合併。
+2. **同意紀錄的效力**。「同意，但4)按照1)」後半句只是 lead 的解讀，未經維護者本人確認，不視為對 8.0.0 全文的同意。維護者之後若在合併前親口確認（用他自己的話），才由 lead 或維護者本人補寫 Approval，並以另一次提交完成，不屬於本片 executor 的工作。TC-076 只驗「無杜撰引言、draft、未合併」，不驗「Approval 引用他的話」。
+3. **待釐清的四點**：
+   - (a) **0 不放行**：`decide` 要求兩個上限都 > 0（`0`＝什麼都不放行，裁決 F Q-d）；上限為 0 時，不論預估是多少（含 0）一律要確認。TC-D 加一條：單次上限 0＋預估 0 -> 待確認；每月上限 0 同。邊界「預估剛好等於上限」仍成立，但僅限上限 > 0。
+   - (b) **cancel 不放行雲端 run**：cancel 照作法 3 只需 (a)(b)(c)，另加：目標 run 所在的 compute env 為雲端時，cancel 也要確認（fail-closed，取較嚴者；與 Q2「雲端的動作永遠要確認」一致，且不與 10-13「取消直接開放」衝突，因為 nano4 的取消仍開放）。無法判斷 run 所在環境時當作要確認。TC-E 加一條；TC-C 的 cancel 案例限 nano4 run。
+   - (c) **`su.month_total` 是該使用者本人本月用量**：已查 `su.py` l.189，以 `jobs.owned_run_names(platform_path, user_id)` 只加總該使用者擁有的 run，不是全站。上限因此是每人各自的額度；計畫文字「本月已用」一律指本人。
+   - (d) **託管部署**：維持裁決 F Q-b 與 lead 裁決 2 的預設（`ABF_HOSTED` 為真則拒絕 BUDGET）。若維護者在 NCHC 以 `ABF_HOSTED=1` 部署，此功能在該處不會生效，設定頁已註明「此部署不啟用」。這是已接受的預設，不阻擋開工；維護者若要託管也開，另開修正。
+4. **`deploy/` 託管單元檔**：已查 worktree，`deploy/systemd/` 只有 `abf-mcp.service.in`、`abf-serve.service.in`、`abf-web.service.in`，`deploy/`、`tests/` 內都沒有 `ABF_HOSTED`，即 H-1 部署包尚未合併。決定：本片**不改 `deploy/`**，範圍表該項視為延後並在 ledger 記一行。TC-085 改為：`deploy/` 下若已存在含 `ABF_HOSTED` 的單元檔，才驗其值為 1；`env.example` 無論如何不得含 `ABF_HOSTED`；沒有單元檔則該項略過並註明。`budget.is_hosted()` 與 TC-K 仍照舊（用環境變數測）。
+5. **沒有 spec.md**：本片以本 plan.md 的裁決、TC-A..M 與「維護者原話」為合約依據。Q2／Q20／Q21／Q31 引言是 lead 轉述、非錄音逐字，TC 以該轉述文字為輸入；若 lead 日後換入原文，只替換引言，不改 TC 結構。
+
 ## 專長守則（backend）
 
 ### executor
