@@ -649,6 +649,18 @@ def _add_cleanup_column(con):
                 raise    # a second process may have added it first; anything else is a real error
 
 
+def _add_budget_note_column(con):
+    """BUDGET (constitution 8.0.0): a confirmation the person's own SU budget approved keeps what the decision was made on (the estimate and
+    the two limits) in budget_note. Every old row keeps NULL. A second process may have added the column first; anything else is a real error."""
+    if "budget_note" not in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
+        try:
+            with con:
+                con.execute("ALTER TABLE confirmations ADD COLUMN budget_note TEXT")
+        except sqlite3.OperationalError:
+            if "budget_note" not in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
+                raise
+
+
 def connect_state(path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -668,6 +680,7 @@ def connect_state(path):
         _add_forgotten_columns(con)
         _migrate_confirmation_kinds(con)
         _add_cleanup_column(con)
+        _add_budget_note_column(con)
     except BaseException:
         con.close()
         raise
@@ -752,6 +765,14 @@ def _migrate_tokens(con):
         except sqlite3.OperationalError:
             if "temp_until" not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
                 raise
+    for col in ("auto_su_single", "auto_su_month"):      # dev-mode-launch: the person's own SU budget (NULL = not set = ask every time)
+        if col not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
+            try:
+                with con:
+                    con.execute("ALTER TABLE users ADD COLUMN %s REAL" % col)
+            except sqlite3.OperationalError:
+                if col not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
+                    raise   # a second process may have added it first; anything else is a real error
     for col in ("step_mode", "dev_mode"):      # 012a-settings-page: two personal flags; NULL (every old row) reads as the default
         if col not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:
             try:
@@ -997,6 +1018,47 @@ def set_user_pref(tokens_path, user_id, key, on):
             con.execute("UPDATE users SET %s = ? WHERE id = ?" % key, (1 if on else 0, user_id))
     finally:
         con.close()
+
+
+BUDGET_MAX_SU = 1000000.0      # the biggest SU limit a person can set for themself; a typo of many zeros is refused
+
+
+def parse_budget_limit(value, label):
+    """One SU limit as a float (None is the caller's own case), or ValueError with the plain sentence. 0 to BUDGET_MAX_SU, finite; a bool
+    or a string is not a number here."""
+    ok = not isinstance(value, bool) and isinstance(value, (int, float)) and value == value and 0 <= value <= BUDGET_MAX_SU
+    if not ok:
+        raise ValueError("%s is not allowed: it must be a number of SU from 0 to 1,000,000, or empty to clear it "
+                         "(%s要是 0 到 1,000,000 之間的 SU 數字，或留空清除；0 代表什麼都不自動送出)" % (label, label))
+    return float(value)
+
+
+def set_user_budget(tokens_path, user_id, single, month):
+    """Save the two SU limits of one user: one run's and the month's. Each is None (not set: the person is asked every time) or a number from
+    0 to 1,000,000. ValueError, nothing written, for any other value. Only the settings page of the user themself reaches it (actions.set_my_budget)."""
+    s = None if single is None else parse_budget_limit(single, "the single-run SU limit")
+    m = None if month is None else parse_budget_limit(month, "the monthly SU limit")
+    con = connect_tokens(tokens_path)
+    try:
+        with con:
+            con.execute("UPDATE users SET auto_su_single = ?, auto_su_month = ? WHERE id = ?", (s, m, user_id))
+    finally:
+        con.close()
+
+
+def user_budget(tokens_path, user_id):
+    """{'single': float or None, 'month': float or None} of one user; None (also for a missing file or user) is not set."""
+    out = {"single": None, "month": None}
+    if not Path(tokens_path).exists():
+        return out
+    con = connect_tokens(tokens_path)
+    try:
+        row = con.execute("SELECT auto_su_single, auto_su_month FROM users WHERE id = ?", (user_id,)).fetchone()
+    finally:
+        con.close()
+    if row is not None:
+        out = {"single": row[0], "month": row[1]}
+    return out
 
 
 def has_live_pat(tokens_path, user_id):

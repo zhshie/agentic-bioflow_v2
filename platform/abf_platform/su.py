@@ -200,3 +200,37 @@ def month_total(index_path, platform_path, user_id, month, site, rates, tasks_of
             return None
         total += su
     return total
+
+
+NO_HISTORY = ("這個 pipeline 在這個站台還沒有成功跑完的紀錄可以估 SU "
+              "(no succeeded run of this pipeline on this site to estimate from)")
+
+
+def estimate_launch(index_path, platform_path, user_id, pipeline, site, rates, tasks_of=None):
+    """{'su', 'basis', 'reason'}: the largest SU of this user's own succeeded runs of the same pipeline on the same rates site (the history
+    is the only estimate; nothing is worked out from resource limits). su None, with the reason, when there is no such run or none of them
+    has a known SU. A run whose SU is unknown is left out; it does not stop the others from being the history."""
+    from . import cloud_cost
+    best, basis, seen = None, None, False
+    for r in status.list_runs(index_path, status.now(), names=jobs.owned_run_names(platform_path, user_id)):
+        if r.get("status") != "succeeded":
+            continue
+        facts = cloud_cost._launch_facts(platform_path, r["name"])
+        if not facts or facts["cloud"] or not cloud_cost._same_pipeline(facts["pipeline"], pipeline):
+            continue
+        if site_of_run(platform_path, r["name"], rates) != site:
+            continue
+        seen = True
+        value = run_su(index_path, r["name"], site, rates, tasks_of)["su"]
+        if value is not None and (best is None or value > best):
+            best, basis = value, "run %s" % r["name"]
+    if best is None:
+        return {"su": None, "basis": None, "reason": NO_HISTORY if not seen else NOT_STORED}
+    return {"su": best, "basis": basis, "reason": None}
+
+
+def month_used_at(index_path, platform_path, user_id, site, rates, now, tasks_of=None):
+    """Total SU this user has used in the Taipei calendar month that holds `now` (seconds since the epoch); None when it cannot be worked out.
+    The month is this module's own (Asia/Taipei); month_total is the rule."""
+    month = datetime.datetime.fromtimestamp(now, TAIPEI).strftime("%Y-%m")
+    return month_total(index_path, platform_path, user_id, month, site, rates, tasks_of)

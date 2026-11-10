@@ -130,8 +130,9 @@ def _changed(row, expected_sha, expected_kind):
 
 
 def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_seconds=None, offline_after=None, *,
-            expected_sha=None, expected_kind=None):
-    """A person said yes to pending request `rid` through `channel` (ELICITED, PAGE or CHAT): flip it and queue its job, in one
+            expected_sha=None, expected_kind=None, budget_note=None):
+    """(BUDGET: the person's own SU budget said yes in advance; only the action layer's budget branch passes it, with the note of what it was
+    decided on, and a missing caller is never the owner.) A person said yes to pending request `rid` through `channel` (ELICITED, PAGE or CHAT): flip it and queue its job, in one
     transaction. Returns (rid, job id). NotApproved when the request is not there, is not this caller's, is void or expired, was
     approved already, or when the queue refuses (then the request is void, with the reason).
 
@@ -180,8 +181,8 @@ def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_
         if not isinstance(bundle, dict) or common.bundle_sha256(bundle) != row["sha256"]:
             con.execute("UPDATE confirmations SET state = 'void', void_reason = 'the content does not match its hash' WHERE id = ?", (rid,))
             return "failed", "the content does not match what was shown (內容與顯示時不符)", None
-        con.execute("UPDATE confirmations SET state = 'confirmed', channel = ?, confirmed_at = ? WHERE id = ? AND state = 'pending'",
-                    (channel, now, rid))
+        con.execute("UPDATE confirmations SET state = 'confirmed', channel = ?, confirmed_at = ?, budget_note = ? WHERE id = ? AND state = 'pending'",
+                    (channel, now, budget_note if channel == "BUDGET" else None, rid))
         job_kind = JOB_KIND[row["kind"]]
         con.execute("SAVEPOINT enqueue")
         try:
@@ -215,7 +216,7 @@ def find_approved(state_path, kind, bundle, caller_user_id, clock=time.time, inc
     try:
         spent = "" if include_spent else "AND c.used_at IS NULL "
         row = con.execute("SELECT c.id AS id, j.id AS job_id FROM confirmations c JOIN jobs j ON j.confirmation_id = c.id "
-                          "WHERE c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE', 'CHAT') AND c.kind = ? AND c.sha256 = ? "
+                          "WHERE c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE', 'CHAT', 'BUDGET') AND c.kind = ? AND c.sha256 = ? "
                           "AND c.caller_user_id IS ? " + spent + "AND c.expires_at > ? "
                           + ("AND j.state NOT IN ('refused', 'expired') " if include_spent else "")
                           + "ORDER BY c.created_at DESC LIMIT 1", (kind, common.bundle_sha256(bundle), caller_user_id, clock())).fetchone()
@@ -237,7 +238,7 @@ def find_attempt(state_path, parent_run, kind, caller_user_id, clock=time.time, 
         rows = con.execute("SELECT c.id AS id, j.id AS job_id, l.run_name AS run_name, c.bundle_json AS bundle_json FROM launches l "
                            "JOIN jobs j ON j.id = l.job_id JOIN confirmations c ON c.id = j.confirmation_id "
                            "WHERE l.parent_run = ? AND l.attempt_kind = ? "
-                           "AND c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE', 'CHAT') AND c.kind = 'launch' AND c.caller_user_id IS ? "
+                           "AND c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE', 'CHAT', 'BUDGET') AND c.kind = 'launch' AND c.caller_user_id IS ? "
                            "AND c.expires_at > ? AND j.state NOT IN ('refused', 'expired') ORDER BY l.id DESC",
                            (parent_run, kind, caller_user_id, clock())).fetchall()
         for row in rows:

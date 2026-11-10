@@ -31,7 +31,7 @@ import urllib.parse
 
 from abf_launch import build
 
-from .. import agents, common, compute_envs, confirm, failures, jobs, pipeline_launch, status, store, su
+from .. import agents, budget, common, compute_envs, confirm, failures, jobs, pipeline_launch, status, store, su
 from .. import releases as _releases, schema as _schema
 from .. import cloud_cost as _cost
 
@@ -52,6 +52,7 @@ TERMINAL = _Channel("TERMINAL")
 ELICITED = _Channel("ELICITED")
 PAGE = _Channel("PAGE")
 CHAT = _Channel("CHAT")     # the person's own reply in the chat, relayed by the AI with the request id: only _ask uses it; the public approve() and _require_human do not accept it
+BUDGET = _Channel("BUDGET")     # the person's own SU budget, set earlier on their settings page: only the budget branch of _ask and _request_attempt uses it, after budget.check said yes; launch(), cancel(), approve() and _require_human do not accept it
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1315,6 +1316,29 @@ def set_my_setting(tokens_path, key, on, *, confirmed_by=None, caller=None):
     return {"ok": True}
 
 
+def get_my_budget(tokens_path, *, caller=None):
+    """The caller's own two SU limits, {"single": number or None, "month": number or None} (None: not set, every send asks the person);
+    nobody else's, and no way to ask for another person."""
+    return store.user_budget(tokens_path, caller.user_id) if caller else {"single": None, "month": None}
+
+
+def set_my_budget(tokens_path, single, month, *, confirmed_by=None, caller=None):
+    """Save the caller's own two SU limits (each None to clear, or 0 to 1,000,000). Only the person's own page (PAGE) may: any other channel,
+    or none, is refused and nothing is written; no MCP tool, token or chat reaches it. {"ok": True}, or {"ok": False, "message"} for a value
+    that is not allowed or no user."""
+    _require_human(confirmed_by)
+    if confirmed_by is not PAGE:
+        raise jobs.JobRefused("no human confirmation channel: the SU limits are set only by the person on their own settings page "
+                              "(只有本人登入後在設定頁才能設定 SU 上限)")
+    if caller is None:
+        return {"ok": False, "message": "請先登入，再到設定頁設定 SU 上限 (sign in, then set the SU limits on the settings page)"}
+    try:
+        store.set_user_budget(tokens_path, caller.user_id, single, month)
+    except ValueError as e:
+        return {"ok": False, "message": str(e)}
+    return {"ok": True}
+
+
 def remove_site_pipeline(platform_path, *, ce, pipeline, revision, confirmed_by=None, caller=None):
     """Remove one pipeline version from the caller's own compute environment, only after a person's yes. No check is queued. A version that
     is not listed changes nothing: {"ok": True, "changed": False}."""
@@ -1479,7 +1503,7 @@ def _chat_refusal(status, tool):
 
 
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None, request_id=None,
-               user_confirmed=False):
+               user_confirmed=False, index_path=None):
     """The yes of a person for a bundle that is built and checked: through the form, else by the page, else (CHAT) the person's own
     reply in the chat, relayed by the AI with the request id and user_confirmed=true on a second call; never by the caller itself.
     `kind` is the kind of confirmation; `tool` is the name the person knows it by (resume, relaunch), the kind when none is given."""
@@ -1505,6 +1529,18 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
         rid = confirm.create_pending(platform_path, kind, ce_name, bundle, text, caller_id, clock)
     except jobs.JobRefused as e:
         return _no("未送出：%s" % e)
+    ok, note, facts = budget.check(platform_path, kind, ce_name, bundle, caller, clock, index_path)      # the person's own SU budget; fails closed
+    if ok:
+        try:
+            _, job_id = confirm.approve(platform_path, rid, BUDGET.name, caller_id, clock, budget_note=note)
+        except confirm.NotApproved as e:
+            if e.status == "already":
+                return _queued(rid, e.job_id, what)
+        else:
+            out = _queued(rid, job_id, what)
+            out["channel"] = BUDGET.name
+            out["message"] += " " + budget.said(facts)
+            return out
     if form:
         yes, why = await person.says_yes(text)
         if yes is not None:
@@ -1847,7 +1883,7 @@ async def _request_attempt(verb, platform_path, run_name, caller, person, clock,
         return _no("未%s：%s" % (word, e))
     text = build.as_text(screen(bundle, row))
     return await _ask(platform_path, "launch", ce, bundle, text, bundle["run_name"], caller, person, clock, remote, tool=verb,
-                      request_id=request_id, user_confirmed=user_confirmed)
+                      request_id=request_id, user_confirmed=user_confirmed, index_path=index_path)
 
 
 async def request_resume(platform_path, *, run_name, params=None, extra_config=None, caller=None, person=None, clock=time.time, remote=False,
