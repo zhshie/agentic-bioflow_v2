@@ -47,3 +47,10 @@ DESIGN.md、docs/PLATFORM.md、docs/TESTING.md、web.py、web_board.py、web_fin
   2. test_web_wording_sweep.py：`web_preview.STRINGS` 加入 tables()、9 改 10。`test_every_zh_table_is_covered` 掃描 `web*.py` 全部中文表，與 tables() 做集合相等比較，新檔 `web_preview.py` 依計畫命名就一定使這個測試紅，不改它就不可能綠。TC-086 的措辭檢查本身已在 test_web_result_viewer.py（`test_tc086_087_wording_and_states`）自己呼叫 `banned_in`，不依賴 sweep 檔。
   3. test_k8s_launch.py:1434，路由數 30 改 33、換雜湊（新增 /run/preview、/run/image、/run/report 三條路由）。
 - 無程式碼改動。
+
+## 修正輪三（2026-11-10，依 lead 11-08 14:30 裁決）
+三處既有測試調整已由 lead 核可，改前→改後逐處：
+1. test_k8s_launch.py:1434：`len(got)==30` 與雜湊 e182004a… → `len(got)==33` 與雜湊 67f6aa6d…（三條新路由）。
+2. test_web_guided_launch_preview.py:450：路由過濾 `preview|sheet` → 同式加 `and m != "/run/preview"`。
+3. test_web_wording_sweep.py：tables() 加 `web_preview.STRINGS`；`len(found)==9` → `==10`。
+TC-095–098 為 UNVERIFIED(operator)，合併後由 lead 驗。TC-099 meta-refresh 為基準既有，豁免。無程式碼改動。
