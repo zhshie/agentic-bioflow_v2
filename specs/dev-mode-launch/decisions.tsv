@@ -1,3 +1,5 @@
 ts	phase	decision	why	evidence	result
 2026-11-10	build	先寫實作再補測試檔（偏離先 RED 的流程）	前一段對話在補測試前就寫了實作，來不及補 RED	platform/tests/test_budget_launch.py	17 個綠
 2026-11-10	build	su.month_total 不能在 su.py 外被呼叫，加 su.month_used_at 包一層	test_env12_month_total_has_no_caller 釘住	platform/abf_platform/su.py	通過
+2026-11-10	build	憲法 8.0.0 與釘住測試改動交還 developer-agent	constitution.md 與 tests/*.sh 被 executor hook 擋（契約或閘門檔），不繞過	.specify/memory/constitution.md	BLOCKED
+2026-11-10	build	auto-send list 以唯讀連線讀 confirmations	計畫要求唯讀、fail-closed	platform/abf_platform/cli.py cmd_auto_send_list	test_bg_22 綠
