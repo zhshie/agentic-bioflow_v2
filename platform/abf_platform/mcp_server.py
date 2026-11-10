@@ -13,8 +13,9 @@ get_run is the one query that is not marked read-only: for a lost run it queues 
     file only as a download address). None of them can name a command or a job kind; the platform and the agent each check the path again.
 
 launch and cancel (spec 009c) start nothing by themselves. Each builds what the terminal command builds, writes a pending request
-and asks the person (the client's form, else a page they open). They carry no argument that could say yes, and the answer to a call
-says plainly whether a job exists. Everything they do is in abf_platform.actions.
+and asks the person (the client's form, else a page they open, else their own reply in the chat). A second call with the request id and
+user_confirmed=true only relays that reply: it is accepted for the same person, the same content and ten minutes (CHAT), and the answer
+to a call says plainly whether a job exists. Everything they do is in abf_platform.actions.
 
 resume and relaunch (spec 009e) are the same kind of tool, for a run that failed or was cancelled. relaunch takes only the name of the
 run. resume may also carry params (only the keys to change) and extra_config (settings text); the pipeline, revision, samples and
@@ -184,15 +185,22 @@ def _add_canvas_reads(server, platform_path):
         return pipeline_actions.get_validation(platform_path, pipeline_id, version, caller=_caller(ctx))
 
 
+_CHAT_SENTENCE = ("Or, when the person has answered yes in this chat in their own words after you showed them the summary, call it "
+                  "again with the same arguments plus request_id (the id this returned) and user_confirmed=true; never set "
+                  "user_confirmed before they answer.")
+_REQUEST_ID_DOC = "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat."
+_USER_CONFIRMED_DOC = "True only after the person themselves answered yes in the chat to this request; never fill it in for them."
+
+
 def _add_write_tools(server, platform_path, index_path):
-    """launch, cancel, resume and relaunch: a pending request and a question to the person; forget: a question to the person.
-    Nothing here says yes for anybody."""
+    """launch, cancel, resume and relaunch: a pending request and a question to the person (and, with the request id and the person's
+    own reply from the chat, the answer); forget: a question to the person. Nothing here says yes for anybody."""
 
     @server.tool(name="launch", annotations=_WRITES,
-                 description="Ask to launch a Nextflow run on a compute environment (to continue a failed run use resume or "
-                             "relaunch). This does NOT start anything: it writes a request and returns a summary with sent false and "
-                             "a page address. The person answers in their own client's form or on that page; you cannot answer for "
-                             "them. After that call launch again with the same arguments to get the job number. Samples: samplesheet "
+                 description="Ask to launch a Nextflow run on a compute environment (to continue a failed run: resume or "
+                             "relaunch). This does NOT start anything: it returns a summary (sent false), a page address. The person "
+                             "answers in their form, on that page or in the chat; you cannot answer for them. After that call "
+                             "launch again with the same arguments (plus request_id and the flag, after they answer). Samples: samplesheet "
                              "(a CSV you uploaded) or samplesheet_text (the CSV, at most 1 MiB). "
                              "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used. "
                              "Or none, with profiles such as [\"test\"].")
@@ -203,12 +211,14 @@ def _add_write_tools(server, platform_path, index_path):
                           dataset: str | None = None, dataset_version: str | None = None,
                           profiles: Annotated[list[str] | None, Field(description="The pipeline's own Config profiles, e.g. [\"test\"]. "
                                                                       "With test, test_full or test_* no samplesheet is needed: the pipeline runs on its own test data "
-                                                                      "(a pipeline installed on the site, Slurm only).")] = None) -> dict:
+                                                                      "(a pipeline installed on the site, Slurm only).")] = None,
+                          request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
+                          user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
         return await actions.request_launch(platform_path, pipeline=pipeline, revision=revision, run_name=run_name,
                                             samplesheet=samplesheet, samplesheet_text=samplesheet_text, ce_name=ce_name, params=params,
                                             path_columns=path_columns, dataset=dataset, dataset_version=dataset_version, profiles=profiles,
                                             caller=_caller(ctx), person=actions.person_at(ctx),
-                                            remote=_remote(ctx))
+                                            remote=_remote(ctx), request_id=request_id, user_confirmed=user_confirmed)
 
     @server.tool(name="launch_pipeline", annotations=_WRITES,
                  description="Ask to launch one of the person's own saved canvas pipelines: pipeline_id, version (newest when none), "
@@ -227,12 +237,14 @@ def _add_write_tools(server, platform_path, index_path):
 
     @server.tool(name="cancel", annotations=_STOPS,
                  description="Ask to stop one run that this platform launched. This does NOT stop anything: it writes a request and shows "
-                             "the person which Slurm job would be cancelled. The person says yes in their own client's form or on a "
-                             "page whose address this returns; you cannot say it for them. After they pressed send, call cancel again "
-                             "with the same run_name to get the job number.")
-    async def cancel_tool(ctx: Context, run_name: str) -> dict:
+                             "the person which Slurm job would be cancelled. The person says yes in their own client's form or on the "
+                             "page this returns; you cannot say it for them. After they pressed send, call cancel again "
+                             "with the same run_name to get the job number. " + _CHAT_SENTENCE)
+    async def cancel_tool(ctx: Context, run_name: str,
+                          request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
+                          user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
         return await actions.request_cancel(platform_path, run_name=run_name, caller=_caller(ctx), person=actions.person_at(ctx),
-                                            remote=_remote(ctx))
+                                            remote=_remote(ctx), request_id=request_id, user_confirmed=user_confirmed)
 
     @server.tool(name="forget", annotations=_STOPS,
                  description="Ask to delete what was kept of one run you launched: the bundle and the screen text of its requests and "
@@ -247,27 +259,33 @@ def _add_write_tools(server, platform_path, index_path):
 
 
     @server.tool(name="resume", annotations=_WRITES,
-                 description="Ask to resume one failed or cancelled run: the same folder, Nextflow reuses the finished tasks. Optional params "
-                             "(only keys to change, laid over the first launch's) and extra_config (resource settings, e.g. "
-                             "`process.memory = '16 GB'`); pipeline, version, samples and environment stay as launched (to change them, "
-                             "make a new launch). This does NOT start anything: it only writes a request. The person "
-                             "says yes in their own form or on a page this returns; you cannot say it for them. It does not "
-                             "start anything until the person says yes. Then call resume again with the same "
-                             "run_name for the job number.")
-    async def resume_tool(ctx: Context, run_name: str, params: dict | None = None, extra_config: str | None = None) -> dict:
+                 description="Ask to resume one failed or cancelled run in the same folder; finished tasks are reused. Optional params "
+                             "(only keys to change) and extra_config (resource settings, e.g. "
+                             "`process.memory = '16 GB'`); pipeline, version, samples and environment stay (to change them, "
+                             "make a new launch). This only writes a request; it does not start anything until the person says "
+                             "yes, in their own form or on the page this returns; you cannot say it for them. Then call resume again "
+                             "with the same run_name for the job number, or, after they answered in this chat, with request_id and "
+                             "user_confirmed=true.")
+    async def resume_tool(ctx: Context, run_name: str, params: dict | None = None, extra_config: str | None = None,
+                          request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
+                          user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
         return await actions.request_resume(platform_path, run_name=run_name, params=params, extra_config=extra_config,
-                                            caller=_caller(ctx), person=actions.person_at(ctx), remote=_remote(ctx), index_path=index_path)
+                                            caller=_caller(ctx), person=actions.person_at(ctx), remote=_remote(ctx), index_path=index_path,
+                                            request_id=request_id, user_confirmed=user_confirmed)
 
     @server.tool(name="relaunch", annotations=_WRITES,
-                 description="Ask to start one run of this platform that failed or was cancelled again from the start, in a new folder: the same "
-                             "pipeline, samples and parameters as the first launch, which cannot be changed here (a different analysis is a "
-                             "new launch). This does NOT start anything: it writes a request and shows the person what would run. The person "
-                             "says yes in their own client's form or on a page whose address this returns; you cannot say it for them. It "
-                             "does not start anything until the person says yes. After they pressed send, call relaunch again with the same "
-                             "run_name to get the job number.")
-    async def relaunch_tool(ctx: Context, run_name: str) -> dict:
+                 description="Ask to start one failed or cancelled run again from the start, in a new folder: the same pipeline, samples and "
+                             "parameters as the first launch, which cannot be changed here (a different analysis is a new launch). This "
+                             "only writes a request and shows what would run; it does not start anything until the person says yes, in "
+                             "their own form or on the page this returns; you cannot say it for them. Then call relaunch again with the "
+                             "same run_name for the job number, or, after they answered in this chat, with request_id and "
+                             "user_confirmed=true (never before they answer).")
+    async def relaunch_tool(ctx: Context, run_name: str,
+                            request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
+                            user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
         return await actions.request_relaunch(platform_path, run_name=run_name, caller=_caller(ctx), person=actions.person_at(ctx),
-                                              remote=_remote(ctx), index_path=index_path)
+                                              remote=_remote(ctx), index_path=index_path, request_id=request_id,
+                                              user_confirmed=user_confirmed)
 
 
 def _whole_file(name):

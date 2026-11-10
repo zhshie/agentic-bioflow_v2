@@ -5,11 +5,12 @@ Only the action layer (abf_platform/actions) calls this module (tests/test_actio
 holds the hash of the canonical content that was shown (common.bundle_sha256); jobs.py refuses to queue a launch or a cancel for any
 content whose hash is not in an unspent row of the right kind that a person has confirmed (state = confirmed).
 
-A row gets there in one of two ways:
+A row gets there in one of two ways (the second has three channels):
   - the terminal: the person typed y, and the row is written already confirmed, with its job, in one transaction (confirm_launch,
     confirm_cancel; channel TERMINAL, or ELICITED / PAGE when the action layer is called with those);
   - a pending request (spec 009c): the MCP tool wrote the row as `pending`, with the whole content, the screen and who asked, and
-    no job. It stays that way until a person's yes comes through an MCP form or the confirmation page; approve() then flips it
+    no job. It stays that way until a person's yes comes through an MCP form, the confirmation page, or (CHAT) their own reply in
+    the chat that the AI relays with the request id and user_confirmed=true; approve() then flips it
     and queues the job in one transaction. A pending row is never a confirmation, it expires in PENDING_SECONDS, and a void row
     (declined, expired, or a queue that refused after the yes) can never be brought back.
 """
@@ -30,7 +31,7 @@ JOB_KIND = {"launch": "launch_nextflow", "cancel": "cancel_run", "clean_work": "
 
 
 class NotApproved(jobs.JobRefused):
-    """approve() queued nothing. `status` says why: not_found, not_yours, void, expired, already (a job exists: job_id) or failed."""
+    """approve() queued nothing. `status` says why: not_found, not_yours, void, expired, already (a job exists: job_id), changed (CHAT: not the content that was shown) or failed."""
 
     def __init__(self, status, message, job_id=None):
         super().__init__(message)
@@ -123,19 +124,45 @@ def void(state_path, rid, reason):
     return bool(jobs.transaction(state_path, work))
 
 
-def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_seconds=None, offline_after=None):
-    """A person said yes to pending request `rid` through `channel` (ELICITED or PAGE): flip it and queue its job, in one
+def _changed(row, expected_sha, expected_kind):
+    """CHAT: whether the content now asked for is not the content of request `row` (the hash and the kind must both match)."""
+    return expected_sha is None or expected_kind is None or row["sha256"] != expected_sha or row["kind"] != expected_kind
+
+
+def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_seconds=None, offline_after=None, *,
+            expected_sha=None, expected_kind=None):
+    """A person said yes to pending request `rid` through `channel` (ELICITED, PAGE or CHAT): flip it and queue its job, in one
     transaction. Returns (rid, job id). NotApproved when the request is not there, is not this caller's, is void or expired, was
     approved already, or when the queue refuses (then the request is void, with the reason).
 
     The caller must be the one who made the request. Nobody matches nobody only for ELICITED: a local stdio client has no caller
-    at all, and the page always has one."""
+    at all, and the page always has one.
+
+    CHAT (the AI relays the person's own answer from the chat, with the request id) is checked in its own order: not_found,
+    not_yours (a missing caller is never the owner), then for a confirmed row `changed` or `already`, void, expired, `changed` for a
+    pending row, and then the checks below. `changed` means the kind or the hash of what is asked now is not that of the request;
+    the row is left as it was. `expected_sha` and `expected_kind` are what the caller asks for now, and CHAT needs both."""
     now = clock()
 
     def work(con):
         row = con.execute("SELECT * FROM confirmations WHERE id = ?", (rid,)).fetchone() if isinstance(rid, str) and len(rid) <= 64 else None
         if row is None:
             return "not_found", "no such request (查無此申請)", None
+        if channel == "CHAT":
+            if caller_user_id is None or row["caller_user_id"] != caller_user_id:
+                return "not_yours", "this request was made by somebody else (不是你的申請)", None
+            if row["state"] == "confirmed":
+                if _changed(row, expected_sha, expected_kind):
+                    return "changed", "the content is not what was shown (內容與顯示時不同)", None
+                job = con.execute("SELECT id FROM jobs WHERE confirmation_id = ?", (rid,)).fetchone()
+                return "already", "this request was approved already (已送出)", job["id"] if job else None
+            if row["state"] == "void":
+                return "void", "this request is void (申請已作廢): %s" % (row["void_reason"] or "-"), None
+            if row["expires_at"] is None or now >= row["expires_at"]:
+                con.execute("UPDATE confirmations SET state = 'void', void_reason = 'expired (逾時)' WHERE id = ?", (rid,))
+                return "expired", "this request has expired (申請已逾時)", None
+            if _changed(row, expected_sha, expected_kind):
+                return "changed", "the content is not what was shown (內容與顯示時不同)", None
         if row["state"] == "confirmed":
             job = con.execute("SELECT id FROM jobs WHERE confirmation_id = ?", (rid,)).fetchone()
             return "already", "this request was approved already (已送出)", job["id"] if job else None
@@ -188,7 +215,7 @@ def find_approved(state_path, kind, bundle, caller_user_id, clock=time.time, inc
     try:
         spent = "" if include_spent else "AND c.used_at IS NULL "
         row = con.execute("SELECT c.id AS id, j.id AS job_id FROM confirmations c JOIN jobs j ON j.confirmation_id = c.id "
-                          "WHERE c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE') AND c.kind = ? AND c.sha256 = ? "
+                          "WHERE c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE', 'CHAT') AND c.kind = ? AND c.sha256 = ? "
                           "AND c.caller_user_id IS ? " + spent + "AND c.expires_at > ? "
                           + ("AND j.state NOT IN ('refused', 'expired') " if include_spent else "")
                           + "ORDER BY c.created_at DESC LIMIT 1", (kind, common.bundle_sha256(bundle), caller_user_id, clock())).fetchone()
@@ -210,7 +237,7 @@ def find_attempt(state_path, parent_run, kind, caller_user_id, clock=time.time, 
         rows = con.execute("SELECT c.id AS id, j.id AS job_id, l.run_name AS run_name, c.bundle_json AS bundle_json FROM launches l "
                            "JOIN jobs j ON j.id = l.job_id JOIN confirmations c ON c.id = j.confirmation_id "
                            "WHERE l.parent_run = ? AND l.attempt_kind = ? "
-                           "AND c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE') AND c.kind = 'launch' AND c.caller_user_id IS ? "
+                           "AND c.state = 'confirmed' AND c.channel IN ('ELICITED', 'PAGE', 'CHAT') AND c.kind = 'launch' AND c.caller_user_id IS ? "
                            "AND c.expires_at > ? AND j.state NOT IN ('refused', 'expired') ORDER BY l.id DESC",
                            (parent_run, kind, caller_user_id, clock())).fetchall()
         for row in rows:
