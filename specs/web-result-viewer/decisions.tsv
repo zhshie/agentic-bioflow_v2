@@ -10,3 +10,4 @@ ts	phase	decision	why	evidence	result
 2026-11-08T13:00	FIX-UI2	補拍 too_large 等四種預覽狀態截圖，並對全部狀態跑 axe	TC-093 漏拍、TC-099 未掃全部狀態	screenshots/summary.md 補拍一節	新增 16 張；無 serious／critical（除既有 meta-refresh）
 2026-11-08T13:10	FIX-TEST	不自行核可三處既有測試改動，改在 ledger 請 lead 核可	TC-078／086 要求計畫點名；新路由與新表使它們必然改變，executor 無權核可	ledger.md 修正輪二	等待核可
 2026-11-10T12:20	fix	在 ledger 逐處列出三處既有測試改前→改後	lead 11-08 裁決核可，需讓 verifier 對照	ledger.md 修正輪三	待全套
+2026-11-10T12:30	fix-redos	以單趟線性掃描 _svg_head 取代 _SVG_HEAD 回溯正則	堆疊空註解使正則 2^n 步，卡住伺服器主迴圈	web_preview.py _svg_head；test_web_result_viewer.py test_svg_head_check_is_linear_time	該檔 47 測試通過，待全套

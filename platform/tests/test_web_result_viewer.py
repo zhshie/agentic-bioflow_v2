@@ -670,3 +670,18 @@ def test_tc053_054_055_056_057_the_report_cannot_reach_the_site(w, tmp_path):
     assert res["parent"].startswith("ERR:")                                                                  # TC-056
     assert [x for x in seen if x[1] == "/settings" or x[1].startswith("/run/file")] == []                    # TC-054, TC-055, TC-057
     assert [x for x in seen if x[0] != "GET"] == [] and got["url"].endswith("path=multiqc_report.html") and got["top_has_iframe"] == 1   # TC-057
+
+
+def test_svg_head_check_is_linear_time():
+    # ADVERSARY (verifier fix round): stacked empty comments made the old backtracking regex take 2^n steps and froze the server's main loop
+    import time
+    from abf_platform import web_preview
+    bad = b"<!---->" * 40 + b"<x>"
+    t = time.time()
+    assert web_preview.kind_of("plot.svg", bad) is None
+    assert web_preview.kind_of("plot.svg", b"<!--a-->" * 5000 + b"<x>") is None
+    assert web_preview.kind_of("plot.svg", b"<?xml " * 9000) is None
+    assert time.time() - t < 1
+    for good in (b"<svg>", b"\xef\xbb\xbf <?xml version='1'?>\n<!-- a --><!DOCTYPE svg PUBLIC 'x'>\n<SVG xmlns='x'/>", b"<!----><!----><svg/>"):
+        assert web_preview.kind_of("plot.svg", good) == "svg", good
+    assert web_preview.kind_of("plot.svg", b"<svgx>") is None

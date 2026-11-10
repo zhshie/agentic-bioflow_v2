@@ -11,7 +11,37 @@ from . import web_board
 
 REPORT_NAMES = ("multiqc_report.html", "summary_report.html")      # the reports the pipelines write; every other .html is a download only
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
-_SVG_HEAD = re.compile(rb"\A(?:\s|\xef\xbb\xbf|<\?xml.*?\?>|<!--.*?-->|<!DOCTYPE[^>]*>)*<svg[\s>/]", re.S | re.I)
+_SVG_START = re.compile(rb"<svg[\s>/]", re.I)
+_SVG_WS = frozenset(b" \t\n\r\f\v")
+
+
+def _svg_head(data):
+    """True when `data` is (optional BOM, whitespace, <?xml?>, comments, <!DOCTYPE>) then `<svg`. A single left-to-right scan: each step moves forward
+    to the first closing mark, so the time is linear in len(data) whatever the bytes are (a backtracking regex took exponential time on stacked comments)."""
+    i, n = 0, len(data)
+    while i < n:
+        if data[i] in _SVG_WS:
+            i += 1
+        elif data.startswith(b"\xef\xbb\xbf", i):
+            i += 3
+        elif data[i:i + 5].lower() == b"<?xml":
+            j = data.find(b"?>", i + 5)
+            if j < 0:
+                return False
+            i = j + 2
+        elif data.startswith(b"<!--", i):
+            j = data.find(b"-->", i + 4)
+            if j < 0:
+                return False
+            i = j + 3
+        elif data[i:i + 9].lower() == b"<!doctype":
+            j = data.find(b">", i + 9)
+            if j < 0:
+                return False
+            i = j + 1
+        else:
+            break
+    return _SVG_START.match(data, i) is not None
 
 STRINGS = {
     "zh": {"p_title": "預覽結果檔", "p_none": "此檔類型不提供預覽。", "p_download": "下載", "p_preview": "預覽", "p_back": "回到輸出分頁",
@@ -40,7 +70,7 @@ def kind_of(path, data=None):
     if kind == "png":
         return kind if data.startswith(PNG_MAGIC) else None
     if kind == "svg":
-        return kind if _SVG_HEAD.match(data[:65536]) else None
+        return kind if _svg_head(data[:65536]) else None
     return kind
 
 

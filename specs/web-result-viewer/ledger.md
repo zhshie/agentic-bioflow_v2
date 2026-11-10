@@ -54,3 +54,5 @@ DESIGN.md、docs/PLATFORM.md、docs/TESTING.md、web.py、web_board.py、web_fin
 2. test_web_guided_launch_preview.py:450：路由過濾 `preview|sheet` → 同式加 `and m != "/run/preview"`。
 3. test_web_wording_sweep.py：tables() 加 `web_preview.STRINGS`；`len(found)==9` → `==10`。
 TC-095–098 為 UNVERIFIED(operator)，合併後由 lead 驗。TC-099 meta-refresh 為基準既有，豁免。無程式碼改動。
+
+修正輪四（ADVERSARY ReDoS）：web_preview.py 的 SVG 檔頭檢查由回溯正則改為線性掃描 _svg_head（行為同：BOM、空白、<?xml?>、註解、DOCTYPE 後接 <svg）；新增 test_svg_head_check_is_linear_time。無既有測試被改。
