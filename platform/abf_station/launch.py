@@ -1677,15 +1677,12 @@ RESUME_KEYS = {"of_run", "of_slurm_job_id", "session_id", "attempt", "origin"}
 SUBMITTED = re.compile(r"Submitted batch job ([0-9]+)\s*$", re.M)
 
 
-REACH_VALUES = frozenset(["local", "none", "s" + "sh"])      # the three values of the reach setting
-
-
 def _site_link(ctx, reach):
     """open | closed | unknown for the shared connection to the site, by a read-only look (on_site.sh --check-master: asks the control channel,
     3 seconds at most, no session, no slot). Never raises; anything unexpected is unknown. `open` is only the control channel."""
     if reach == "local":
         return "open"
-    if reach == "none" or reach not in REACH_VALUES:      # no site to reach, or a value not known here: never claimed open
+    if reach == "none":      # no site to reach: never claimed open
         return "unknown"
     try:
         r = getattr(ctx.site, "call_quiet", ctx.site.call)(["--check-master"], timeout=3)      # quiet: it repeats on a timer

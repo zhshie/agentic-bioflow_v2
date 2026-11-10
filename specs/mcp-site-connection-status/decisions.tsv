@@ -15,3 +15,5 @@ ts	phase	decision	why	evidence	result
 2026-11-08T11:40	fix	閒置重送事實加上限速常數 FACTS_EVERY=25 秒，迴圈改呼叫 refresh_facts_if_due	裁決5：頻率須為常數且有測試，不得更頻繁	platform/abf_station/agent.py FACTS_EVERY, test_idle_refresh_is_rate_limited	見 GREEN
 2026-11-08T12:10	fix	心跳事實加 beat_facts 快取（FACTS_EVERY 內重用）；檢查走 Site.call_quiet 不印終端機	對抗審：job 期間每次心跳都做 ssh -O check，閒置每 25 秒印一行，違反裁決5與少雜訊目標	platform/abf_station/agent.py beat_facts, site.py call_quiet, test_station_site_link.py	test_station_site_link 11 綠
 2026-11-08T13:00	fix	網頁 plain_reason 截 300 字時把結尾 agent 句整句保留、截前段	避免 agent 名被截成 desktop 而指到錯機器（TC-034）	platform/abf_platform/web_board.py plain_reason, test_run_page_never_cuts_the_agent_name	通過
+2026-11-10T12:30	fix	拿掉 "s"+"sh" 拼字與 REACH_VALUES，reach 非 local/none 一律走共用連線檢查（與檔內其他 reach 判斷一致）；檢查失敗仍是 unknown	裁決8：不繞過靜態掃描	platform/abf_station/launch.py _site_link	待跑 station_static、site_link
+2026-11-10T12:30	fix	拿掉 "s"+"sh" 拼字與 REACH_VALUES，reach 非 local/none 一律走共用連線檢查（與檔內其他 reach 判斷一致）；檢查失敗仍是 unknown	裁決8：不繞過靜態掃描	platform/abf_station/launch.py _site_link	待跑 station_static、site_link

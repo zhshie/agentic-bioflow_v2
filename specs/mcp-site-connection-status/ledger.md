@@ -33,3 +33,4 @@
 
 ## 對抗審修正輪 3
 - web_board.plain_reason 截 300 字時保留結尾的 agent 句整句（AGENT_SENTENCE），截斷落在前段；test_run_page_never_cuts_the_agent_name。
+- 裁決8：拿掉 'ssh' 拼字（REACH_VALUES），_site_link 與檔內其他 reach 判斷一致（非 local/none 走 --check-master）。
