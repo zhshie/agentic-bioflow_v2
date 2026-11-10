@@ -1,4 +1,4 @@
-# Nothing like it existed: the platform asked a person for every send; this is the one place that decides whether the person's own earlier SU budget already says yes.
+# Nothing existing: the platform asked a person for every send; this is the one place that decides whether the person's own earlier SU budget already says yes.
 """BUDGET (constitution 8.0.0): the yes a person gave in advance by setting two SU limits on their own settings page.
 
 `decide` is a pure function of facts that were already looked up; `check` looks them up and fails closed: anything that is missing,

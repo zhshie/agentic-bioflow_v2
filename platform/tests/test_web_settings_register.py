@@ -805,7 +805,7 @@ def test_d05_button_words(w, ann):
     zh = c.get("/settings").text
     buttons = {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(zh), re.S)}
     # settings-pick-installed: the Slurm block also has the button that reloads the site list (the register button now sits in the folded advanced form)
-    assert buttons <= {"登記", "移除", "重新讀取站台清單", "開啟", "關閉"} and {"登記", "移除"} <= buttons
+    assert buttons <= {"登記", "移除", "重新讀取站台清單", "開啟", "關閉", "儲存"} and {"登記", "移除"} <= buttons
     en = {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(c.get("/settings?lang=en").text), re.S)}
     assert en - {"Turn on", "Turn off"} == {"Register", "Remove", "Reload site list"}      # 012a: the two switches of the personal section
     page = step1(c, fields("remove")).text
@@ -902,7 +902,7 @@ def test_d16_only_this_task_has_forms(w, ann):
     r = c.get("/settings")
     mid = mid_of(r.text)
     actions = re.findall(r'<form[^>]*action="([^"]+)"', mid)
-    assert actions and set(actions) - {"/settings/personal"} == {"/settings/pipelines", "/settings/inventory"}      # settings-pick-installed adds the reload button's form
+    assert actions and set(actions) - {"/settings/personal", "/settings/budget"} == {"/settings/pipelines", "/settings/inventory"}      # settings-pick-installed adds the reload button's form
     assert r.text.count('action="/logout"') == 1
     assert c.post("/settings", data={"x": "1"}).status_code == 405
     assert w.web().get("/settings").headers["location"].startswith("/login")

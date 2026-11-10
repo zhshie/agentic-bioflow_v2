@@ -372,16 +372,16 @@ BASE_TOOLS = ["cancel", "describe_module", "find_module", "forget", "get_compute
               "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs", "list_site_files",
               "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
 BASE_CONFIRMATION_COLUMNS = ["id", "sha256", "kind", "created_at", "used_at", "caller_user_id", "state", "channel", "confirmed_at",
-                             "expires_at", "ce_name", "bundle_json", "screen_text", "void_reason", "forgotten_at", "forgotten_by"]
+                             "expires_at", "ce_name", "bundle_json", "screen_text", "void_reason", "forgotten_at", "forgotten_by", "budget_note"]      # dev-mode-launch: the BUDGET channel keeps its note
 BASE_TABLES = ["agents", "compute_envs", "confirmations", "jobs", "launches", "meta"]
-BASE_SCHEMA_SHA256 = "34670e36fdb2ae46813b6f97cc7570f01cf5ddc347a139a84c7f2c762335652a"
+BASE_SCHEMA_SHA256 = "82fe40c799f3fe93b63d0c642c922dca3756923bfc7908558041e2bc30f441d3"      # dev-mode-launch: confirmations gained budget_note (was 34670e36...)
 BASE_ROUTES = [
     ("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")), ("/act/{verb}", ("POST",)),
     ("/act/{verb}/edit", ("GET", "HEAD")), ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")),
     ("/c/{rid}", ("POST",)), ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")),
     ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")), ("/login", ("GET", "HEAD")), ("/login", ("POST",)),
     ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")), ("/run/log", ("GET", "HEAD")),
-    ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/personal", ("POST",)),
+    ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/budget", ("POST",)), ("/settings/personal", ("POST",)),
     ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)), ("/token", ("OPTIONS", "POST")),
     ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")), ("/usage", ("GET", "HEAD")),
     ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))]

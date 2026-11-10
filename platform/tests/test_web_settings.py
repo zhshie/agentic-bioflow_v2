@@ -86,7 +86,7 @@ def test_st01_sections_in_order(w):
     # TC-001, TC-002
     w.user("ann")
     _, mid = page(w)
-    assert re.findall(r"<h2>(.*?)</h2>", mid) == ["使用前檢查", "運算環境", "憑證", "密碼與金鑰", "個人", "營運者後台", "角色（老師／學生）"]
+    assert re.findall(r"<h2>(.*?)</h2>", mid) == ["使用前檢查", "運算環境", "憑證", "密碼與金鑰", "個人", "預算內免逐次確認", "營運者後台", "角色（老師／學生）"]      # dev-mode-launch: the budget section follows 個人
     assert re.search(r'<section[^>]*id="setup"', mid) and mid.index('id="setup"') < mid.index("<h2>運算環境</h2>")
     block, items = setup_items(mid)
     assert "<ol>" in block and len(items) == 4
@@ -289,9 +289,9 @@ def test_st08_still_read_only(w):
     pat(w, ann, "x")
     r, mid = page(w)
     # settings-register-pipeline ruling 1: the middle column may hold only the register and remove forms of that task (action /settings/pipelines)
-    assert r.text.count('action="/logout"') == 1 and set(re.findall(r'<form[^>]*action="([^"]+)"', r.text)) == {"/logout", "/settings/pipelines", "/settings/inventory", "/settings/personal"}      # 012a: and the two switch forms
+    assert r.text.count('action="/logout"') == 1 and set(re.findall(r'<form[^>]*action="([^"]+)"', r.text)) == {"/logout", "/settings/pipelines", "/settings/inventory", "/settings/personal", "/settings/budget"}      # 012a: and the two switch forms; dev-mode-launch: and the budget form
     # settings-pick-installed: the Slurm block also holds the form of the button that reloads the site list
-    assert set(re.findall(r'<form[^>]*action="([^"]+)"', mid)) == {"/settings/pipelines", "/settings/inventory", "/settings/personal"}      # 012a: and the two switch forms
+    assert set(re.findall(r'<form[^>]*action="([^"]+)"', mid)) == {"/settings/pipelines", "/settings/inventory", "/settings/personal", "/settings/budget"}      # 012a: and the two switch forms; dev-mode-launch: and the budget form
     assert not re.search(r"<(select|textarea|a)\b", mid) and 'name="csrf"' in mid
     assert "AI 模型金鑰" in mid and "金鑰僅儲存於您的瀏覽器，不會傳送至平台。" in mid and "逐步模式" in mid and "開發模式" in mid
     assert 'class="nv here"' in pane(r.text, "left") and "設定" in pane(r.text, "left")

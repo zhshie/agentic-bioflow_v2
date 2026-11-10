@@ -103,7 +103,7 @@ STRINGS = {
 }
 SYMBOL = {DONE: "✓", MISSING: "✗", LATER: "—", GONE: "○", FAIL: "✕"}
 CLASS = {DONE: "chip state-succeeded", MISSING: "chip state-failed", LATER: "chip muted", GONE: "chip muted", FAIL: "chip state-failed"}
-NOTICES = ("added_queued", "added_no_agent", "added_not_checkable", "added_check_refused", "removed", "gone", "inv_queued", "inv_no_agent", "personal-saved")      # the only values ?notice= may carry
+NOTICES = ("added_queued", "added_no_agent", "added_not_checkable", "added_check_refused", "removed", "gone", "inv_queued", "inv_no_agent", "personal-saved", "budget-saved")      # the only values ?notice= may carry
 SLURM_TYPE = "slurm-platform"
 CLOUD_TYPES = ("googlebatch-platform", "awsbatch-platform", "azbatch-platform")      # compute_envs.PLATFORM_HOST_TYPES (this module may not import it; a test keeps the two equal)
 FIELDS = ("pipeline", "revision", "module", "home")
@@ -352,21 +352,42 @@ def field_error(lang, field, value):
     return None
 
 
-def render_middle(lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None, prefs=None, pp_csrf=None, has_token=False):
+def _budget(t, lang, budget, bg_csrf):
+    """The person's own two SU limits (constitution 8.0.0). Drawn only when the page is given them (budget is not None), so a page without them is
+    as it was. Unset reads 'every send asks you'; a hosted deployment says it does not take a budget yes and draws no form."""
+    if budget.get("hosted"):
+        return '<section class="card sec"><h2>%s</h2><p class="muted">%s</p></section>' % (esc(t["bg_title"]), esc(t["bg_hosted"]))
+
+    def shown(v):
+        return "" if v is None else ("%g" % v)
+    state = t["bg_unset"] if budget.get("single") is None and budget.get("month") is None else t["bg_set"]
+    form = ""
+    if bg_csrf:
+        form = ('<form method="post" action="/settings/budget">%s<label>%s <input name="single" value="%s" inputmode="decimal"></label> '
+                '<label>%s <input name="month" value="%s" inputmode="decimal"></label><button type="submit">%s</button></form>'
+                % (_hidden([("csrf", bg_csrf), ("lang", lang)]), esc(t["bg_single"]), esc(shown(budget.get("single"))),
+                   esc(t["bg_month"]), esc(shown(budget.get("month"))), esc(t["bg_save"])))
+    return '<section class="card sec"><h2>%s</h2><p class="muted">%s</p><p>%s</p>%s</section>' % (esc(t["bg_title"]), esc(t["bg_hint"]), esc(state), form)
+
+
+def render_middle(lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None, prefs=None, pp_csrf=None, has_token=False,
+                  budget=None, bg_csrf=None):
     """The middle column. `envs` is the list inside the answer of list_compute_envs; `prefs` is the answer of get_my_settings, `pp_csrf` the token
     of the two switch forms (without it no button is drawn) and `has_token` says whether the person has a live access token."""
     lang = web_board.pick_lang(lang)
     t = words(lang)
     return ('<main class="main" data-pane="middle"><h1>%s</h1>%s%s%s%s%s%s%s</main>'
             % (esc(t["settings"]), _flash(t, flash, None), _setup(t, lang, envs), _compute(t, lang, envs, pf_csrf, flash, given, inv, inv_csrf),
-               _credentials(t, has_token), _keys(t), _own_prefs(t, lang, prefs, pp_csrf), _rest(t)))
+               _credentials(t, has_token), _keys(t), _own_prefs(t, lang, prefs, pp_csrf) + (_budget(t, lang, budget, bg_csrf) if budget is not None else ""),
+               _rest(t)))
 
 
-def render(name, csrf, runs, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None, prefs=None, pp_csrf=None, has_token=False):
+def render(name, csrf, runs, lang, envs, pf_csrf=None, flash=None, given=None, inv=None, inv_csrf=None, prefs=None, pp_csrf=None, has_token=False,
+           budget=None, bg_csrf=None):
     """GET /settings: the same frame as the board, this middle column. The left and right columns stay as web_board draws them.
     `pf_csrf` is the token of the register and remove forms (without it no form is drawn); `flash` says a notice or a failure; `given` holds
     what a person typed, {environment name: {box: text}}, so that a refused form comes back filled."""
-    return web_board._frame(name, csrf, runs, lang, "settings", lambda t, lang_: render_middle(lang, envs, pf_csrf, flash, given, inv, inv_csrf, prefs, pp_csrf, has_token),
+    return web_board._frame(name, csrf, runs, lang, "settings", lambda t, lang_: render_middle(lang, envs, pf_csrf, flash, given, inv, inv_csrf, prefs, pp_csrf, has_token, budget, bg_csrf),
                             lambda t, lang_: web_board._right(t, None), path="/settings")
 
 
