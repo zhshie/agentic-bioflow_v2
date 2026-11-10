@@ -63,7 +63,23 @@ async def tool_specs(index_path, platform_path=None):
         classify_check(tools)
         _cache[key] = [{"name": t.name, "description": t.description or "", "input_schema": dict(t.input_schema)}
                        for t in tools if _is_read_only(t) or t.name in REQUEST_TOOLS]
-    return [dict(s) for s in _cache[key]]
+    return [_without_chat_args(s) for s in _cache[key]]
+
+
+_CHAT_ARGS = ("request_id", "user_confirmed")
+
+
+def _without_chat_args(spec):
+    """A copy of one spec; for a request tool without request_id and user_confirmed: the browser chat answers on its own page, so
+    the model is not offered any argument that relays a yes."""
+    spec = dict(spec)
+    if spec["name"] in REQUEST_TOOLS:
+        schema = dict(spec["input_schema"])
+        schema["properties"] = {k: v for k, v in schema.get("properties", {}).items() if k not in _CHAT_ARGS}
+        if "required" in schema:
+            schema["required"] = [k for k in schema["required"] if k not in _CHAT_ARGS]
+        spec["input_schema"] = schema
+    return spec
 
 
 def confirm_dialog(tool_name, result):

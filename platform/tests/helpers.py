@@ -64,6 +64,9 @@ def variant(name, run_name, session_id, start_epoch):
     return sc["requests"]
 
 
+CHAT_ARGS = {"request_id", "user_confirmed"}     # the two arguments of the CHAT channel on launch, cancel, resume, relaunch (specs/mcp-chat-confirm)
+
+
 class Clock:
     def __init__(self, t=1_800_000_000.0):
         self.t = t
