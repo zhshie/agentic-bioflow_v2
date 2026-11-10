@@ -1149,3 +1149,7 @@ Make a run fail and read its log on the page (no need to go back to the chat):
 5. Stop the agent and click a link again: the page says the agent is offline in plain words and offers Read again.
 
 Take 4 screenshots of the log page and 4 of the Logs tab (1440 and 390 px wide, zh and en) and attach them to the PR; the axe scan must report nothing serious or critical (`scripts/dev/ui_check.py`).
+
+## Budget yes (dev-mode-launch): the reviewer checks one thing by hand
+
+- TC-078: the pull request that carries constitution 8.0.0 is a draft, was opened without `--auto`, and is not merged. Its Approval line says `PENDING` until the maintainer says yes in his own words. Look at the pull request page: draft badge present, merge button not used.
