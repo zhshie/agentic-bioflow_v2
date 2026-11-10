@@ -15,6 +15,32 @@ _SVG_START = re.compile(rb"<svg[\s>/]", re.I)
 _SVG_WS = frozenset(b" \t\n\r\f\v")
 
 
+def _doctype_end(data, k):
+    """Index just past the `>` that closes a <!DOCTYPE ...> whose body starts at `k`, or -1. A `>` inside quotes, inside the `[ ... ]` internal subset
+    or inside a comment of that subset does not close it. One forward pass, so linear in len(data)."""
+    n, quote, subset = len(data), None, False
+    while k < n:
+        c = data[k:k + 1]
+        if quote:
+            if c == quote:
+                quote = None
+        elif subset and data.startswith(b"<!--", k):
+            j = data.find(b"-->", k + 4)
+            if j < 0:
+                return -1
+            k = j + 2
+        elif c in (b'"', b"'"):
+            quote = c
+        elif c == b"[":
+            subset = True
+        elif c == b"]":
+            subset = False
+        elif c == b">" and not subset:
+            return k + 1
+        k += 1
+    return -1
+
+
 def _svg_head(data):
     """True when `data` is (optional BOM, whitespace, <?xml?>, comments, <!DOCTYPE>) then `<svg`. A single left-to-right scan: each step moves forward
     to the first closing mark, so the time is linear in len(data) whatever the bytes are (a backtracking regex took exponential time on stacked comments)."""
@@ -35,10 +61,10 @@ def _svg_head(data):
                 return False
             i = j + 3
         elif data[i:i + 9].lower() == b"<!doctype":
-            j = data.find(b">", i + 9)
+            j = _doctype_end(data, i + 9)
             if j < 0:
                 return False
-            i = j + 1
+            i = j
         else:
             break
     return _SVG_START.match(data, i) is not None
@@ -105,7 +131,7 @@ def report_headers(base):
 def image_headers(base, kind):
     """Headers of the picture itself: the type comes from our decision, never from the file; opened on its own it can run nothing (`sandbox`)."""
     return dict(base, **{"Content-Type": "image/png" if kind == "png" else "image/svg+xml", "X-Content-Type-Options": "nosniff",
-                         "Cache-Control": "private, no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
+                         "Cache-Control": "private, no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; sandbox"})
 
 
 def _links(lang, run_id, path, t):

@@ -56,3 +56,5 @@ DESIGN.md、docs/PLATFORM.md、docs/TESTING.md、web.py、web_board.py、web_fin
 TC-095–098 為 UNVERIFIED(operator)，合併後由 lead 驗。TC-099 meta-refresh 為基準既有，豁免。無程式碼改動。
 
 修正輪四（ADVERSARY ReDoS）：web_preview.py 的 SVG 檔頭檢查由回溯正則改為線性掃描 _svg_head（行為同：BOM、空白、<?xml?>、註解、DOCTYPE 後接 <svg）；新增 test_svg_head_check_is_linear_time。無既有測試被改。
+
+修正輪五（ADVERSARY）：(1) web_preview.image_headers 的 CSP 補回 frame-ancestors 'none'（TC-075，圖片路由與其他路由同，只有報告路由例外）；(2) 新增 _doctype_end，DOCTYPE 內部子集 [ ... ] 與引號、子集註解內的 > 不再提早結束，Illustrator 匯出的真 SVG 可預覽；仍為單趟線性。測試：test_web_result_viewer.py 的 test_tc070_071_074_075 補圖片路由 frame-ancestors 斷言，新增 test_svg_with_internal_dtd_subset_and_image_csp。
