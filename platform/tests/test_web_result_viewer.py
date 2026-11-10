@@ -328,7 +328,7 @@ def test_tc070_071_074_075_other_pages_keep_the_base_headers(w):
         assert r.headers["x-frame-options"] == "DENY" and "frame-ancestors 'none'" in csp_of(r)
     prev = ready(w, c, rid, "plot.png", PNG)
     img = c.get(purl(rid, "plot.png", "image"))
-    assert img.headers["x-frame-options"] == "DENY"
+    assert img.headers["x-frame-options"] == "DENY" and "frame-ancestors 'none'" in csp_of(img)          # TC-075 (ADVERSARY fix round)
     other = [ready(w, c, rid, "fake.png", NOT_AN_IMAGE), c.get(purl(rid, "a.txt"))]
     for r in [prev] + other:
         assert r.headers["x-frame-options"] == "DENY" and r.text.count("<style>") == 1
@@ -685,3 +685,22 @@ def test_svg_head_check_is_linear_time():
     for good in (b"<svg>", b"\xef\xbb\xbf <?xml version='1'?>\n<!-- a --><!DOCTYPE svg PUBLIC 'x'>\n<SVG xmlns='x'/>", b"<!----><!----><svg/>"):
         assert web_preview.kind_of("plot.svg", good) == "svg", good
     assert web_preview.kind_of("plot.svg", b"<svgx>") is None
+
+
+SVG_DTD = (b'<?xml version="1.0" encoding="utf-8"?>\n<!-- Generator: Adobe Illustrator 16.0.0 -->\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" '
+           b'"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [\n<!ENTITY ns_flows "http://ns.adobe.com/Flows/1.0/">\n]>\n<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>')
+
+
+def test_svg_with_internal_dtd_subset_and_image_csp(w):
+    # ADVERSARY (verifier fix round): TC-018 for a real SVG with a DOCTYPE internal subset; TC-075 for /run/image
+    from abf_platform import web_preview
+    assert web_preview.kind_of("fig.svg", SVG_DTD) == "svg"
+    assert web_preview.kind_of("fig.svg", b"<!DOCTYPE svg [ <!-- ] > --> <!ENTITY a '>]'> ]>\n<svg/>") == "svg"
+    assert web_preview.kind_of("fig.svg", b"<!DOCTYPE svg [ <!ENTITY a 'x'>\n<x/>") is None
+    assert web_preview.kind_of("fig.svg", b"<!DOCTYPE svg [ ]>\n<html/>") is None
+    ann, c, rid = world(w)
+    page = ready(w, c, rid, "fig.svg", SVG_DTD)
+    assert "<img" in page.text and "no preview" not in page.text.lower()
+    r = c.get(purl(rid, "fig.svg", "image"))
+    assert r.status_code == 200 and r.headers["content-type"] == "image/svg+xml"
+    assert r.headers["x-frame-options"] == "DENY" and "frame-ancestors 'none'" in csp_of(r)
