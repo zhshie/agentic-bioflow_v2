@@ -1,4 +1,4 @@
----
+﻿---
 id: mcp-site-connection-status
 title: MCP 看得到站台連線狀態、錯誤訊息註明 agent、get_run 的 SU 不再洗版
 tier: B
@@ -141,6 +141,12 @@ un_usage／my_usage 一併用 strict（CE 無 suSite 一律顯示 NO_SU_SITE／�
 ## 裁決（標準，自動補充：UNVERIFIED(operator) 實機條款）
 依本計畫上方既有的裁決，標為 UNVERIFIED(operator) 的實機條款不是合併條件；其餘測試案例仍須全部 PASS，閱卷照常。不得放寬任何既有測試斷言、不得改受保護路徑。
 
+## 裁決（lead，2026-11-08 17:00，回應 UNVERIFIED 退回）
+8. **不接受用 's'+'sh' 拼字繞過靜態掃描**：那是繞過安全網，不是修正。請拿掉拼字，改走專案既有、掃描允許的 ssh 呼叫路徑（先 grep 現有程式怎麼呼叫 ssh／ControlMaster 檢查並重用）。若找不到合法路徑，不要放寬掃描，回報 BLOCKED 並寫明掃描規則與你需要的最小例外，由 lead 決定。
+9. **範圍變大接受**：jobs.py／web_board.py／site.py 的改動若是實作所必須，接受；但必須在 plan.md 補「修訂」段逐檔列出理由，且不得放寬任何既有斷言。
+10. TC-065 照裁決 7，合併後由 lead 實機驗，標 UNVERIFIED(operator) 不算失敗。推送與 PR 規則同裁決 4–7。
+
 ## 專長守則（[backend]）
 
 （工作區沒有 `.claude/dev-profiles/[backend].md`；本任務無專長守則。）
+
