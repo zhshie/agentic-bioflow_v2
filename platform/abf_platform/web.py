@@ -10,6 +10,7 @@ The only routes there are:
   GET  /             the board (spec 011a): the run that needs the person most (else the newest), or with ?run=<id> that run, ?stage=<name> its stage, ?tab=<name> a tab of its running stage page (011b), ?lang=en the English page; needs the cookie
               ?run_name=<name> a run of the person by its name (the page after Send links here): the run's page, else a waiting page while only the hand-off record exists, else the 404
   GET  /launch       the launch form (spec 012b), ?from=<run id> fills it from an earlier run of the same person; needs the cookie
+  GET  /run/log         the log (?run=&task=&which=err|out|log) of one failed task of the caller's own run as a page; the agent reads it (web-run-tasks-log)
   GET  /run/file        one file of the caller's own run's results as a download (?run=&path=; results-files); the agent reads it, 404 as the board's own page when the run is not theirs
   GET  /run/preview     the page that shows one result file of the caller's own run: a PNG or SVG through <img>, else the line that the type has no preview (web-result-viewer)
   GET  /run/image       the PNG or SVG itself for that <img>; 404 with no body for anything else
@@ -648,6 +649,24 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if answer["state"] == "ready":
             return Response(answer["data"], headers=web_board.download_headers(answer["name"], _HEADERS))
         code, doc = web_board.render_file_page(answer, run, lang)
+        return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+
+    async def run_log_get(request):
+        """The log of one failed task of the caller's own run, as a page (web-run-tasks-log). The action reads the answer of the agent's job or queues
+        one; this route only hands over: the page with the text, or the page that says where the log stands (waiting, or what went wrong)."""
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        run = request.query_params.get("run") or ""
+        task = request.query_params.get("task") or ""
+        which = request.query_params.get("which") or ""
+        answer = await run_in_threadpool(lambda: actions.task_log_view(index_path, platform_path, run, task, which, caller=caller,
+                                                                       retry=request.query_params.get("retry") == "1"))
+        if answer.get("found") is False:
+            return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        code, doc = web_board.render_log_page(answer, run, task, which, lang)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
 
     def preview_answer(request):
@@ -1476,6 +1495,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                             Route("/settings/inventory", inventory_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
                             Route("/run/file", run_file_get, methods=["GET"]),
+                            Route("/run/log", run_log_get, methods=["GET"]),
+
                             Route("/run/preview", run_preview_get, methods=["GET"]), Route("/run/image", run_image_get, methods=["GET"]),
                             Route("/run/report", run_report_get, methods=["GET"]),
                             Route("/launch", launch_post, methods=["POST"]),

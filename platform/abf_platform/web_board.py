@@ -13,6 +13,7 @@ import datetime
 import hashlib
 import html
 import re
+import time
 import urllib.parse
 
 from . import web_devmode
@@ -85,6 +86,16 @@ STRINGS = {
         "r_none": "未送出任何內容。", "r_generic": "目前無法執行此操作。", "r_form": "表單驗證碼不符或已失效，未送出任何內容。請重新整理頁面後再操作。",
         "tab_tasks": "任務", "tab_logs": "日誌", "tab_info": "執行資訊", "tab_config": "設定檔", "tab_metrics": "指標",
         "th_name": "名稱", "th_exit": "結束代碼", "th_message": "錯誤訊息（第一行）", "th_workdir": "工作目錄",
+        "th_log": "日誌", "l_nodir": "沒有記錄工作資料夾", "l_err": "錯誤", "l_out": "輸出", "l_all": "全部", "l_none": "目前沒有失敗任務",
+        "l_title": "任務日誌", "l_task": "任務", "l_file": "檔案", "l_back": "回到日誌分頁", "l_retry": "重新讀取",
+        "l_loading": "讀取中：正在向站台取得日誌，請稍後按「重新整理」。", "l_reload": "重新整理", "l_asof": "資料時間", "l_ready": "已讀取", "l_lines": "共 %d 行",
+        "l_cut": "已截斷：只顯示最後 200 行或 64 KB。", "l_empty": "此檔案是空的。",
+        "l_e_no_task": "此分析沒有該失敗任務，無法讀取日誌。", "l_e_no_workdir": "沒有記錄此任務的工作資料夾，無法讀取日誌。",
+        "l_e_bad_which": "只能讀取錯誤、輸出、全部三種日誌。", "l_e_no_launch": "此分析沒有送出紀錄，無法讀取日誌。",
+        "l_e_not_on_site": "此環境的日誌不在站台主機上，網頁無法讀取。", "l_e_agent_offline": "代理目前離線，無法向站台讀取日誌。請確認代理正在執行後再重新讀取。",
+        "l_e_refused": "站台代理拒絕讀取此日誌。", "l_e_no_answer": "站台沒有回應，請稍後重新讀取。",
+        "l_e_not_found": "站台的工作資料夾裡沒有此檔案，可能是任務在檔案產生前就已結束，或工作資料夾已被清除。",
+        "l_e_site_unreachable": "站台目前連不上，請稍後重新讀取。", "l_e_failed": "無法讀取日誌，請稍後重新讀取。",
         "i_id": "編號", "i_name": "名稱", "i_status": "狀態", "i_cancel": "要求取消",
         "i_pipeline": "管線", "i_revision": "版本", "i_site": "運算環境", "i_updated": "最後更新",
         "tab_outputs": "輸出", "card_done": "完成步驟", "ph_report": "報告", "ph_multiqc": "MultiQC 報告", "ph_metrics": "指標",
@@ -155,6 +166,18 @@ STRINGS = {
         "r_none": "Nothing was sent.", "r_generic": "That cannot be done right now.", "r_form": "The form token is wrong or has expired; nothing was sent. Reload the page and press again.",
         "tab_tasks": "Tasks", "tab_logs": "Logs", "tab_info": "Run info", "tab_config": "Configuration", "tab_metrics": "Metrics",
         "th_name": "Name", "th_exit": "Exit code", "th_message": "Error message (first line)", "th_workdir": "Work directory",
+        "th_log": "Log", "l_nodir": "No work directory on record", "l_err": "Errors", "l_out": "Output", "l_all": "All", "l_none": "There are no failed tasks now",
+        "l_title": "Task log", "l_task": "Task", "l_file": "File", "l_back": "Back to Logs", "l_retry": "Read again",
+        "l_loading": "Reading: fetching the log from the site. Press \"Refresh\" in a moment.", "l_reload": "Refresh", "l_asof": "Data as of", "l_ready": "Loaded", "l_lines": "%d lines",
+        "l_cut": "Cut: only the last 200 lines or 64 KB are shown.", "l_empty": "This file is empty.",
+        "l_e_no_task": "This analysis has no such failed task, so its log cannot be read.",
+        "l_e_no_workdir": "No work directory is on record for this task, so its log cannot be read.",
+        "l_e_bad_which": "Only the Errors, Output and All logs can be read.", "l_e_no_launch": "This analysis has no submission record, so its log cannot be read.",
+        "l_e_not_on_site": "The logs of this environment are not on the site host, so the web cannot read them.",
+        "l_e_agent_offline": "The agent is offline, so the log cannot be read from the site. Check that the agent is running, then read again.",
+        "l_e_refused": "The agent refused to read this log.", "l_e_no_answer": "The site did not answer. Read again later.",
+        "l_e_not_found": "The work directory on the site has no such file; the task may have ended before the file was made, or the folder was cleaned.",
+        "l_e_site_unreachable": "The site cannot be reached now. Read again later.", "l_e_failed": "The log could not be read. Read again later.",
         "i_id": "ID", "i_name": "Name", "i_status": "Status", "i_cancel": "Cancel requested",
         "i_pipeline": "Pipeline", "i_revision": "Revision", "i_site": "Compute environment", "i_updated": "Last update",
         "tab_outputs": "Outputs", "card_done": "Steps done", "ph_report": "Report", "ph_multiqc": "MultiQC report", "ph_metrics": "Metrics",
@@ -349,12 +372,16 @@ def pick_results_tab(raw):
     return raw if raw in RESULT_TABS else "outputs"
 
 
-def _url(lang, run=None, stage=None, path="/", tab=None, relist=False, sub=None, retry=False):
+def _url(lang, run=None, stage=None, path="/", tab=None, relist=False, sub=None, retry=False, task=None, which=None):
     """A link to a board page: `/` or `/settings` with a query. `lang=en` is kept on every link of an English page. Only the
     Read-again link of the Outputs tab carries `relist`; no other link, and never the page's own refresh, does."""
     query = []
     if run:
         query.append("run=" + urllib.parse.quote(str(run), safe=""))
+    if task:      # the failed task and the log file of /run/log
+        query.append("task=" + urllib.parse.quote(str(task), safe=""))
+    if which:
+        query.append("which=" + urllib.parse.quote(str(which), safe=""))
     if stage:
         query.append("stage=" + stage)
     if tab:
@@ -807,8 +834,20 @@ def _meta_line(run):
     return esc(" · ".join((pr, run.get("compute_env") or "—", _time(run.get("started_at")), _last_update(run))))
 
 
+_LOG_LABEL = {"err": "l_err", "out": "l_out", "log": "l_all"}
+
+
+def _log_links(t, lang, run, task, whiches):
+    """The links to the logs of one failed task (/run/log), or the grey words that say there is no folder to read. Only a task with a recorded
+    work directory can be read."""
+    if not task.get("workdir"):
+        return '<span class="muted">%s</span>' % esc(t["l_nodir"])
+    return " ".join('<a href="%s">%s</a>' % (_url(lang, run["id"], path="/run/log", task=task.get("name"), which=w), esc(t[_LOG_LABEL[w]]))
+                    for w in whiches)
+
+
 def tab_body(t, lang, run, tab):
-    """The content of one tab of the running stage page. Logs, Configuration and Metrics are grey panels until their actions exist."""
+    """The content of one tab of the running stage page. Configuration and Metrics are grey panels until their actions exist."""
     if tab == "tasks":
         tasks = run.get("failed_tasks") or []
         failed = (run.get("tasks") or {}).get("failed", 0) or 0
@@ -816,10 +855,21 @@ def tab_body(t, lang, run, tab):
             if failed > 0:
                 return '<p class="muted">%s</p>' % esc(t["failed_unlisted"] % failed)
             return '<p class="muted">%s</p>' % esc(t["no_failed_tasks"])
-        head = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_exit", "th_message", "th_workdir"))
-        body = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+        head = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_exit", "th_message", "th_workdir", "th_log"))
+        body = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
                        % (esc(f.get("name") or "—"), esc("—" if f.get("exit_code") is None else f["exit_code"]),
-                          esc(_first_line(f.get("error_message") or "", REASON_CAP) or "—"), esc(f.get("workdir") or "—")) for f in tasks)
+                          esc(_first_line(f.get("error_message") or "", REASON_CAP) or "—"), esc(f.get("workdir") or "—"),
+                          _log_links(t, lang, run, f, ("err",))) for f in tasks)
+        note = '<p class="muted">%s</p>' % esc(t["failed_partial"] % (len(tasks), failed)) if failed > len(tasks) else ""
+        return '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>%s' % (head, body, note)
+    if tab == "logs":
+        tasks = run.get("failed_tasks") or []
+        failed = (run.get("tasks") or {}).get("failed", 0) or 0
+        if not tasks:
+            return '<p class="muted">%s</p>' % esc(t["failed_unlisted"] % failed if failed > 0 else t["l_none"])
+        head = "".join("<th>%s</th>" % esc(t[k]) for k in ("th_name", "th_log"))
+        body = "".join("<tr><td>%s</td><td>%s</td></tr>" % (esc(f.get("name") or "—"), _log_links(t, lang, run, f, ("err", "out", "log")))
+                       for f in tasks)
         note = '<p class="muted">%s</p>' % esc(t["failed_partial"] % (len(tasks), failed)) if failed > len(tasks) else ""
         return '<table class="tbl"><thead><tr>%s</tr></thead><tbody>%s</tbody></table>%s' % (head, body, note)
     if tab == "info":
@@ -1366,6 +1416,43 @@ def render_file_page(answer, run_id, lang="zh", route="/run/file"):
         links.insert(0, '<a href="%s">%s</a>' % (_url(lang, run_id, path=route, sub=path, retry=True), esc(t["f_retry"])))
     body = '<p class="ostat state-failed"><span class="sym">✕</span> %s</p>%s<p>%s</p>' % (esc(sentence), extra, " ".join(links))
     return {"bad_path": 400, "not_found": 404}.get(code, 200), document(t["f_title"], body, lang=lang)
+
+
+def render_log_page(answer, run_id, task, which, lang="zh"):
+    """(http status, whole page) for /run/log: waiting, the log text in a <pre>, or the one sentence of what went wrong with the way on. Every state
+    has a symbol and words. The text is escaped; the page is a page, never a download, and has no script."""
+    lang = pick_lang(lang)
+    t = STRINGS[lang]
+    back = '<a href="%s">%s</a>' % (_url(lang, run_id, tab="logs"), esc(t["l_back"]))
+    name = answer.get("task") or ""
+    file_label = t[_LOG_LABEL[which]] if which in _LOG_LABEL else ""
+    facts = ('<dl class="fields"><dt>%s</dt><dd>%s</dd><dt>%s</dt><dd>%s</dd></dl>' % (esc(t["l_task"]), esc(name), esc(t["l_file"]), esc(file_label))
+             if name else "")
+    here = _url(lang, run_id, path="/run/log", task=task, which=which)
+    if answer.get("state") == "loading":
+        # No <meta refresh>: axe counts it as a critical finding. The person presses the link (tl06, ruling 2026-11-07).
+        asof = taipei_time(time.time()) or ""
+        body = ('<h1>%s</h1>%s<p class="ostat state-running"><span class="sym">◌</span> %s</p><p><a href="%s">%s</a></p><p class="muted">%s: %s</p><p>%s</p>'
+                % (esc(t["l_title"]), facts, esc(t["l_loading"]), here, esc(t["l_reload"]), esc(t["l_asof"]), esc(asof), back))
+        return 200, document(t["l_title"], body, lang=lang)
+    if answer.get("state") == "ready":
+        text = answer.get("text") or ""
+        status_line = '<p class="ostat state-succeeded"><span class="sym">✓</span> %s <small>%s</small></p>' % (esc(t["l_ready"]), esc(t["l_lines"] % (answer.get("lines") or 0)))
+        cut = '<p class="muted">%s</p>' % esc(t["l_cut"]) if answer.get("truncated") else ""
+        shown = '<pre>%s</pre>' % esc(text) if text else '<p class="muted">%s</p>' % esc(t["l_empty"])
+        links = '<a href="%s">%s</a> %s' % (_url(lang, run_id, path="/run/log", task=task, which=which, retry=True), esc(t["l_retry"]), back)
+        body = '<h1>%s</h1>%s%s%s%s<p>%s</p>' % (esc(t["l_title"]), facts, status_line, cut, shown, links)
+        return 200, document(t["l_title"], body, lang=lang)
+    code = answer.get("code") or "failed"
+    sentence = t.get("l_e_" + code, t["l_e_failed"])
+    extra = ""
+    if code in ("refused", "failed") and answer.get("reason"):
+        extra = '<dl class="fields"><dt>%s</dt><dd>%s</dd></dl>' % (esc(t["f_reason"]), esc(plain_reason(answer["reason"], lang)))
+    links = [back]
+    if code in ("agent_offline", "no_answer", "site_unreachable", "failed", "refused", "not_found"):
+        links.insert(0, '<a href="%s">%s</a>' % (_url(lang, run_id, path="/run/log", task=task, which=which, retry=True), esc(t["l_retry"])))
+    body = '<h1>%s</h1>%s<p class="ostat state-failed"><span class="sym">✕</span> %s</p>%s<p>%s</p>' % (esc(t["l_title"]), facts, esc(sentence), extra, " ".join(links))
+    return 200, document(t["l_title"], body, lang=lang)
 
 
 def render_waiting(name, csrf, runs, lang, run_name):

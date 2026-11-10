@@ -298,8 +298,8 @@ def test_r79_r92_tab_contents(w):
     t = re.sub(r'<table class="tbl"><thead><tr><th>環境</th>.*?</table>', "", pane(c.get("/?run=%s&tab=tasks" % a).text, "middle"), flags=re.S)   # minus the cost row
     table = re.search(r"<table\b.*?</table>", t, re.S).group(0)
     rows = [[plain(x) for x in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", r, re.S)] for r in re.findall(r"<tr\b.*?</tr>", table, re.S)]
-    assert rows[0] == ["名稱", "結束代碼", "錯誤訊息（第一行）", "工作目錄"]
-    assert rows[1] == ["FASTQC (sample2)", "137", "Process exceeded memory", "—"] and rows[2][:3] == ["TRIMGALORE (sample3)", "1", "cutadapt failed"]
+    assert rows[0] == ["名稱", "結束代碼", "錯誤訊息（第一行）", "工作目錄", "日誌"]
+    assert rows[1] == ["FASTQC (sample2)", "137", "Process exceeded memory", "—", "沒有記錄工作資料夾"] and rows[2][:3] == ["TRIMGALORE (sample3)", "1", "cutadapt failed"]
     assert "second line" not in table
     for tab in FIVE:
         assert not re.search(r"\b(None|null|undefined)\b", c.get("/?run=%s&tab=%s" % (a, tab)).text)
@@ -310,7 +310,7 @@ def test_r79_r92_tab_contents(w):
     info = plain(pane(c.get("/?run=%s&tab=info" % a).text, "middle"))
     assert "11-14 08:00" in info and "11-14 10:05" in info and a in info and '<span class="sq"></span> 失敗</span>' in pane(c.get("/?run=%s&tab=info" % a).text, "middle")
     assert "—" in plain(pane(c.get("/?run=%s&tab=info" % u).text, "middle"))
-    for tab in ("logs", "config", "metrics"):
+    for tab in ("config", "metrics"):      # web-run-tasks-log: the Logs tab is a page now
         m = pane(c.get("/?run=%s&tab=%s" % (a, tab)).text, "middle")
         panel = re.search(r'<section class="soon"[^>]*>(.*?)</section>', m, re.S).group(1)
         assert "之後開放" in panel and "<a" not in panel and "<form" not in panel

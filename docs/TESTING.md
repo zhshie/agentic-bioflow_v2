@@ -343,6 +343,7 @@ Needs the platform running (`abf-platform serve`, `abf-platform mcp --http`, `ab
 4. **The token is not a key.** Give the model's shell the token and nothing else (no password, no browser). Pass: it cannot open the page's summary or press 送出 (every request is the login form), and the request stays pending.
 5. **Claude Code kit.** With `extensions/claude-code-kit/settings.json` merged into your Claude Code settings, calling `launch` or `cancel` asks you first. Remove the rule: the platform still queues nothing without your yes (the rule is a second layer, not the gate).
 6. **Browser.** The cookie is `HttpOnly` and `SameSite=Strict` (developer tools, Application, Cookies); behind an https address it is also `Secure`. Five wrong passwords for one name lock that name for a minute.
+7. **In the chat (mcp-chat-confirm, TC-080).** With a client that cannot show a form, ask it to launch with `--run tc-chat-1`. Pass: the first answer is pending with an id and nothing is queued; the AI shows you the summary and waits. Answer yes in the chat; the AI calls `launch` again with `request_id` and `user_confirmed=true`, and `abf-platform launches` shows exactly one job with channel CHAT. Repeat, but tell the AI to set `user_confirmed=true` right away without asking you: it still has no job until the call carries the id, and the summary must have been shown first (honest limit: a client that ignores this instruction can still send it, which is why the constitution calls CHAT the weakest channel).
 
 ## The web shell (011a): the visual check and the ledger review
 
@@ -1148,3 +1149,16 @@ At 390 px also check `document.documentElement.scrollWidth === document.document
 7. **提交順序（TC-085）**：`git log --oneline` 看步驟 A 在前；`git show <A>` 找不到 `/run/report` 與 `<iframe`。
 8. **不得改動（TC-082）**：`git diff v3...HEAD -- platform/abf_platform/jobs.py platform/abf_platform/actions/__init__.py platform/abf_station/` 應為空；`RUN_FILE_MAX_BYTES = 26214400` 未變。
 
+## 任務日誌（失敗任務） (web-run-tasks-log): the reviewer checks by hand
+
+Automatic tests: `platform/tests/test_web_run_log.py` (new), with the changed `test_web_running.py`, `test_web_results_outputs.py`, `test_web_board.py` and `test_web_parity.py`.
+
+Make a run fail and read its log on the page (no need to go back to the chat):
+
+1. Send an analysis that is sure to fail (for example a samplesheet with a missing column on a small pipeline) and wait until its page says it failed.
+2. Open the run, then the Tasks tab. Each failed task has a Log cell with a link. A task without a recorded work directory shows grey words instead of a link.
+3. Click the link. The first time the page says it is reading, with a Refresh link and the time of the data (it does not refresh itself: an automatic refresh tag is an axe critical finding). Press Refresh after a moment. When the agent has answered, the page shows the end of the file (at most 200 lines or 64 KB) and says if it was cut.
+4. Open the Logs tab. It lists the failed tasks, each with three links: Errors, Output, All.
+5. Stop the agent and click a link again: the page says the agent is offline in plain words and offers Read again.
+
+Take 4 screenshots of the log page and 4 of the Logs tab (1440 and 390 px wide, zh and en) and attach them to the PR; the axe scan must report nothing serious or critical (`scripts/dev/ui_check.py`).

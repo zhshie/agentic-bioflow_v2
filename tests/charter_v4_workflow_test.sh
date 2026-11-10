@@ -17,7 +17,7 @@ DE="$ROOT/DESIGN.md"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 
 # the 6.2.0 entry, the Workflow's last bullet, the Governance section (newlines folded)
-awk '/^### 6\.2\.0 \(2026-11-03\)/{f=1} /^## Governance/{f=0} f' "$CO" | tr '\n' ' ' | sed 's/  */ /g' > "$T/entry"
+awk '/^### 6\.2\.0 \(2026-11-03\)/{f=1} /^## Governance/{f=0} /^### 7\.0\.0 /{f=0} f' "$CO" | tr '\n' ' ' | sed 's/  */ /g' > "$T/entry"
 awk '/^- \*\*One change at a time, on a branch\.\*\*/{f=1;print;next} f&&/^$/{f=0} f' "$CO" | tr '\n' ' ' | sed 's/  */ /g' > "$T/wf"
 awk '/^## Governance/{f=1} f' "$CO" | tr '\n' ' ' | sed 's/  */ /g' > "$T/gov"
 grep '^\*\*Not\*\*' "$PR" > "$T/not"
@@ -81,7 +81,7 @@ has "TC-026 development lead merges after the maintainer's yes" "$T/gov" 'develo
 has "TC-027 supersedes" "$T/gov" 'supersedes all other practices'
 has "TC-027 MUST NOT restate" "$T/gov" 'MUST NOT restate'
 last=$(grep -v '^[[:space:]]*$' "$CO" | tail -1)
-if [ "$last" = '**Version**: 6.2.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-03' ]; then echo "TC-028 version line                                                    ok"; else echo "FAIL: TC-028 got: $last"; fails=$((fails+1)); fi
+if [ "$last" = '**Version**: 7.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-05' ]; then echo "TC-028 version line                                                    ok"; else echo "FAIL: TC-028 got: $last"; fails=$((fails+1)); fi
 
 echo "== US3: PRODUCT.md =="
 has "TC-030 nano4" "$T/who" 'NCHC nano4'
