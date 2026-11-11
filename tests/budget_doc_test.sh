@@ -181,7 +181,7 @@ if [ -z "${CONSTITUTION_FILE:-}" ]; then
   }
   red "an Approval that quotes an agreement" 's/^\*\*Approval\.\*\* PENDING: .*/**Approval.** The maintainer approved the full text (「好」)./'
   red "a 'never' dropped from the write-tool rule" 's/it never covers `forget`, /it covers `forget`, /'
-  red "the ruling agent allowed to rule on a release" 's/this constitution, a release, or the protected hooks/this constitution, or the protected hooks/'
+  red "the ruling agent allowed to rule on a release" 's/permissions, this constitution, a release, or the$/permissions, this constitution, or the/'
   red "an older amendment record edited" 's/^(### 7\.0\.0 \(2026-11-05\): a fourth)/\1 and fifth/'
 fi
 

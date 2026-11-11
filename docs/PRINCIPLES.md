@@ -62,6 +62,19 @@ host that holds it. What it cannot do is written in the amendment and in
 the person can. The check that holds the rule is that an unconfirmed launch is refused
 through the MCP tool and through the web route.
 
+*A yes given in advance (constitution 8.0.0, a draft until the maintainer approves it).* During
+acceptance on NCHC nano4 every send waited for the maintainer, and he became the bottleneck. A
+person may now set two SU limits of their own on the settings page, a single-send one and a
+monthly one; inside both, a send an AI asks for on a site counted in SU is queued without a new
+answer and recorded as BUDGET. It is off until the person sets both, only the person can set
+them, and anything a cloud provider bills, `forget` and the clearing of a work directory are
+never on the budget. It is weaker than a yes for each send (the person agreed to an amount, and
+the estimate can be wrong), and the amendment says so. The same amendment writes three changes
+into the Development Workflow: acceptance on a real site may follow the merge, a ruling agent
+may rule on a failed task but never on money, credentials, permissions, the constitution, a
+release or the protected hooks, and a protected path may merge automatically only with the
+record of a passed adversarial review.
+
 *Three rules joined (constitution 6.0.0).* The roadmap kept principles that were agreed
 but had no check yet; on 2026-10-18 the maintainer approved three whose checks now exist.
 (1) Principle I.2: the platform's run index is rebuildable from Nextflow's own records,

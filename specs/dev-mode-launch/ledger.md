@@ -14,3 +14,10 @@
 - [ ] 釘住測試的更新（`PINNED_SN_SHA256` 與版本字串於 constitution_scope_test、platform_direction_docs_test、charter_v4_workflow_test）與 `tests/budget_doc_test.sh`：同屬 tests/*.sh 閘門檔，待憲法落地後一併處理
 - [ ] docs/PLATFORM.md、skills/launch/SKILL.md 一句、docs/adr/0006 加註
 - 憲法草案要點：Approval 欄只寫 `**Approval.** PENDING: 維護者尚未對修正案全文表示同意。合併前必須由維護者親口同意後補上其原話。`；`(today …)` 括號不動；Check 行加 `platform/tests/test_budget_launch.py` (`test_bg_*`)；日期 2026-11-10。
+
+## 2026-11-11：憲法 8.0.0 草案落地（由憲法起草代理套用，非 executor）
+- [x] 與 `origin/v3`（f82fb65f）合併（merge，無 rebase）；`docs/TESTING.md` 衝突兩邊都保留。
+- [x] 憲法草案：I.2、Safety Net 的 launch 規則與 write-tool 規則（含 Check 行）、8.0.0 條目、版本行；日期 2026-11-11（取代上方「日期 2026-11-10」）。Approval 欄為 PENDING。
+- [x] 釘住測試：三檔的版本字串與日期、`PINNED_SN_SHA256`（`ee51f3e2…` → `8a59945b…`）；新增 `tests/budget_doc_test.sh`。沒有刪除或放寬任何斷言。
+- [x] `docs/PLATFORM.md`、`docs/PRINCIPLES.md` 各一段。`skills/launch/SKILL.md` 一句與 `docs/adr/0006` 加註未做（修憲任務限定文件最小同步）。
+- 超出本計畫範圍、待 lead 裁決：應 lead 2026-11-11 指示，同一修正案另改了 Development Workflow 最後一條（實機驗收可在合併後、裁決代理、受保護路徑自動合併）；與 TC-081「憲法 diff 只限 I.2、Safety Net、8.0.0 條目、版本行」不符，該案需裁決或改題。紀錄在 `.specify/amendments/8.0.0-budget-and-workflow/`。
