@@ -86,3 +86,8 @@ TC-095–098 為 UNVERIFIED(operator)，合併後由 lead 驗。TC-099 meta-refr
   ```
   `tests/platform_test.sh` 在 `CI=true` 下只要有任何 skipped 就讓該分片失敗；八個分片皆 ok 即 0 skipped。上一輪讓 CI 紅的 `platform_shard_8_test.sh`（當時 `1 skipped`）這次 ok。
 - 本輪（rerun 20261111-1956）沒有新的程式或測試改動：(a)–(d) 已在 `8b3c928c`（RED）、`ad6f1ade`（GREEN）完成，本輪只做全套驗證並補這段紀錄。尚未推送，由 lander 推同一分支。
+
+## 重派 20261111-2115-L6-web（2026-11-11）
+- 核對 (a)–(d)，沒有新的程式或測試改動：`424fea5c..HEAD` 只動 `docs/TESTING.md`、`platform/tests/test_web_result_viewer.py`、`scripts/dev/check_result_viewer_sandbox.py` 與本目錄的紀錄檔；CI 工作流程與 shell 閘門檔差異為空；測試檔內沒有 skip／skipif／xfail；刪掉的 Playwright 測試其五條斷言都在腳本裡。
+- 本段所在的 commit 是最終 HEAD；`CI=true` 全套在這個 commit 上跑，結果寫在 `executor-status` 與 executor 回報（寫回本檔會再改 HEAD，所以不寫在這裡）。
+- 尚未推送：分支領先 `origin/feat/web-result-viewer`（`424fea5c`），由 lander 推同一分支（PR 384，不 force）。TC-053 至 TC-057 的瀏覽器層在 PR 內文列「待實機驗」（UNVERIFIED-OPERATOR）。
