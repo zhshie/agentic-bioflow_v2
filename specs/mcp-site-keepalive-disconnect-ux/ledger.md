@@ -80,3 +80,15 @@ ts=2026-11-11T21:36:57+08:00 machine=DESKTOP-7J5L5BJ event=reopened
 ## 備註
 - 計畫「允許更新」只點名 `STYLE_SHA256`；另外四個檔（test_clean_page、test_web_guided_launch_preview、test_web_resume_edit、test_web_settings_register）釘的是整頁位元組雜湊，`STYLE` 多一條規則後必然改變，所以一併重釘。`test_launch_docs.py:32` 計畫點名的是 79 行，實際釘住「8 hours」的是 32 行，只改那一句。這兩點請審查者確認。
 - 全套結果見最後一次 executor 報告與 `executor-status`。
+
+## 2026-11-12 00:50 接手（stamp 20261112-0040-platform-mcp）：卡住，沒動程式
+計畫已加「裁決（lead，11-11 深夜）」兩點（keepalive_log.sh 改單次執行；zh 紅條改用「分析」），但 `test-case.md`／`test-case-overview.md` 還是 0c6820fb（11-11 20:04，早於裁決）的版本，與裁決矛盾：
+- TC-009（test-case.md:32）仍逐字要求「已在跑的 run 不受影響；新的 run 在恢復前無法送出」。裁決 2 說「verifier 重寫該 TC 的字串，頁面同一句」，新句子還沒寫出來；executor 不猜（雜湊釘值與畫面證據都跟著這一句）。
+- TC-068（:111）仍要求預設間隔 600 秒、`ABF_KEEPALIVE_INTERVAL`、ONCE 模式；TC-069（:112）仍要求「以背景執行迴圈」再 kill；TC-073（:121）仍要求 PLATFORM.md 有 `nohup bash scripts/keepalive_log.sh >/dev/null 2>&1 &`。裁決 1 禁止 while／loop／nohup／sleep。
+- TC-034（:62）的擋送出訊息也含「已在跑的 run 不受影響」，裁決沒提；請 verifier 一併決定要不要改。
+
+下一步（接手的人，等 verifier 更新 TC 之後）：
+1. `scripts/keepalive_log.sh` 改單次：呼叫一次 `--check-master`、追加一行；上一筆是 open 而這次 closed 時再寫 `event=closed lasted_min=…`（從 log 找這一段最早的 open 算），上一筆 closed 而這次 open 寫 `event=reopened`。拿掉 `while`、`sleep`、ROUNDS／INTERVAL。`tests/keepalive_log_test.sh` 改寫成連續呼叫。
+2. `site_link.py` 的 zh `linkbar_down` 換成 verifier 給的句子；重釘 `test_web_settings_ce_mobile.py` 的 STRINGS 雜湊與受影響的頁面雜湊；重拍 zh 截圖。
+3. PLATFORM.md、PITFALLS 第 61 條的用法改成「由人手動或既有排程呼叫一次」。
+4. 相關檔：`--only no_second_run_state`、`--only keepalive`、`--pytest tests/test_web_wording_sweep.py`、`test_site_disconnect_ux.py`、`test_keep_submissions.py`、`test_resume_edit_params_station.py`，再跑一次全套。
