@@ -191,6 +191,23 @@ source: 維護者 11-07 定案（Q1）；DESIGN.md 畫面 8（Results）、9（D
 - **重派後下一輪要做什麼**：原樣執行上一則 dev-resolver 裁決（第二則）的步驟 1–5 與其界線，依據是本檔最末段「裁決（lead，2026-11-11）」N～N+2；不需重新設計，也不得放寬任何斷言。
 - **提醒**：本件帳本上已有 1 則裁決（上限 2）。lead 重派時請確認重派檔沒有 BOM，且 worktree 內的 `specs/web-result-viewer/plan.md` 是本檔最新內容。
 
+## 裁決（dev-resolver，2026-11-11，第四則：TC-099 與等待頁自動重整互斥）
+- **動作：needs-lead**（無類別；帳本回覆 exit 0：`web-result-viewer: handed to the lead by the resolver`）。本件不會自動重派。
+- **失敗內容**：verifier 判 TC-099 FAIL，三頁各一筆 axe critical `meta-refresh`：輸出頁、完成頁、預覽等待頁（ledger「修正輪七」；`specs/web-result-viewer/screenshots/summary.md:14-15,42` 各列 `meta-refresh 1`）。
+- **證據一（案例原文）**：`specs/web-result-viewer/test-case.md:135` TC-099 寫「預覽頁各狀態與兩個清單頁｜跑 `scripts/ui_check.py`（axe-core）｜沒有 serious 或 critical 項」，沒有任何豁免字樣。
+- **證據二（計畫原文）**：本檔「裁決（lead，2026-11-08 14:30）」第 2 點：「TC-099 的 meta-refresh（自動重整）：基準就有、不是本件造成，本件豁免；新增的預覽頁必須維持 0 個 serious／critical。lead 另開維護任務處理既有自動重整，不在本件做。」
+- **證據三（兩個清單頁：計畫已豁免，案例沒跟上）**：輸出頁與完成頁的重整出自既有的 `platform/abf_platform/web_board.py:958`（`document(... refresh=...)`），基準掃描同樣有這筆 critical（`screenshots/base-summary.md`「Serious / critical violations」列出 board、results 八筆 `meta-refresh`）。這一半可由計畫原文對案例原文證明案例漏寫豁免。
+- **證據四（預覽等待頁：計畫自己兩句話互相牴觸，無法由 resolver 判定）**：等待頁是本件新增的預覽頁狀態，照 lead 第 2 點後半句字面要 0 個 critical；但計畫「步驟 A-1」寫「`loading` → 重用既有『等待』頁行為（`render_file_page`，自動 15 秒重整）」，案例 TC-029「含 15 秒自動重整」、TC-037「重整目標是同一個 `/run/preview?run=…&path=…`」、TC-068「15 秒重整回到預覽頁」，測試釘在 `platform/tests/test_web_result_viewer.py:262` 與 `:553`（`http-equiv="refresh" content="15;url=/run/preview?…`）。axe 對任何延遲重整都記 critical，所以等待頁上 TC-029／037／068 與「0 個 critical」不可能同時成立。lead 第 2 點的「豁免」是否涵蓋等待頁，原文沒有講。
+- **為何不判 fix-contract-regrade-push**：只能證明清單頁那一半；等待頁那一半沒有計畫原文可證，改案例就等於由 resolver 替 lead 放寬一條斷言。只修一半，TC-099 仍會因等待頁而 FAIL，重派沒有意義。
+- **為何不判 retry／unverified-operator**：本件已用過 1 則 retry，且這次不是環境或流程問題；機器端也不是全綠（TC-099 是 FAIL，不是待實機驗）。executor 提的第 3 條路（改用 HTTP `Refresh` 標頭）只是避開掃描器，屬設計取捨，不由 resolver 決定。
+- **缺少的證據**：verifier 這一輪的閱卷報告檔找不到（`memory/logs/dev-worker/20261111-195412.json` 為 0 位元組，worktree 內沒有報告檔）；以上 FAIL 內容取自 ledger「修正輪七」與 `screenshots/summary.md`，不是報告原文。
+- **工作本身的狀態**：worktree `wt/web-result-viewer` HEAD `2708a09b`，領先遠端 6 個提交、未推送；ledger 記載 `CI=true` 全套 151/151、0 skipped（`ad6f1ade`），其後只有紀錄檔提交。PNG、報告、too_large、不提供預覽、站台連不上五種預覽頁 serious／critical 為 0（`screenshots/summary.md:44-46`）。
+- **請 lead 做的事（寫成新的裁決段，放在「專長守則」之前，再重派）**：明講預覽等待頁的 15 秒重整算不算在第 2 點的豁免內。
+  1. 算：寫明「TC-099 對輸出頁、完成頁、預覽等待頁的 `meta-refresh` 不計，其餘 serious／critical 仍為 0」，由 verifier 改 TC-099 的預期欄並重新閱卷；不重新實作，閱卷過了就推同一分支（PR 384，不 force）。
+  2. 不算：等於要改等待頁的重整作法，須同時改 TC-029／037／068 與 `DESIGN.md` Constraints 的「15-second refresh」，是設計方向的決定，建議併入第 2 點所說的另開維護任務，並寫明本件在那之前如何過關。
+- **界線**：重派後不得刪改 `test_web_result_viewer.py:262`、`:553` 的斷言，不得為了讓掃描器掃不到而改用 HTTP `Refresh` 標頭，除非 lead 的新裁決明寫。
+- **提醒**：本件帳本上已有 1 則裁決（上限 2）。另：佇列仍標 `ci_failed`（PR #384 `run_all`），那是遠端舊 head `424fea5c` 的結果，本機 6 個提交推上去後才會重跑。
+
 ## 專長守則（ui）
 
 ### executor
@@ -233,3 +250,6 @@ N+1. **做法（照 repo 既有慣例：需要真瀏覽器的檢查放 `scripts/
   (c) pytest 中不得再有任何 `skip`／`skipif`；全套 `tests/run_all.sh` 在 CI 條件下（`CI=true`）要 0 跳過、全綠。
   (d) 不得放寬任何既有斷言；原本瀏覽器內才能驗的那幾條，在 (a) 的腳本與 TESTING.md 中仍保留，並在 PR 內文列為「待實機驗」（UNVERIFIED-OPERATOR）。
 N+2. PR #384 已存在並掛自動合併：直接推同一分支 `feat/web-result-viewer`（不 force、不開新 PR）。分批 commit＋push。
+
+## 裁決（lead，11-11 深夜，接 TC-099）
+**選方案 (1)：契約豁免既有的自動重新整理。** 全站 meta-refresh 是基準分支 d4dd182e（web_board.py:958）就有的行為，不是本任務新增；11-08 裁決 2 已豁免列表頁，現在明確延伸到預覽等待頁（TC-029/037/068 的 15 秒重新整理照舊保留）。TC-099 改為：axe 掃描預覽各狀態與兩個列表頁，meta-refresh 規則只豁免『基準就有的那一個 refresh』，其他 serious／critical 一律不准有；新增的 meta-refresh 一律算失敗。不得改頁面行為去迎合測試。全站自動重新整理的替換另案，不在本任務。驗收通過後照常推送同一分支。
