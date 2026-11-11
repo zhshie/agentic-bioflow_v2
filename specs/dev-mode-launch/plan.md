@@ -157,6 +157,16 @@ NCHC 驗收期間每次送出都要本人按確認，維護者成為瓶頸。這
 4. **`deploy/` 託管單元檔**：已查 worktree，`deploy/systemd/` 只有 `abf-mcp.service.in`、`abf-serve.service.in`、`abf-web.service.in`，`deploy/`、`tests/` 內都沒有 `ABF_HOSTED`，即 H-1 部署包尚未合併。決定：本片**不改 `deploy/`**，範圍表該項視為延後並在 ledger 記一行。TC-085 改為：`deploy/` 下若已存在含 `ABF_HOSTED` 的單元檔，才驗其值為 1；`env.example` 無論如何不得含 `ABF_HOSTED`；沒有單元檔則該項略過並註明。`budget.is_hosted()` 與 TC-K 仍照舊（用環境變數測）。
 5. **沒有 spec.md**：本片以本 plan.md 的裁決、TC-A..M 與「維護者原話」為合約依據。Q2／Q20／Q21／Q31 引言是 lead 轉述、非錄音逐字，TC 以該轉述文字為輸入；若 lead 日後換入原文，只替換引言，不改 TC 結構。
 
+## 裁決（dev-resolver，2026-11-11）
+- 動作：`needs-lead`（交 lead 裁決；resolver 不改判、不重派）。
+- 證據一（失敗輸出，ledger 第三輪）：全套 151/152，唯一紅是 `platform_shard_5_test.sh` 內的 `platform/tests/test_mcp_launch_pipeline.py::test_no_schema_change`（1 failed, 1031 passed，重試後仍紅）。
+- 證據二（測試原文，`platform/tests/test_mcp_launch_pipeline.py:283-289`、`:341-355`）：`SCHEMA_PATHS = ["migrations", "abf_platform/store.py", "abf_platform/schema.sql"]`，結尾 `assert schema_diff(HERE.parent).strip() == ""`，即本分支對 `origin/v3` 的三點比較在這些檔案上必須零差異。
+- 證據三（計畫原文，「範圍：檔案」）：「`platform/abf_platform/store.py`：`users` 加兩個可為空的 REAL 欄 `auto_su_single`、`auto_su_month`…`confirmations` 加可為空 TEXT 欄 `budget_note`…**需要 migration**」。worktree 實測 `git diff --stat origin/v3...HEAD` 在 `SCHEMA_PATHS` 上只有 `store.py | 62 +`（三個欄位的補欄與 `set_user_budget`／`user_budget`），所以這條紅是計畫要求的變更必然造成的，不是環境或流程問題，`retry` 不會變綠。
+- 為什麼不是 `fix-contract-regrade-push`：這條不是本任務 verifier 出的題（本任務 `test-case.md` 的 TC-032 是「cancel 不放行雲端 run」，同號不同案）；它是另一個功能留下的結構守門測試，檔案不在計畫「只准改這些」清單內，也沒有可「只加項目」的釘住集合，要過只能改判斷邏輯，裁決 14 明文「不得改測試的判斷邏輯」。放寬守門測試不在 resolver 權限內。
+- 為什麼不是 `unverified-operator`：機器側不是全綠，而且還沒有 verifier 驗收報告（本輪停在 executor，8 個本機 commit 未推）。
+- 需要 lead 定的事（二選一，或另訂）：(a) 明文核可該測試對本分支的最小修改方式並指定誰改、由獨立 verifier 重閱；(b) 明文接受這一條在合併前為紅（三點比較，合併後自然歸零），並說明 CI 與草稿 PR 如何處理。另 ledger 記有一項未決：憲法 diff 含 Development Workflow 一條，與 TC-081 的範圍不符，「需裁決或改題」，請一併裁。
+- 下一輪必須做的：等 lead 的裁決寫進本檔後才重派；重派後先推送既有 8 個 commit（同一分支、不 force、PR 維持草稿），不重做已綠的部分，不動憲法與三條憲法釘住測試。
+
 ## 專長守則（backend）
 
 ### executor
@@ -192,3 +202,4 @@ NCHC 驗收期間每次送出都要本人按確認，維護者成為瓶頸。這
 18. **頁面文字遵守 DESIGN.md／web-wording-sweep 的禁用字表（含「你」），不開例外。** TC-057 與 plan 的措辭 lead 已改並推送（commit 794166e4）：未設定時顯示「未設定＝每次都需確認」。請把 `platform/abf_platform/web_devmode.py` 的 `bg_unset` 改成同一句「未設定＝每次都需確認」（只改這個字串；英文表若有對應句同步，語意不變），並確認整個 devmode 頁面的中文字串都不含禁用字（執行 `test_web_wording_sweep`）。這不算放寬任何斷言。
 19. 第二輪起請**分批小步**：先把 33 條釘住基準的更新做完並提交推送（每個檔一個 commit 也可以），再跑 `tests/run_all.sh`；上輪在 75 個回合用完前沒推送——請每改完一批就 commit＋push（同一分支，不 force），避免交接時沒有成果。
 20. 裁決 13–17 全部維持。
+21. **裁決（lead，11-11 下午）：TC-032 schema-diff 測試（test_mcp_launch_pipeline.py 約 341–355）允許且只允許新增三個預算欄位。** 憲法 8.0.0 已由維護者核可並要求加這三欄，所以那條測試必須把這三欄加進它比對的基準集合；不得刪除既有欄位、不得放寬斷言邏輯（裁決 14 仍有效，這條是它的明確例外＝只加不減）。先把 8 個本地 commit 推上同一分支（不 force），再做這個修改。若還有其他失敗，列出測試名與原因回報。
