@@ -234,3 +234,8 @@ shell：`tests/keepalive_log_test.sh`（K2、K3）：
 - **FAIL**：畫面有範本味（制式 AI 樣板感）；截圖與維護者核可的草稿不一致且報告未說明；impeccable 偵測器的違規未處理。以上三條原本列為「需要人看的事」的範本味，改為判 FAIL。
 - 計畫附有核可草稿時，逐畫面把實跑截圖與草稿並列比對，不一致處逐條列出；沒有草稿可比對則標 UNVERIFIED 並寫明缺什麼。
 - 出題（CONTRACT）加：每個畫面一條「與核可草稿一致」的 TC，一條「通過 impeccable 文字檢查」的 TC。
+
+
+## 裁決（lead，11-11 深夜，接全套紅燈兩題）
+1. **不得把 keepalive_log.sh 加進 DAEMON_ALLOW**（該閘門守憲法 I.2『不得有監控常駐程式』，放寬屬 A 級，未獲授權）。改作法：keepalive_log.sh 改成**單次執行**——每呼叫一次只檢查一次連線、追加一行 log，並從 log 最後一筆算 open→closed 的存活分鐘；不得有 while／loop／nohup／sleep 常駐。docs 與 PITFALLS 的使用說明改成『由人手動或既有排程呼叫一次』，不宣稱常駐。TC K2／K3 對應改成單次呼叫的行為（連呼叫兩次、第二次偵測到 closed 時寫 event 行）；先前的 loop 版測試內容改寫，不是刪除。
+2. **TC-009 中文連結列文字改用『分析』，不得含 run**（wording sweep 禁用字，不開例外）；verifier 重寫該 TC 的字串，頁面同一句。推送同一分支。
