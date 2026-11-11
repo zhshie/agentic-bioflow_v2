@@ -45,3 +45,15 @@
   - 新模組／新動作：`test_cleanup_store.py:501`（`budget.py`）、`test_cleanup_store.py::test_the_upgrade_deletes_and_recomputes_nothing`、`test_owner_guard.py:209`（`get_my_budget`／`set_my_budget` 加進 `NO_TOOL`）、`test_k8s_launch.py::test_the_user_visible_actions_are_those_of_the_base`。
   - 後四項（`test_cleanup_store.py:501`、`test_the_upgrade_deletes_and_recomputes_nothing`、`test_k8s_launch` 的 actions、`test_mcp_launch_pipeline.py:355`）我只看到一行訊息，動手前請再讀完整失敗訊息確認原因。
 - 之後：`tests/run_all.sh` 全套（`abf-fast-suite … --retry-failed-once`）還沒跑過。
+
+## 第三輪（run 20261111-1240，裁決 13–20）
+
+- [x] 裁決 18：`web_devmode.py` 的 `bg_unset` 改為「未設定＝每次都需確認」（英文同義）。RED 5054ba8e、GREEN f693c3d3；`test_budget_launch.py`、`test_web_wording_sweep.py` 綠。
+- [x] 裁決 14：釘住集合只加新增項目（未刪既有項目、未放寬斷言）。
+  - 指令 `auto-send`／`auto-send list`：`test_cleanup_offer.py`、`test_cli_contract.py`（MATRIX 多一個 leaf）、`test_station_envs.py`、`__golden__/cli_tree.txt`、`__golden__/cli_help_top.txt`（18c08bc7）。
+  - 路由 `POST /settings/budget`、動作 `get_my_budget`／`set_my_budget`、通道 `BUDGET`、設定頁新區塊與 `Save` 按鈕：`test_confirm_page.py`、`test_owner_binding.py`、`test_dataset_cli.py`、`test_web_downstream.py`、`test_web_board.py`、`test_web_settings_register.py`、`test_owner_guard.py`、`test_resume_scope.py`（d808c4ca 與其後一筆）。
+  - 欄位 `auto_su_single`、`auto_su_month`、`budget_note`：`test_pat.py`、`test_temp_password.py`、`test_web_actions.py`、`test_cleanup_store.py`（舊列逐值相同，另加最後一欄為 NULL）、摘要值重算 `test_k8s_launch.py`（結構、路由 31→32、動作 60→62；已驗證拿掉新增項目後舊摘要值不變）、`test_http_site_samplesheet.py`、`test_web_nano4_path.py`（a0f288ab）。
+  - `budget.py` 說明文字裡的「clean_work」改成「work-folder cleanup」，讓 `test_cleanup_store.py:501` 照舊成立，測試沒動。
+- [ ] 卡住：`platform/tests/test_mcp_launch_pipeline.py::test_no_schema_change`（TC-032，第 355 行）。它斷言 `git diff --stat origin/v3...HEAD -- <schema 檔>` 為空；本任務合法改了 `platform/abf_platform/store.py`（+62 行，三個欄位）。這條沒有「集合」可加項目，要過只能改判斷邏輯或基準，裁決 14 明文不准，所以沒動，等 lead 裁決。可選的最小改法：(a) 該測試對本分支允許 `store.py` 的差異只含這三個欄位的新增行；(b) 合併後它自然變綠（三點比較），由 lead 決定合併前接受這一條紅。
+- 整包 pytest 其餘已知與本任務無關的紅：Nextflow 釘住的 25 個 error（只能經 `tests/platform_test.sh` 跑）、`test_aws_upload`／`test_azure_upload`／`test_byte_channel_a` 整包跑時偶發（單獨跑綠）。
+- 沒有 push、沒有開 PR、沒有動憲法與三條憲法釘住測試。
