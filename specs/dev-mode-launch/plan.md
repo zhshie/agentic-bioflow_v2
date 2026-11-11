@@ -181,3 +181,10 @@ NCHC 驗收期間每次送出都要本人按確認，維護者成為瓶頸。這
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+## 裁決（lead，2026-11-11，憲法草案已出、33 條釘住測試待更新）
+13. **憲法 8.0.0 草案已由 lead 委派起草並推上本分支**（commit 5894113f，草稿 PR #386）。你不得再改 `.specify/memory/constitution.md`、`tests/budget_doc_test.sh`、三個憲法釘住測試與 `PINNED_SN_SHA256`；不得開新 PR（#386 已存在，直接推同一分支）；不得 ready-for-review、不得掛自動合併、不得合併——憲法修正案要維護者親口說好。
+14. **33 條失敗的釘住測試（約 25 檔：test_cleanup_store、test_cli_snapshots、test_web_board、test_k8s_launch 等）核可更新基準**：它們釘死「不得有新欄位／路由／指令」，而本任務合法新增了三個預算欄位、`POST /settings/budget`、`auto-send` 指令。**只准把這些新增項目加進各釘住集合（並依需要重算摘要值）**；不得刪除任何既有項目、不得放寬或刪除任何斷言、不得改測試的判斷邏輯。更新前先逐條讀失敗訊息，確認每條失敗都是「新增項目不在釘住集合內」；若有任何一條失敗不是這個原因，停下回報，不要硬改。
+15. 目標：`tests/run_all.sh` 在 WSL 乾淨 clone 上全綠；全綠後 commit、推送同一分支（不 force），PR 維持草稿。回報要附整套測試實際數字。
+16. 若有被 hook 擋寫的檔（`tests/*.sh` 閘門檔），不要繞過：BLOCKED 並列出檔名與需要的最小修改，lead 處理。
+17. **補充（lead，憲法已批准）**：維護者已核可 8.0.0（commit 0c61c766 已把批准寫進憲法）。請把下列過時文字同步為「已核可」：`docs/PLATFORM.md`、`docs/PRINCIPLES.md` 的「a draft until the maintainer approves it」、`CHANGELOG.md` 的「draft … not yet approved」、`docs/TESTING.md` 的 TC-078（Approval 不再是 PENDING）。只改這幾處的措辭，不得動憲法本文、`tests/budget_doc_test.sh` 與釘住值；若有測試釘著這些舊字串，先看是否是「PENDING／draft」這類狀態字，只更新該狀態字，不放寬斷言。
