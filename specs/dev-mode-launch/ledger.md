@@ -67,3 +67,19 @@
   - 單檔 27 個全過。
 - 沒有 push：裁決 21 與 19 要求推送，但本輪派工訊息與 executor 守則都寫明不得 push（由 lander 推）。本機 commit 留在分支上。
 - 未決（沿用第一輪記錄）：憲法 diff 含 Development Workflow 一條，與 TC-081 的範圍不符，仍待 lead 裁決；本輪沒有動憲法。
+
+## 第五輪（run 20261111T0805-L48-dev-mode-r2，驗收退回的修正輪）：卡住，程式與測試都沒動
+驗收退回四條：TC-077、TC-081、TC-087、TC-057。四條都不是 executor 能修的，原因如下。本輪只改了這份 ledger 與 decisions.tsv。
+
+- TC-077（合約第 136 行：Approval 欄只能是 PENDING 句、不含維護者引言）。憲法第 892 行現在寫「Approved by the maintainer on 2026-11-11 … 「全部好」」，`tests/budget_doc_test.sh` 也改成要求這一句（commit 0c61c766，lead 委派）。計畫裁決 17 說「維護者已核可」，裁決 13 說 executor 不得改憲法與 `tests/budget_doc_test.sh`；合約說要 PENDING。計畫與合約矛盾，而且兩個檔都是 executor 不准動的。
+- TC-081（合約第 140 行：憲法只准改 I.2、Safety Net 規則與 Check 行、8.0.0 條目、版本行）。憲法第 282 行起的 Development Workflow 一條與 8.0.0 條目的 Part B 是 commit 5894113f（lead 委派）加的。要過只能刪掉憲法那一段或改題，兩者都不是 executor 的權限。
+- TC-087（合約第 146 行：diff 不得動 `test-case*.md`，只含計畫所列檔）。`test-case.md` 在 794166e4 被改（lead，裁決 18）；`.specify/amendments/8.0.0-budget-and-workflow/` 是 5894113f 加的。executor 沒有改過合約檔。
+- TC-057（合約第 97 行）。實作與現在的合約文字相符（`bg_unset`「未設定＝每次都需確認」，`test_bg`、`test_web_wording_sweep` 綠）；被判不過是因為合約文字不是 verifier 改的。還原成 be5f8bc8 的「每次都問你」又會撞 `DESIGN.md` 禁用字，所以要由 verifier 重出這一題。
+
+要 lead 與 verifier 決定的事（決定後才值得重派 executor）：
+1. 維護者有沒有親口同意 8.0.0 全文（預算通道 A，加上 Development Workflow 的 B(a)、B(b)、B(c)）。有：請 verifier 重出 TC-077、TC-078。沒有：憲法 Approval 與 `tests/budget_doc_test.sh` 要由有權限的人改回 PENDING，文件四處（裁決 17 改的）也要跟著改回。
+2. Development Workflow 三項要不要留在這個修正案。留：請 verifier 重出 TC-081、TC-087（把那一段與 `.specify/amendments/` 列入範圍）。不留：由有權限的人從憲法拿掉並重算 `PINNED_SN_SHA256`。
+3. TC-057 的文字請 verifier 自己重出（內容同 794166e4 即可），TC-087 才不會再因合約檔有差異而失敗。
+4. 上面任何一項若要 executor 動手改憲法、`tests/*.sh` 閘門檔或合約檔，目前寫入會被 hook 擋下（本輪連唯讀的 `git log -- <合約檔>` 都被擋）。
+
+狀態：HEAD 的程式與 85e03468 相同（只多這一筆文件 commit）。本輪沒有跑全套；全套最後一次有數字的紀錄是 efa19405 的 151/152，85e03468 由上一輪記為 GREEN（ledger 沒留數字）。沒有 push。

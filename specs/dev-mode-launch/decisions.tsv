@@ -23,3 +23,6 @@ ts	phase	decision	why	evidence	result
 2026-11-11	blocker	全套跑一次後停下	只剩 test_no_schema_change 一條紅，需 lead 裁決	efa19405	151/152
 2026-11-11	build	test_no_schema_change 加 ALLOWED_NEW_COLUMNS，只含三個預算欄，並改成比對實際建出的資料庫結構	裁決 21 明文例外；該測試原本沒有集合，逐欄比對才能做到只加不減，文字 diff 做不到	platform/tests/test_mcp_launch_pipeline.py::test_no_schema_change	單檔 27 過
 2026-11-11	build	不 push	裁決 19、21 說要推，但派工訊息與 executor 守則說不推，由 lander 推	specs/dev-mode-launch/ledger.md	commit 留在本機
+2026-11-11	blocker	第五輪（驗收退回 TC-077、TC-081、TC-087、TC-057）不改任何檔，回報卡住	四條都要改憲法或測試合約才會過，兩者都是 executor 不准動的檔，裁決 13 也明文禁止；計畫的裁決 17、18 與合約第 136、140、146 行互相矛盾	specs/dev-mode-launch/test-case.md:136	卡住，等 lead 與 verifier
+2026-11-11	blocker	不刪 .specify/amendments/8.0.0-budget-and-workflow/	那是 lead 委派的修憲紀錄；單獨刪掉 TC-087 仍不會過，若 lead 決定保留 Part B 還用得到	5894113f	保留，交 lead 裁決
+2026-11-11	blocker	不把 TC-057 的合約文字還原成 be5f8bc8 的版本	還原也是改合約檔；還原後「每次都問你」又會撞 DESIGN.md 禁用字與 test_web_wording_sweep，要由 verifier 重出這一題	794166e4	不動，交 verifier
