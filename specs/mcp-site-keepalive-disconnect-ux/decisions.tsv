@@ -5,3 +5,5 @@ ts	phase	decision	why	evidence	result
 2026-11-11T11:45	repin	STYLE 雜湊與各頁雜湊重釘；launch description 縮幾個字	TC-025 要求新增 .linkbar 規則，所有頁面位元組必然改變；launch 描述上限 600	test_clean_page.py 等	綠
 2026-11-11T12:00	fix	test_launch_docs.py:32 改斷言	文件依 TC-073 不再承諾 8 小時	test_launch_docs.py:32	綠
 2026-11-11T21:40	evidence	補畫面證據：WSL 內 Playwright＋axe 截 zh／en × 1440／390，截圖放 repo 外	前一輪寫「無瀏覽器」，TC-031 要 ledger 有截圖檔名與 open 後消失的紀錄	specs/mcp-site-keepalive-disconnect-ux/ledger.md	紅條 4 組皆在、回 open 後 0 個；axe 只有看板原有的 meta-refresh
+2026-11-11T22:00	fix	pitfalls_format_test 的條數釘 96 改 97；第 61 條內文補上 linkbar 與 enqueue_confirmed 兩個字	計畫要求新增一條 PITFALLS，條數釘必然加一（前例 2be24546、b986b95f）；Touches 的字必須出現在內文	tests/pitfalls_format_test.sh:93	pitfalls_format_test 全綠
+2026-11-11T22:05	blocker	不自行把 scripts/keepalive_log.sh 加進 no_second_run_state_test.sh 的 DAEMON_ALLOW，也不改寫迴圈避開掃描	那是憲法不變量 2 的閘；計畫沒有點名這支測試，裁決 1 只接受了常駐記錄迴圈本身	tests/no_second_run_state_test.sh:48	BLOCKED，待裁決
