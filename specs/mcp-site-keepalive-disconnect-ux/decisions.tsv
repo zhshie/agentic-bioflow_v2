@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-11-11T10:00	red-green	連線指令改 ControlPersist=yes 並加 keepalive_log.sh	8h 是猜的，要量	f67229d6	shell 測試 24 項綠
+2026-11-11T11:00	green	擋送出放在 jobs.enqueue_confirmed 的 launch_nextflow 分支，用 agents.site_link_of 判斷	所有入口（網頁、MCP、終端機）都走這裡；離線代理仍走原本的離線訊息	platform/abf_platform/jobs.py	test_site_disconnect_ux 43 綠
+2026-11-11T11:30	green	紅條走 ContextVar（同 DEV_MODE），site_link.py 內放字串常數，web_board.STRINGS 引用	避免 web_board 與 agents 循環匯入	platform/abf_platform/site_link.py	綠
+2026-11-11T11:45	repin	STYLE 雜湊與各頁雜湊重釘；launch description 縮幾個字	TC-025 要求新增 .linkbar 規則，所有頁面位元組必然改變；launch 描述上限 600	test_clean_page.py 等	綠
+2026-11-11T12:00	fix	test_launch_docs.py:32 改斷言	文件依 TC-073 不再承諾 8 小時	test_launch_docs.py:32	綠
