@@ -160,6 +160,13 @@ shell：`tests/keepalive_log_test.sh`（K2、K3）：
 6. 維護者的方向已足夠（原話見上：「連線狀態可見＋掉線時明確提示」），不再訪談。合併後截圖（zh／en × 1440／390）列進每日清單請他事後看；他回「不好」另開修正件。
 7. `kinds` 原寫成 `[backend, ui]` 造成守則沒貼上，已改為 `backend, ui` 並重貼守則。
 
+## 裁決（自動補，2026-11-11）
+以下取代裁決 5 中有歧義的字句；與前文衝突時以本節為準。
+8. 顏色（紅條不是琥珀條）：`.devbar` 用的是 `--lost`／`--lost-bg`（琥珀），**本件不得沿用**。`.linkbar` 規則只用 `var(--failed)`（文字與符號）與 `var(--failed-bg)`（底色），即 DESIGN.md 的 `status-failed`／`status-failed-bg`；不寫任何色碼字面值、不用左側色條。取代 (2) 的「沿用 `.devbar` 的紅色變數」與裁決 5 的「沿用 `.devbar` 已用的同一組變數」。只沿用 `.devbar` 的版面（flex、gap 8px、padding 8px 16px、font-weight 600）。TC 的紅色判定＝`.linkbar` 規則含 `var(--failed-bg)` 與 `var(--failed)`，且不含 `--lost`。
+9. 符號：要有符號（UI 守則：符號＋文字＋顏色）。用 DESIGN.md 失敗狀態既有的「✗」，結構比照 `.devbar`：`<div class="linkbar" role="alert"><span aria-hidden="true">✗</span><span>…</span></div>`，多個 agent 掉線時每個 agent 一個這樣的 div（一行一個）。不用「!」（避免與 `.devbar` 琥珀警示混淆，也符合「不用驚嘆號」）。符號 span 不放進文字字串；`STRINGS` 的 `linkbar_down` 仍照 (2) 的 zh／en 原文。TC 須檢查 HTML 同時含 ✗、文字與 `role="alert"`。
+10. 深色模式值的來源：`web_board.py` 的 CSS 變數表已有 `--failed`／`--failed-bg` 的亮色（約 211 行：#b0261d／#fae6e3）與深色（約 214 行，`prefers-color-scheme: dark` 區段：#f28b81／#3a1916）；`.linkbar` 用變數名即自動換色，不新增深色區段、不另查 `tokens.json`。（`--lost` 的深色值在 215 行，與本件無關。）TC：深色區段內存在 `--failed` 與 `--failed-bg`，且 `.linkbar` 沒有自帶色碼。
+11. 依賴確認（supervise）：開工前確認 base 已含 mcp-site-connection-status（`site_link`／`site_link_at`、`agents.view` 欄、`on_site.sh --check-master`）；未含則不開工。所有 TC 以該件已合併為前提，出題用其合併後的介面。
+
 ## 專長守則（backend）
 
 ### executor
