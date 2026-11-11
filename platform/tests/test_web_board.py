@@ -823,7 +823,7 @@ def test_tch11_read_only(w):
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),
                       ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
-                      ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")), ("/run/log", ("GET", "HEAD")), ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/personal", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline; settings-pick-installed: the reload button
+                      ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")), ("/run/log", ("GET", "HEAD")), ("/settings", ("GET", "HEAD")), ("/settings/budget", ("POST",)), ("/settings/inventory", ("POST",)), ("/settings/personal", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # dev-mode-launch: /settings/budget; settings-register-pipeline; settings-pick-installed: the reload button
                       ("/token", ("OPTIONS", "POST")),
                       ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),      # web-upload-page
                       ("/usage", ("GET", "HEAD")), ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: /welcome
@@ -964,7 +964,7 @@ def test_tcs39_s40_s41_s42_settings(w):
     for word in ("AI 模型金鑰", "逐步模式", "開發模式"):
         assert word in mid
     # settings-register-pipeline ruling 1: apart from the register and remove forms of that task, the middle column still has nothing to press
-    assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", re.sub(r'<form[^>]*action="/settings/(pipelines|inventory|personal)".*?</form>', "", mid, flags=re.S))      # settings-pick-installed: and the reload form; 012a: and the switch forms
+    assert mid.count("之後開放") >= 6 and not re.search(r"<(a|form|input|select|textarea|button)\b", re.sub(r'<form[^>]*action="/settings/(pipelines|inventory|personal|budget)".*?</form>', "", mid, flags=re.S))      # dev-mode-launch: and the form of the two SU limits; settings-pick-installed: and the reload form; 012a: and the switch forms
     # TC-N14 / TC-K6 (R8): the second key is named nowhere; spelled by concatenation so the platform-wide safety test stays at 0
     second = "J" + "ev"
     for url in ("/settings", "/settings?lang=en"):
