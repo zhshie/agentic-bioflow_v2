@@ -4,6 +4,7 @@
 import hashlib
 import re
 import urllib.parse
+from pathlib import Path
 
 import pytest
 
@@ -587,7 +588,11 @@ def test_tc086_report_wording():
     assert banned_in(" ".join(web_preview.STRINGS["zh"].values())) == []
 
 
-# ---- the real browser (TC-053 .. TC-057): a Chromium opens the preview page; the report's own script attacks the site -------
+# ---- the report attacks the site (TC-053 .. TC-057) -------------------------------------------------------------------------
+# The real-browser half (a Chromium opens the preview page and the report's own script attacks the site) is the manual script
+# scripts/dev/check_result_viewer_sandbox.py, with its steps in docs/TESTING.md: CI has no browser and may skip nothing (plan, lead ruling
+# 2026-11-11 N+1). What stays here needs no browser and uses the same sample, ATTACK: everything a browser reads to decide that the report
+# is an opaque origin with no network and no forms is in the response headers and in the iframe's attributes, and those are asserted below.
 
 ATTACK = b"""<html><body><pre id="out">pending</pre><script>
 var r = {};
@@ -600,76 +605,121 @@ one("settings", "/settings").then(function () { return one("file", "/run/file?ru
 </script></body></html>
 """
 
-DRIVER = r'''
-import json, sys
-from playwright.sync_api import sync_playwright
-base, name, value, rid = sys.argv[1:5]
-with sync_playwright() as p:
-    b = p.chromium.launch()
-    ctx = b.new_context()
-    ctx.add_cookies([{"name": name, "value": value, "url": base}])
-    page = ctx.new_page()
-    page.goto(base + "/run/preview?run=" + rid + "&path=multiqc_report.html")
-    frame = [f for f in page.frames if f != page.main_frame][0]
-    frame.wait_for_function("document.getElementById('out') && document.getElementById('out').getAttribute('data-done') === '1'", timeout=15000)
-    page.wait_for_timeout(1500)
-    print(json.dumps({"out": frame.inner_text("#out"), "url": page.url, "top_has_iframe": page.locator("iframe").count()}))
-    b.close()
-'''
+REPO = Path(__file__).resolve().parents[2]
+SANDBOX_CHECK = REPO / "scripts" / "dev" / "check_result_viewer_sandbox.py"
+SANDBOX_GRANTS = ("allow-same-origin", "allow-forms", "allow-popups", "allow-top-navigation", "allow-modals", "allow-downloads",
+                  "allow-pointer-lock", "allow-presentation", "allow-storage-access", "by-user-activation")
 
 
-def test_tc053_054_055_056_057_the_report_cannot_reach_the_site(w, tmp_path):
-    # TC-053, TC-054, TC-055, TC-056, TC-057 (a real Chromium through Playwright; without one the result is UNVERIFIED, never a pass)
-    import json
-    import os
-    import shutil
-    import socket
-    import subprocess
-    import threading
-    import time
+def directives(csp):
+    """The policy as {directive name: [its words]}; a name written twice is an error (a browser keeps only the first)."""
+    out = {}
+    for part in csp.split(";"):
+        words = part.split()
+        if words:
+            assert words[0] not in out, words[0]
+            out[words[0]] = words[1:]
+    return out
+
+
+def test_tc053_054_055_056_057_the_attacking_report_is_served_sandboxed(w):
+    # TC-053, TC-054, TC-055, TC-056, TC-057: the HTTP and HTML half, with the attack sample of the browser check
     ann, c, rid = world(w)
-    answered(w, c, rid, "multiqc_report.html", ATTACK.replace(b"RID", rid.encode()))
+    attack = ATTACK.replace(b"RID", rid.encode())
+    for probe in (b"document.cookie", b"window.parent.document", b"f.submit()", b'"/settings"', b"/run/file?run=" + rid.encode()):
+        assert probe in attack, probe                                   # the sample still tries all five things
     answered(w, c, rid, "a.txt", b"secret file text")
-    py = os.environ.get("ABF_PLAYWRIGHT_PYTHON") or shutil.which("python3")
-    probe = subprocess.run([py, "-c", "import playwright"], capture_output=True) if py else None
-    if probe is None or probe.returncode != 0:
-        pytest.skip("UNVERIFIED: no Python with playwright (set ABF_PLAYWRIGHT_PYTHON)")
-    import uvicorn
-    from abf_platform import web
-    app = web.create_app(w.ip.index, w.ip.tokens, w.ip.state_db, clock=w.clock, public_url=None)
-    seen = []
+    page = ready(w, c, rid, "multiqc_report.html", attack)
+    secrets = [v for v in c.cookies.values() if v]
+    assert secrets
 
-    async def logged(scope, receive, send):
-        if scope["type"] == "http":
-            seen.append((scope["method"], scope["path"] + ("?" + scope["query_string"].decode() if scope["query_string"] else "")))
-        await app(scope, receive, send)
+    # the outer page: one iframe whose only grant is scripts, no script of its own, and not one byte of the report in it
+    assert page.status_code == 200
+    tags = iframes(page.text)
+    assert len(tags) == 1 and page.text.count("<iframe") == 1
+    assert re.findall(r'\bsandbox\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]*)', tags[0]) == ['"allow-scripts"']
+    assert 'src="/run/report?run=%s&amp;path=multiqc_report.html"' % rid in tags[0] and "srcdoc" not in tags[0]
+    for word in SANDBOX_GRANTS:
+        assert word not in page.text, word
+    assert "<script" not in page.text and "style=" not in page.text
+    for leaked in ("document.cookie", "window.parent", "f.submit", "fetch(", 'id="out"'):
+        assert leaked not in page.text, leaked
+    outer = directives(csp_of(page))
+    assert outer["frame-src"] == ["'self'"] and outer["default-src"] == ["'none'"] and outer["frame-ancestors"] == ["'none'"]
+    assert "script-src" not in outer and "connect-src" not in outer and "unsafe" not in csp_of(page)
+    assert page.headers["x-frame-options"] == "DENY"
 
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    server = uvicorn.Server(uvicorn.Config(logged, host="127.0.0.1", port=port, log_level="warning", lifespan="off"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    for _ in range(100):
-        if server.started:
-            break
-        time.sleep(0.1)
-    assert server.started
-    try:
-        name, value = next(iter(c.cookies.items()))
-        done = subprocess.run([py, "-c", DRIVER, "http://127.0.0.1:%d" % port, name, value, rid], capture_output=True, text=True, timeout=90)
-    finally:
-        server.should_exit = True
-        t.join(10)
-    assert done.returncode == 0, done.stderr[-2000:]
-    got = json.loads(done.stdout.strip().splitlines()[-1])
-    res = json.loads(got["out"])
-    assert value not in got["out"] and (res["cookie"] == "READ:" or res["cookie"].startswith("ERR:"))      # TC-053
-    assert res["settings"].startswith("ERR:") and res["file"].startswith("ERR:")                             # TC-054, TC-055
-    assert res["parent"].startswith("ERR:")                                                                  # TC-056
-    assert [x for x in seen if x[1] == "/settings" or x[1].startswith("/run/file")] == []                    # TC-054, TC-055, TC-057
-    assert [x for x in seen if x[0] != "GET"] == [] and got["url"].endswith("path=multiqc_report.html") and got["top_has_iframe"] == 1   # TC-057
+    # the report itself: the bytes as they are, under a policy that makes it an opaque origin with no network and no forms
+    rep = c.get(purl(rid, "multiqc_report.html", "report"))
+    assert rep.status_code == 200 and rep.content == attack
+    h = rep.headers
+    assert h["content-type"] == "text/html; charset=utf-8" and h["x-content-type-options"] == "nosniff"
+    assert h["cache-control"] == "private, no-store" and h["referrer-policy"] == "no-referrer"
+    assert "set-cookie" not in h and "access-control-allow-origin" not in h and "content-disposition" not in h
+    d = directives(csp_of(rep))
+    assert d["sandbox"] == ["allow-scripts"]                            # TC-053, TC-056: no allow-same-origin, so no cookie and no parent
+    for word in SANDBOX_GRANTS:
+        assert word not in csp_of(rep), word
+    assert d["connect-src"] == ["'none'"]                               # TC-054, TC-055: fetch, XHR, WebSocket, beacon
+    assert d["form-action"] == ["'none'"]                               # TC-057 (and the sandbox has no allow-forms)
+    assert d["default-src"] == ["'none'"] and d["frame-src"] == ["'none'"] and d["base-uri"] == ["'none'"]
+    assert d["frame-ancestors"] == ["'self'"] and h["x-frame-options"] == "SAMEORIGIN"
+    for name, words in d.items():                                       # no directive lets the report load or send anything over the network
+        for word in words:
+            assert word in ("allow-scripts", "'none'", "'self'", "'unsafe-inline'", "'unsafe-eval'", "data:", "blob:"), (name, word)
+        assert "'self'" not in words or name == "frame-ancestors", name
+    for r in (page, rep):                                               # TC-053: the login never travels into the report or its page
+        blob = r.text + repr(dict(r.headers))
+        for s in secrets:
+            assert s not in blob
+
+    # no other route hands the same bytes to a browser as something it would run
+    assert c.get(purl(rid, "multiqc_report.html", "image")).status_code == 404
+    dl = c.get(file_url(rid, "multiqc_report.html"))
+    assert dl.content == attack and dl.headers["content-type"] == "application/octet-stream"
+    assert dl.headers["content-disposition"].startswith("attachment") and dl.headers["x-content-type-options"] == "nosniff"
+    # under another name the sample is not a report at all
+    answered(w, c, rid, "evil.html", attack)
+    assert c.get(purl(rid, "evil.html", "report")).status_code == 404 and "<iframe" not in c.get(purl(rid, "evil.html")).text
+    # and the three routes do not take a POST, so the form of the sample has nothing to post to
+    for route in ("preview", "image", "report"):
+        assert c.post(purl(rid, "multiqc_report.html", route)).status_code in (403, 405), route
+
+
+def test_tc053_057_browser_check_is_a_manual_script_and_nothing_here_is_skipped(tmp_path):
+    # TC-053 .. TC-057, the browser half (lead ruling 2026-11-11 N+1 a, c, d): it lives in scripts/dev, uses this file's ATTACK, and without
+    # Playwright it says so and ends non-zero - never a pass; this file skips nothing
+    import os
+    import subprocess
+    import sys
+    src = SANDBOX_CHECK.read_text(encoding="utf-8")
+    compile(src, str(SANDBOX_CHECK), "exec")
+    head = "\n".join(src.splitlines()[:20])
+    for word in ("Nothing existing:", "Purpose", "How to run", "One-off", "ABF_PLAYWRIGHT_PYTHON"):
+        assert word in head, word
+    assert re.search(r"^\s*from test_web_result_viewer import .*\bATTACK\b", src, re.M) and "ATTACK =" not in src
+    assert "sync_playwright" in src and "chromium" in src
+    for tc in ("TC-053", "TC-054", "TC-055", "TC-056", "TC-057"):
+        assert tc in src, tc
+    for kept in ('res["cookie"]', 'res["settings"]', 'res["file"]', 'res["parent"]', '"/settings"', '"/run/file"', '!= "GET"', "top_has_iframe"):
+        assert kept in src, kept                                        # every assertion the pytest version made is still made there
+    mask = tmp_path / "mask"
+    cwd = tmp_path / "cwd"
+    mask.mkdir()
+    cwd.mkdir()
+    (mask / "sitecustomize.py").write_text('import sys\nsys.modules["playwright"] = None\n')
+    env = {k: v for k, v in os.environ.items() if k != "ABF_PLAYWRIGHT_PYTHON"}
+    env["PYTHONPATH"] = os.pathsep.join([str(mask)] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
+    env["PATH"] = str(tmp_path / "nopath")                              # and no other python3 to fall back on
+    done = subprocess.run([sys.executable, str(SANDBOX_CHECK)], cwd=str(cwd), env=env, capture_output=True, text=True, timeout=120)
+    said = done.stdout + done.stderr
+    assert done.returncode == 77, said[-2000:]
+    assert "playwright" in said and "ABF_PLAYWRIGHT_PYTHON" in said and "UNVERIFIED" in said and "Traceback" not in said
+    assert "PASS" not in said and list(cwd.iterdir()) == []
+    here = Path(__file__).read_text(encoding="utf-8")
+    assert not re.search(r"pytest\.(skip|importorskip|xfail)\(|mark\.(skip|skipif|xfail)\b", here)
+    doc = (REPO / "docs" / "TESTING.md").read_text(encoding="utf-8")
+    assert "scripts/dev/check_result_viewer_sandbox.py" in doc and "【實機驗】" in doc
 
 
 def test_svg_head_check_is_linear_time():
