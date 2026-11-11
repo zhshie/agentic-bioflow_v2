@@ -53,4 +53,4 @@ jobs:
             IGNORES="$IGNORES --ignore-vuln $id"
           done < platform/pip-audit-ignore.txt
           pip-audit -r platform/constraints.txt --no-deps --disable-pip $IGNORES
-          pip-audit ./platform --no-deps --disable-pip $IGNORES
+          pip-audit ./platform $IGNORES
