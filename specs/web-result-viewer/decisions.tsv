@@ -14,3 +14,4 @@ ts	phase	decision	why	evidence	result
 2026-11-10T12:40	fix-adv	圖片路由 CSP 補 frame-ancestors none；DOCTYPE 以引號與子集感知的單趟掃描找結尾	TC-075 要求除報告路由外皆不可被嵌框；Illustrator SVG 的 DOCTYPE 子集含 >	web_preview.py image_headers、_doctype_end；test_svg_with_internal_dtd_subset_and_image_csp	本檔 48 過，待全套
 2026-11-11T18:00	fix-ci-skip	瀏覽器層 TC-053..057 移到 scripts/dev 的手動腳本，pytest 留同一 ATTACK 樣本的標頭與 HTML 斷言；腳本的 smoke 檢查放 pytest，不新增 shell 測試檔	CI 無瀏覽器且不准 skip（lead 11-11 N+1）；resolver 界線禁止新增或修改 shell 閘門檔	8b3c928c	RED：新釘 1 紅（腳本不存在），其餘 48 綠
 2026-11-11T18:05	fix-ci-skip	沒有 Playwright 或瀏覽器時腳本印 UNVERIFIED 並以 77 結束	比照 scripts/dev/check_settings_mobile.py 慣例；裁決要求非零結束且不得當通過	scripts/dev/check_result_viewer_sandbox.py:72	單檔 49 過 0 跳過；實機跑 exit 0 五條 ok
+2026-11-11T20:40	fix-ci-skip	不重做 (a)–(d)，只在 CI=true 下跑全套驗證	8b3c928c 與 ad6f1ade 已完成裁決 N+1，ledger 已勾；裁決要求推送前 CI=true 全套 0 skipped	ad6f1ade	151/151 全綠，八個 platform 分片皆 ok（0 skipped）

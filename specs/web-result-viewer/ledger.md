@@ -77,3 +77,12 @@ TC-095–098 為 UNVERIFIED(operator)，合併後由 lead 驗。TC-099 meta-refr
   ```
   這是 executor 自己跑的，不是獨立驗收；TC-053 至 TC-057 的瀏覽器層在 PR 內文仍列「待實機驗」（UNVERIFIED-OPERATOR），由 verifier／lead 重跑該腳本。
 - 單檔：`tests/test_web_result_viewer.py` 49 過、0 跳過。
+- [x] 全套（CI 條件）：2026-11-11 在 `ad6f1ade` 以 `CI=true ~/.local/bin/abf-fast-suite <worktree> --retry-failed-once` 跑（即 `CI=true bash tests/run_all.sh --retry-failed-once`，在 WSL 鏡像上）。輸出：
+  ```
+  abf-fast-suite: worktree …/wt/web-result-viewer at ad6f1ade9609ba08f1afb00837158c4f6703497f, mirror …/abf-mirror/web-result-viewer
+  platform_shard_1_test.sh … platform_shard_8_test.sh   ok（八個分片全 ok，沒有重跑）
+  151/151 passed
+  all green
+  ```
+  `tests/platform_test.sh` 在 `CI=true` 下只要有任何 skipped 就讓該分片失敗；八個分片皆 ok 即 0 skipped。上一輪讓 CI 紅的 `platform_shard_8_test.sh`（當時 `1 skipped`）這次 ok。
+- 本輪（rerun 20261111-1956）沒有新的程式或測試改動：(a)–(d) 已在 `8b3c928c`（RED）、`ad6f1ade`（GREEN）完成，本輪只做全套驗證並補這段紀錄。尚未推送，由 lander 推同一分支。
