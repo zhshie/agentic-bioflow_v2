@@ -48,11 +48,11 @@ if [ "$ORDER" = '**Rationale.** **What changes.** **Sync Impact Report.** **Impa
 else bad "TC-079 six sections, once each, in order" "got: $ORDER"; fi
 inn "TC-079 the amendment is MAJOR" "$E" '**Version.** MAJOR'
 
-echo "== Approval is PENDING and nobody is quoted as agreeing (TC-077) =="
+echo "== Approval records the maintainer's yes of 2026-11-11, exactly (TC-077) =="
 APPROVAL=$(printf '%s\n' "$ENTRY" | awk '/^\*\*Approval\.\*\*/{f=1} f' | grep -v '^[[:space:]]*$')
-WANT='**Approval.** PENDING: 維護者尚未對修正案全文表示同意。合併前必須由維護者親口同意後補上其原話。'
-if [ "$APPROVAL" = "$WANT" ]; then ok "TC-077 the Approval field is exactly the PENDING sentence and nothing else"
-else bad "TC-077 the Approval field is exactly the PENDING sentence and nothing else" "got: $(printf '%s' "$APPROVAL" | head -c 300)"; fi
+WANT='**Approval.** Approved by the maintainer on 2026-11-11: A (budget channel), B(a), B(b), B(c) — all yes; B(c) was kept at his explicit choice over the lead'"'"'s recommendation to defer. His words, as the development lead recorded them: 「全部好」.'
+if [ "$APPROVAL" = "$WANT" ]; then ok "TC-077 the Approval field is exactly the recorded approval and nothing else"
+else bad "TC-077 the Approval field is exactly the recorded approval and nothing else" "got: $(printf '%s' "$APPROVAL" | head -c 300)"; fi
 nin "TC-077 the entry does not quote 「同意，但4)按照1)」" "$E" '按照1)'
 nin "TC-077 the entry does not say the maintainer approved it" "$E" 'approved the full text'
 nin "TC-077 ...in either wording" "$E" 'approved this change in his own words'
@@ -179,7 +179,7 @@ if [ -z "${CONSTITUTION_FILE:-}" ]; then
     if cmp -s "$C" "$S/c.md"; then bad "self-test: $1" "the edit changed nothing"; return; fi
     if CONSTITUTION_FILE="$S/c.md" bash "${BASH_SOURCE[0]}" >/dev/null 2>&1; then bad "self-test: $1" "stayed green"; else ok "self-test: $1 turns the check red"; fi
   }
-  red "an Approval that quotes an agreement" 's/^\*\*Approval\.\*\* PENDING: .*/**Approval.** The maintainer approved the full text (「好」)./'
+  red "an Approval that drops B(c) from what was approved" 's/, B[(]c[)] — all yes;/ — all yes;/'
   red "a 'never' dropped from the write-tool rule" 's/it never covers `forget`, /it covers `forget`, /'
   red "the ruling agent allowed to rule on a release" 's/permissions, this constitution, a release, or the$/permissions, this constitution, or the/'
   red "an older amendment record edited" 's/^(### 7\.0\.0 \(2026-11-05\): a fourth)/\1 and fifth/'

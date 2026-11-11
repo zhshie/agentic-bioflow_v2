@@ -889,7 +889,7 @@ and the automatic merge; it is not in this repository and is brought in line the
 
 **Version.** MAJOR, under Governance: Principle I.2 and two Safety Net rules are redefined (a yes
 may be given in advance), and the Development Workflow is materially changed.
-**Approval.** PENDING: 維護者尚未對修正案全文表示同意。合併前必須由維護者親口同意後補上其原話。
+**Approval.** Approved by the maintainer on 2026-11-11: A (budget channel), B(a), B(b), B(c) — all yes; B(c) was kept at his explicit choice over the lead's recommendation to defer. His words, as the development lead recorded them: 「全部好」.
 
 ## Governance
 
