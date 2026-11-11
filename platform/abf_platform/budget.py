@@ -3,7 +3,7 @@
 
 `decide` is a pure function of facts that were already looked up; `check` looks them up and fails closed: anything that is missing,
 cannot be worked out or raises is "ask the person", never a yes. Only the action layer's `_ask` and `_request_attempt` call `check`,
-and only a True answer lets them record the yes as BUDGET. Cloud sends, forget and clean_work never come here."""
+and only a True answer lets them record the yes as BUDGET. Cloud sends, forget and work-folder cleanup never come here."""
 import os
 import time
 

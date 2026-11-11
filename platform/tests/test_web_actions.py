@@ -589,7 +589,7 @@ def test_tc062_no_secret_is_in_any_response(rig, caplog):
 SCHEMA = {
     'platform.agents': ('name', 'version', 'first_seen_at', 'last_seen_at', 'slurm_account', 'facts_json', 'owner_user_id'),
     'platform.compute_envs': ('id', 'name', 'description', 'platform', 'credentials_id', 'agent', 'status', 'message', 'is_primary', 'checked_ok', 'config_json', 'created_at', 'updated_at', 'last_used_at', 'owner_user_id'),
-    'platform.confirmations': ('id', 'sha256', 'kind', 'created_at', 'used_at', 'caller_user_id', 'state', 'channel', 'confirmed_at', 'expires_at', 'ce_name', 'bundle_json', 'screen_text', 'void_reason', 'forgotten_at', 'forgotten_by'),
+    'platform.confirmations': ('id', 'sha256', 'kind', 'created_at', 'used_at', 'caller_user_id', 'state', 'channel', 'confirmed_at', 'expires_at', 'ce_name', 'bundle_json', 'screen_text', 'void_reason', 'forgotten_at', 'forgotten_by', 'budget_note'),      # dev-mode-launch: the note of a BUDGET yes
     'platform.jobs': ('id', 'agent', 'compute_env', 'kind', 'args_json', 'state', 'result_json', 'late_result_json', 'created_at', 'deadline_at', 'claimed_at', 'finished_at', 'forgotten_at', 'forgotten_by', 'confirmation_id'),
     'platform.launches': ('id', 'run_name', 'slurm_job_id', 'run_folder', 'ce', 'agent', 'confirmed_at', 'submitted_at', 'cancel_requested_at', 'job_id', 'user_id', 'parent_run', 'attempt', 'attempt_kind', 'work_cleaned_at'),
     'platform.meta': ('key', 'value'),
@@ -597,7 +597,7 @@ SCHEMA = {
     'tokens.oauth_codes': ('code_hash', 'grant_id', 'client_id', 'redirect_uri', 'redirect_explicit', 'code_challenge', 'resource', 'user_id', 'created_at', 'expires_at', 'used_at'),
     'tokens.oauth_requests': ('id', 'client_id', 'redirect_uri', 'redirect_explicit', 'code_challenge', 'state', 'resource', 'created_at', 'expires_at', 'decision', 'decided_at'),
     'tokens.tokens': ('id', 'token_hash', 'created_at', 'kind', 'agent_name', 'revoked_at', 'run_name', 'expires_at', 'ended_at', 'user_id', 'label', 'grant_id'),
-    'tokens.users': ('id', 'name', 'lab', 'created_at', 'disabled_at', 'password_hash', 'temp_until', 'step_mode', 'dev_mode'),     # temp-password: one new column
+    'tokens.users': ('id', 'name', 'lab', 'created_at', 'disabled_at', 'password_hash', 'temp_until', 'auto_su_single', 'auto_su_month', 'step_mode', 'dev_mode'),      # dev-mode-launch: the person's own two SU limits;    # temp-password: one new column
     'tokens.web_sessions': ('id_hash', 'user_id', 'created_at', 'expires_at'),
     'tokens.cloud_caps': ('user_id', 'cap_usd', 'set_at'),      # this table is cloud-cost's: one monthly cap per person, set only on the administrator's terminal
 }      # the schema as 011b left it, plus the one table above

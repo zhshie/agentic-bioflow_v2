@@ -220,7 +220,7 @@ def test_old_confirmations_table_is_rebuilt_and_every_row_is_identical(tmp_path)
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c3', 'x', 'clean_work', 1)")
     con.commit()
     con.close()
-    assert rows_of(db, "confirmations")[:3] == before
+    assert rows_of(db, "confirmations")[:3] == [r + (None,) for r in before]      # dev-mode-launch: every old value as it was, plus the new last column budget_note, empty
 
 
 def test_a_database_before_009c_gets_its_old_rows_marked_confirmed_terminal_not_pending(tmp_path):
@@ -245,7 +245,7 @@ def test_jobs_referencing_the_rebuilt_confirmations_keep_their_ids_and_links(tmp
     joined = con.execute("SELECT j.id AS jid, j.confirmation_id AS cid, c.* FROM jobs j JOIN confirmations c ON c.id = j.confirmation_id").fetchall()
     assert len(joined) == 2
     for r in joined:
-        assert tuple(r)[2:] == conf_before[r["cid"]]
+        assert tuple(r)[2:] == conf_before[r["cid"]] + (None,)      # dev-mode-launch: plus the new last column budget_note, empty
     assert con.execute("PRAGMA foreign_key_check").fetchall() == []
     assert con.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert [r["table"] for r in con.execute("PRAGMA foreign_key_list(jobs)")] == ["confirmations"]
@@ -420,7 +420,7 @@ def test_a_failure_in_the_copy_step_leaves_the_old_table_and_rows_as_they_were_a
     chk.close()
     monkeypatch.undo()
     con = store.connect_state(db)
-    assert [tuple(r) for r in con.execute("SELECT * FROM confirmations ORDER BY rowid")] == before["confirmations"]
+    assert [tuple(r) for r in con.execute("SELECT * FROM confirmations ORDER BY rowid")] == [r + (None,) for r in before["confirmations"]]      # dev-mode-launch: plus budget_note, empty
     assert con.execute("PRAGMA foreign_key_check").fetchall() == [] and con.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     con.close()
 
@@ -465,7 +465,7 @@ def test_a_second_connection_opening_at_the_same_time_finds_it_done_and_does_not
     for t in threads:
         t.join(60)
     assert errors == []
-    assert rows_of(db, "confirmations") == before
+    assert rows_of(db, "confirmations") == [r + (None,) for r in before]      # dev-mode-launch: plus budget_note, empty
     up, new = open_new(db), open_new(tmp_path / "new.db")
     assert structure(up) == structure(new)
     up.close()
@@ -535,7 +535,7 @@ def test_the_upgrade_deletes_and_recomputes_nothing(tmp_path):
     before = {t: rows_of(db, t) for t in ("confirmations", "jobs", "launches")}
     open_new(db).close()
     after = {t: rows_of(db, t) for t in ("confirmations", "jobs", "launches")}
-    assert after["confirmations"] == before["confirmations"] and after["jobs"] == before["jobs"]
+    assert after["confirmations"] == [r + (None,) for r in before["confirmations"]] and after["jobs"] == before["jobs"]      # dev-mode-launch: plus budget_note, empty
     assert [r[:-1] for r in after["launches"]] == before["launches"]
 
 
