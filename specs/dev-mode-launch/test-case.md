@@ -94,7 +94,7 @@
 | TC-054 | 計畫作法 5；爆炸半徑 (1) | 例外 | 程式碼原始檔 | AST 掃描所有能到達 `confirm.approve(…, BUDGET.name, …)` 的呼叫點 | 只有 `_ask`、`_request_attempt` 內的預算分支；`test_actions_layer.py` 白名單只列這兩處；`approve` 對無呼叫者（stdio）回 `not_yours` | 自動：`platform/tests/test_actions_layer.py`、`P` |
 | TC-055 | 計畫作法「CSRF 與 `/settings/personal` 同」 | 例外 | 已登入 | 對 `POST /settings/budget` 送不帶（或錯誤）CSRF 憑證的請求 | 被拒，數字不變；帶正確 CSRF 才成功（同 `/settings/personal`） | 自動：`P` |
 | TC-056 | 專長守則「對等性」；`test_web_parity.py` | 功能 | 網頁動作清單與動作層函式清單 | 測試同時列舉兩邊 | 新路由 `POST /settings/budget` 與 `set_my_budget`、`get_my_budget` 一一對應，缺一邊就失敗；路由處理函式內沒有第二份邏輯 | 自動：`platform/tests/test_web_parity.py` |
-| TC-057 | 計畫作法 6「設定頁顯示目前兩個數字與『未設定＝每次都問你』」 | 功能 | 使用者未設與已設兩種狀態 | 開設定頁 | 未設時顯示「未設定＝每次都問你」；已設時顯示目前的兩個數字；文字不在 `web_settings.STRINGS`（`test_ce08` 雜湊不變） | 自動：`P`、`test_ce08` |
+| TC-057 | 計畫作法 6「設定頁顯示目前兩個數字與『未設定＝每次都需確認』」 | 功能 | 使用者未設與已設兩種狀態 | 開設定頁 | 未設時顯示「未設定＝每次都需確認」；已設時顯示目前的兩個數字；文字不在 `web_settings.STRINGS`（`test_ce08` 雜湊不變） | 自動：`P`、`test_ce08` |
 | TC-058 | 憲法擁有者規則；計畫 TC-H | 例外 | 甲設好額度（兩數字、額度內）；甲有 nano4 run | 乙提出對甲的 run 的 cancel | 被拒（不是甲的 run），沒有取消、沒有 `BUDGET` 列 | 自動：`P` |
 | TC-059 | 同上 | 例外 | 同 TC-058 | 乙提出對甲的 run 的 resume | 被拒，沒有入列、沒有 `BUDGET` 列 | 自動：`P` |
 | TC-060 | 專長守則「migration 可套用」；計畫 TC-M | 功能 | 舊資料庫（沒有 `users.auto_su_single`、`users.auto_su_month`、`confirmations.budget_note`），含既有使用者與確認列 | 以新程式開啟這個舊庫 | 三個新欄出現；既有列與既有設定值不變；所有人的兩個數字都是 NULL（＝未設），請求都回「待確認」 | 自動：`P` |
