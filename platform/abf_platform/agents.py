@@ -32,9 +32,27 @@ def status_of(last_seen_at, at, offline_after=None):
     return "online" if at - last_seen_at <= limit else "offline"
 
 
+def site_link_of(row, state):
+    """(site_link, site_link_at) as the agent reported them in its facts: `unknown` when it never did (an older agent), when the word is not
+    one of the three, or when the agent is offline (an old value of a silent agent cannot be trusted). Self-reported, never checked here."""
+    try:
+        facts = json.loads(row["facts_json"]) if row["facts_json"] else {}
+    except (ValueError, IndexError, KeyError):
+        facts = {}
+    facts = facts if isinstance(facts, dict) else {}
+    link, at = facts.get("site_link"), facts.get("site_link_at")
+    at = at if isinstance(at, str) else None
+    if state != "online" or link not in common.SITE_LINKS:
+        return "unknown", at
+    return link, at
+
+
 def view(row, at, offline_after=None):
-    return {"name": row["name"], "version": row["version"], "status": status_of(row["last_seen_at"], at, offline_after),
-            "last_contact_at": common.epoch_iso_ms(row["last_seen_at"])}
+    state = status_of(row["last_seen_at"], at, offline_after)
+    link, link_at = site_link_of(row, state)
+    return {"name": row["name"], "version": row["version"], "status": state,
+            "last_contact_at": common.epoch_iso_ms(row["last_seen_at"]),
+            "site_link": link, "site_link_at": link_at}      # the agent's own word as of site_link_at; see the tool descriptions
 
 
 def list_agents(state_path, at, offline_after=None, owner=None):

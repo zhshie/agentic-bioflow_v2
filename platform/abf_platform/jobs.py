@@ -718,7 +718,7 @@ def latest_launch(con, run_name):
 
 def latest_listing(state_path, ce_name, path):
     """The newest list_site_files job of this environment whose path is exactly `path`, as a dict (id, state, deadline_at, finished_at,
-    result), or None. It only reads: a page uses it to see what the site already answered, and never waits for the site."""
+    result, agent: the one that ran or was to run it), or None. It only reads: a page uses it to see what the site already answered, and never waits for the site."""
     con = store.open_readonly(state_path)
     if con is None:
         return None
@@ -734,7 +734,7 @@ def latest_listing(state_path, ce_name, path):
             if json.loads(row["args_json"]).get("path") == path:
                 result = json.loads(row["result_json"]) if row["result_json"] else None
                 return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
-                        "result": result}
+                        "result": result, "agent": row["agent"]}
         except (ValueError, AttributeError):
             continue
     return None
@@ -788,6 +788,31 @@ def latest_run_file(state_path, ce_name, run_name, path):
                 result = con.execute("SELECT result_json FROM jobs WHERE id = ?", (row["id"],)).fetchone()[0]
                 return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
                         "result": json.loads(result) if result else None}
+    except sqlite3.OperationalError:
+        return None
+    finally:
+        con.close()
+    return None
+
+
+def latest_task_log(state_path, ce_name, workdir, filename):
+    """The newest read_task_log job of this environment for exactly this task folder and file, as a dict (id, state, deadline_at, finished_at,
+    result), or None. It only reads: a page uses it to see what the agent already answered, and never waits."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return None
+    try:
+        rows = con.execute("SELECT id, args_json, state, deadline_at, finished_at, result_json FROM jobs WHERE kind = 'read_task_log' "
+                           "AND compute_env = ? ORDER BY id DESC LIMIT 200", (ce_name,)).fetchall()
+        for row in rows:
+            try:
+                args = json.loads(row["args_json"])
+                result = json.loads(row["result_json"]) if row["result_json"] else None
+            except ValueError:
+                continue
+            if isinstance(args, dict) and args.get("workdir") == workdir and args.get("file") == filename:
+                return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
+                        "result": result}
     except sqlite3.OperationalError:
         return None
     finally:

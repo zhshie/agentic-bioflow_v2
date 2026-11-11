@@ -106,7 +106,7 @@ def test_ro01b_other_tabs_reuse_the_running_stage_bodies(w):
     info = mid(c.get(url(rid, tab="info")).text)
     assert "ann-done" in info and rid in info and 'class="sq"' in info
     assert "無失敗任務" in mid(c.get(url(rid, tab="tasks")).text)
-    assert '<section class="soon">' in mid(c.get(url(rid, tab="logs")).text)
+    assert '<section class="soon">' not in mid(c.get(url(rid, tab="logs")).text) and "目前沒有失敗任務" in mid(c.get(url(rid, tab="logs")).text)      # web-run-tasks-log
     assert listings(w) == []        # only the Outputs tab asks the site
 
 

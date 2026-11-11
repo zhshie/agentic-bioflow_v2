@@ -21,6 +21,7 @@ from .site import Site
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 EXIT_REJECTED = 3
 BACKOFF = (2, 4, 8, 16, 30)
+FACTS_EVERY = 25    # seconds between an idle agent's fact refreshes (ruling 2026-11-08: a constant, never more often)
 
 
 def say(text):
@@ -123,6 +124,10 @@ class Agent:
         self.context = context
         self.heartbeat = common.heartbeat_seconds()
         self.poll = common.poll_seconds()
+        self.facts_every = FACTS_EVERY       # an idle agent says its facts at most this often (seconds)
+        self.facts_last = None
+        self.beat_last = None                # (clock, facts) of the last look made for a heartbeat
+        self.clock = time.monotonic
         self.failures = 0
 
     def wait_or_retry(self, why):
@@ -171,7 +176,7 @@ class Agent:
         if isinstance(job_id, bool) or not isinstance(job_id, int):
             say("a job without a usable id was ignored")
             return
-        beat = Beat(self.client, self.heartbeat, lambda: launch.own_facts(self.context))
+        beat = Beat(self.client, self.heartbeat, self.beat_facts)
         beat.start()
         self.context.job_started = time.monotonic()
         self.context.agent_name = self.client.name
@@ -201,6 +206,32 @@ class Agent:
             job = body.get("job")
             if job is not None:
                 self.run_job(job)
+            else:
+                self.refresh_facts_if_due(name)
+
+    def beat_facts(self):
+        """The facts a heartbeat carries: the same ones again until facts_every seconds have passed, so the shared connection is asked
+        at most that often however short the heartbeat is."""
+        now = self.clock()
+        if self.beat_last is None or now - self.beat_last[0] >= self.facts_every:
+            self.beat_last = (now, launch.own_facts(self.context))
+        return self.beat_last[1]
+
+    def refresh_facts_if_due(self, name):
+        """refresh_facts, but never more often than facts_every seconds, however fast the polls come back (the check asks the shared connection)."""
+        now = self.clock()
+        if self.facts_last is not None and now - self.facts_last < self.facts_every:
+            return
+        self.facts_last = now
+        self.refresh_facts(name)
+
+    def refresh_facts(self, name):
+        """An idle agent says its facts again after each empty poll (about every 25 seconds) so site_link is not as old as the agent.
+        Best effort: a failure is ignored, the next poll tells the same story."""
+        try:
+            self.client.post("/agent/hello", {"name": name, "version": __version__, "facts": launch.own_facts(self.context)}, 10)
+        except Exception:
+            pass
 
 
 def _on_term(signum, frame):

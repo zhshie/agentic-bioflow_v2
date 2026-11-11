@@ -33,6 +33,7 @@ WEB_ONLY = {
     "clean_requests": "read-only (cloud-cleanup-e): the board notice lists the caller's own open clean_work requests; it creates nothing",
     "launch_prefill": "the quick launch of the launch form: what the person's own earlier run was sent with, when it is still kept",
     "run_file": "GET /run/file (results-files): one result file of the caller's own run, read by the agent of the run's environment and sent as a download; no MCP tool (an AI has no use for 25 MB of base64)",
+    "task_log_view": "GET /run/log (web-run-tasks-log): the log of one failed task of the caller's own run, read by the agent through a read_task_log job and shown as a page; the MCP tool read_task_log is the blocking sibling and is unchanged",
     "pipeline_files": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "latest_release": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",
     "nfcore_catalogue": "guided launch searches every nf-core pipeline through the agent (nfcore-catalogue); the page filters; no MCP tool yet",
@@ -62,7 +63,7 @@ OWED_BEFORE_012B = {"list_compute_envs", "get_compute_env", "list_agents", "list
 # v3 (keep-submissions, resume/relaunch): request_forget, request_resume, request_relaunch are what the tools forget, resume, relaunch call; forget_check and keep_screen are helpers; the FORGET_* and RUN_NOT_FOUND words are constants.
 INTERNAL = {"offer_cleanup", "offer_cleanups", "request_pipeline_launch", "request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
             "person_at", "caller_area", "confined_samplesheet", "read_confined_samplesheet", "forget_check", "keep_screen",
-            "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "TERMINAL", "DEFAULT_WEB_BASE",
+            "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "CHAT", "TERMINAL", "DEFAULT_WEB_BASE",
             "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND",
             # #138 read_task_log words, and estimate_su (a v3 helper with no MCP tool, TC-029, and no web route)
             "RUN_NOT_FOUND_TEXT", "READ_WHICH", "NO_WORKDIR", "LOG_NOT_FOUND", "estimate_su", "READ_CHARS",

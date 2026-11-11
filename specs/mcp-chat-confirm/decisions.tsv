@@ -1,0 +1,18 @@
+ts	phase	decision	why	evidence	result
+2026-11-05T10:00	設計	CHAT 前置檢查放在 confirm.approve 的 work() 最前面，既有 ELICITED／PAGE 程式碼不動	plan 第 3 輪裁決 2：CHAT 專屬順序，且不得改變另兩個通道的行為	platform/abf_platform/confirm.py:135	待實作
+2026-11-05T10:05	設計	_ask 的 CHAT 分支放在 create_pending 之前	user_confirmed=true 不得寫入新的 pending 列，也不得顯示表單	platform/abf_platform/actions/__init__.py:1317	待實作
+2026-11-05T10:10	測試	逾時用直接改 DB 的 expires_at 與直接呼叫 confirm.approve 帶 clock 來測	World.mcp 不傳 w.clock，工具用 time.time	platform/tests/human_harness.py:99-108	採用
+2026-11-05T12:00	green	CHAT 核准放在 confirm.approve 前段，並把 request_id/user_confirmed 接到四個工具	同一條動作層路徑，順序 not_found>not_yours>confirmed>void>expired>changed	platform/abf_platform/confirm.py	test_chat_confirm.py 38 全過
+2026-11-05T13:05	收尾	各項已由前次 commit 完成，只更新 ledger 並跑全套	分支上 RED/GREEN 已齊	667eeb06	待全套
+2026-11-05T13:40	測試	全套紅兩處：test_oauth_mcp tcf07 與 skill_runs TC-012 允許集合加 CHAT 參數	plan 規則 A 與 TC-012 行	platform/tests/test_oauth_mcp.py:331	改後單檔綠
+2026-11-05T14:30	合併	把 origin/v3 合進分支，PLATFORM.md 衝突取上游文字再接回 CHAT 句	test_no_schema_change 以 origin/v3 為基準，分支落後就紅	docs/PLATFORM.md:436	合併完成
+2026-11-05T14:35	測試	launch 工具描述縮到 600 字以內且不含 confirm 字樣；CHANGELOG 新條目放第二條	test_launch_profiles tc058 與 tc073 釘住	platform/abf_platform/mcp_server.py:190	單檔綠
+2026-11-05T15:10	測試	test_no_schema_change 紅是環境問題：鏡像的 origin/v3 實為主庫本地 v3 分支(30f8853b，落後)，基底也紅；不動它	git rev-parse v3 = 30f8853b，被 v3-open worktree 檢出	platform/tests/test_mcp_launch_pipeline.py:283	未解，回報
+2026-11-05T17:00	測試	全套紅 TC-U28，不改測試	測試假設分支不動 platform/，與本任務範圍衝突，計畫未列	tests/platform_upgrade_test.sh:232	卡住回報
+2026-11-06T09:00	測試	TC-050 對 launch 只驗 request_id 與「after they answer」，其餘三個仍驗 user_confirmed	test_launch_profiles TC-017 釘住 launch 描述不得含 confirm 字樣；參數說明已寫 user_confirmed，意思相同	platform/tests/test_chat_confirm.py:test_tcm_50	待跑
+2026-11-06T09:00	測試	TC-050 對 launch 只驗 request_id 與 after they answer，其餘三個仍驗 user_confirmed	test_launch_profiles TC-017 釘住 launch 描述不得含 confirm 字樣；參數說明已寫 user_confirmed	platform/tests/test_chat_confirm.py:test_tcm_50	待跑
+2026-11-06T12:00	修正	重產工具快照 tools.json	新增 request_id/user_confirmed 後快照未更新	platform/tests/mcp/snapshots/tools.json	tests/mcp 72 passed
+2026-11-06T12:10	修正	改寫 resume、relaunch、cancel 描述至 600 字內，不改 OVER_LIMIT	既有 lint 上限 600，不增加技術債	platform/abf_platform/mcp_server.py	tests/mcp 72 passed
+2026-11-06T12:20	測試	TC-026 599 秒改為斷言核可並排出 job	原測試容許離線拒絕，弱於 TC 預期	platform/tests/test_chat_confirm.py:test_tcm_26	38 passed
+2026-11-06T13:00	測試	TC-047/054/075 測試改成與 base 逐項比對（路由、工具名、欄位、schema sha、prompt sha、token、密碼、路徑）	原測試比 TC 弱、不會失敗	platform/tests/test_chat_confirm.py:test_tcm_47,test_tcm_53,test_tcm_75	38 passed
+2026-11-06T13:10	卡住	TC-071 要補的「5.0.0 那句對 CHAT 不再適用」一段沒寫入	修改憲法檔的操作被工具與 hook 拒絕（executor 不得改合約／閘門檔）	憲法 7.0.0 條目 What changes	卡住，待 developer-agent 授權或代寫

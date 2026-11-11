@@ -1,0 +1,30 @@
+# PR #376 rebase 並修好 test_tcm_47 基準 progress ledger
+
+## 進度 (executor)
+- TC-001: origin/feat/mcp-chat-confirm-v5 (7671b877) 已含 origin/v3 最新 (87107ae9)；merge 無衝突，非 force。
+- TC-005 失敗訊息：test_tcm_47 紅，只在結構雜湊 (34670e36... vs b401f98b...)。路由清單與表清單已一致 (BASE_ROUTES 已含 /settings/personal)。
+- 實際差異只有一項：jobs.kind 的 CHECK 多了 lint_pipeline（v3 的 017c2a-validate-lint, commit b1dadfe9）。把它移除後雜湊正好等於舊基準 b401f98b...。
+- step_mode/dev_mode 不在此測試的 sqlite_master 雜湊裡，計畫說的三項與事實不符。依 TC-005 規則停下回報，未更新基準。
+- 狀態：BLOCKED，等 developer-agent 裁決是否把基準改成含 lint_pipeline 的新雜湊 34670e36fdb2ae46813b6f97cc7570f01cf5ddc347a139a84c7f2c762335652a。
+
+## 續作 (executor, 依 dev-worker 裁決)
+- 基準更新差異清單（只有一項）：jobs.kind CHECK 加 'lint_pipeline'（v3 017c2a-validate-lint）。BASE_SCHEMA_SHA256 b401f98b... -> 34670e36fdb2ae46813b6f97cc7570f01cf5ddc347a139a84c7f2c762335652a。路由清單、表清單、step_mode/dev_mode 均無需改。
+- TC-001/003: origin/v3 (87107ae9) 已在 HEAD 歷史內，以 merge 整合，沒有 force。
+- TC-006: 更新後 test_chat_confirm.py 38 passed。
+- TC-008 證明：暫時在 store.py confirmations 加假欄位 fake_col，test_tcm_47 轉紅；git checkout 還原後 38 passed 全綠；未留下假欄位。
+- TC-023: 不需要 migration；本件只改測試基準值，沒有改資料結構。
+- TC-014: 未碰 gitleaks/pip-audit 或 .github；若仍紅是 v3 既有問題（依計畫查證）。
+
+## 全套測試狀態 (executor handoff)
+- 在 b8a3b12e：第一次全套 148/150：platform_shard_4 一支失敗（test_no_schema_change），shard_6 逾時 300s。
+- shard_4 失敗原因是 WSL 鏡像 ~/abf-mirror/chat-confirm-rebase-fix 的 origin/v3 ref 過舊（非本件程式問題）；已在鏡像重抓 origin/v3 後，test_mcp_launch_pipeline.py 21 passed。
+- shard_6 單跑 ok 280s（逼近 300s 上限，機器忙時會逾時）。
+- 第三次全套在 shard_6 之前全部 ok（shard 1-5 ok），但 2 小時背景上限在 shard_6 還在跑時到了，沒拿到完整綠燈。
+- 下一步：機器較空時重跑全套；若 shard_6 仍逾時，需 lead 決定。未寫 GREEN。
+
+## 續作 2 (executor)
+- origin/v3 又前進 28 commits (fcb26614)，已 merge 進分支，無衝突，沒有 force。
+- 新差異只有一項：v3 加入 GET /run/log (web-run-tasks-log)；BASE_ROUTES 加入該路由。結構雜湊不變。test_chat_confirm.py 38 passed。
+
+## 續作 3 (executor)
+- origin/v3 無新 commit；全套在 HEAD 150/150 全綠（retry-failed-once）。
