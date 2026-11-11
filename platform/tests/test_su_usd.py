@@ -11,7 +11,17 @@ import pytest
 
 from helpers import PLATFORM_DIR, REPO_ROOT
 from test_web_board import no_cjk, pane, plain, style_of
-from test_web_cost import cap_line, env_of, get, seed, summaries, table_rows, usage, w  # noqa: F401  (w is the fixture)
+from test_web_cost import cap_line, env_of, get, summaries, table_rows, usage, w  # noqa: F401  (w is the fixture)
+from test_web_cost import seed as _seed
+
+
+def seed(w, name, owner, *args, **kw):
+    # mcp-site-connection-status: get_run no longer guesses the site of a compute environment without suSite, so the seeded Slurm one names its site (the same site the default was)
+    where = args[0] if args else kw.get("where", "nchc")
+    if where == "nchc" and kw.get("config") is None and len(args) < 9:
+        kw["config"] = {"suSite": "taiwania3"}
+    return _seed(w, name, owner, *args, **kw)
+
 
 RATES_FILE = REPO_ROOT / "configs" / "sites" / "su_rates.json"
 PKG = PLATFORM_DIR / "abf_platform"

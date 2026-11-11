@@ -1084,6 +1084,7 @@ def params_text(params):
 
 CJK = re.compile(r"[⺀-鿿＀-￯]")
 LATIN_PAREN = re.compile(r"\(([^()]*)\)\s*$")
+AGENT_SENTENCE = re.compile(r'Run it in the WSL terminal of the machine running agent "[^"]+"( \(請在執行 agent「[^」]+」那台機器的 WSL 終端機執行\))?[.。]?$')
 PATH_LIKE = re.compile(r"(?<![\w.-])(/[^\s,;)）]+)")
 
 
@@ -1102,6 +1103,10 @@ def plain_reason(message, lang):
         text = text[:m.start()].strip() or text
     text = PATH_LIKE.sub("…", text)
     text = re.sub(r"\s+", " ", text)
+    tail = AGENT_SENTENCE.search(text)           # the sentence that names the agent is kept whole: the cut falls in the part before it
+    if tail and len(text) > 300 and len(tail.group(0)) < 300:
+        head = text[:tail.start()].rstrip()
+        text = head[:300 - len(tail.group(0)) - 1].rstrip() + " " + tail.group(0)
     return text[:300] + ("" if text.endswith((".", "。")) else ("." if lang == "en" else "。"))
 
 

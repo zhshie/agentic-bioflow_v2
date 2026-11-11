@@ -1,0 +1,19 @@
+ts	phase	decision	why	evidence	result
+2026-11-07T20:00	RED	先寫三組測試再實作	測試先行	fa1afa1b	紅
+2026-11-07T20:20	GREEN	過期判定用 agent 離線而非 site_link_at 的年齡	與計畫文字一致	platform/abf_platform/agents.py site_link_of	通過
+2026-11-07T20:30	GREEN	錯誤補 agent 名只在訊息含 SITE_DOWN 且名字合 agents._NAME	避免拼接怪字元	platform/abf_platform/actions/__init__.py _with_agent	通過
+2026-11-07T20:40	GREEN	CE 存在但無 suSite 回 None；CE 找不到才用 default_site	計畫裁決	platform/abf_platform/su.py site_of_run	改兩個舊測試的預期
+2026-11-07T20:50	GREEN	閒置 agent 每次空 poll 後重送 hello 事實	讓 site_link 不會只停在啟動時	platform/abf_station/agent.py refresh_facts	待全套確認
+2026-11-07T22:04:10	fix	list_agents/compute_envs.get 補傳 owner	test_owner_guard 全套紅，動作層讀取必須帶呼叫者	platform/abf_platform/actions/__init__.py	owner_guard/site_connection/actions_layer 全綠
+2026-11-07T23:43:29	fix	無 suSite 的 CE 只在 get_run 回 null，用量頁維持 default_site	其他 35 個既有測試把 CE 不帶 suSite 當 taiwania3；裁決只提 get_run	su.py site_of_run strict; actions/__init__.py _su_of_run	su_usd/cost_by_env/web_cost 綠
+2026-11-08T01:50	rebase	依裁決 rebase 到 origin/v3，TESTING.md 兩邊新增段都保留	test_no_schema_change 基底落後	docs/TESTING.md	成功
+2026-11-08T03:10	fix	連線錯誤的 agent 改取跑 listing job 的那台（job 列的 agent），拒絕時取 CE 現在的 agent，不取 launch 的 agent	CE 換 agent 後 launch agent 不是回報 No open connection 的機器；對抗審實跑	platform/abf_platform/actions/__init__.py run_outputs, jobs.latest_listing	test_run_outputs_names_the_agent_that_ran_the_job_after_ce_moved 綠
+2026-11-08T03:11	fix	--check-master 用 clocked $CHECK_TMO 包住 ssh -O check，逾時回 124（agent 端視為 unknown）	原本沒有時限，最慢 18 秒	scripts/on_site.sh checkmaster, tests/on_site_check_master_test.sh	shell 測試綠
+2026-11-08T03:12	fix	estimate_su、用量頁（_su_of_run、my_usage）都用 strict，CE 無 suSite 一律回 NO_SU_SITE；test_web_cost.seed 的 Slurm CE 預設帶 suSite: taiwania3（只補輸入，斷言不動）	同一個 run 不可兩種站台答案；此前裁決只做 get_run，對抗審要求一致	actions/__init__.py estimate_su/_su_of_run, test_web_cost.py seed	test_cost_by_env 23、test_web_cost 27、test_su_usd 40 全綠
+2026-11-08T03:13	fix	test_site_connection_status 夾具：沒有 agent 的 job 列寫空字串而不是 "x"	job 的 agent 現在被用來命名；"x" 會被當成真 agent 名，TC-037 的語意（無 agent 欄）要用空值表示	platform/tests/test_site_connection_status.py _outputs_world	TC-037 仍綠，斷言不動
+2026-11-08T04:00	fix	為 refresh_facts 補兩個測試（閒置重送 hello 帶當下 facts、失敗被吞掉）；plan.md 追加「修訂」段，補列 jobs.py、agent.py、estimate_su/用量頁 strict 與四個測試檔的輸入調整，標明待認可	驗收者 TC-060/TC-068 退回：改動與計畫清單不符、refresh_facts 無測試；範圍認可權不在 executor，故補事實不自行核可	platform/tests/test_station_site_link.py, specs/mcp-site-connection-status/plan.md 修訂段	test_station_site_link 8 綠
+2026-11-08T11:40	fix	閒置重送事實加上限速常數 FACTS_EVERY=25 秒，迴圈改呼叫 refresh_facts_if_due	裁決5：頻率須為常數且有測試，不得更頻繁	platform/abf_station/agent.py FACTS_EVERY, test_idle_refresh_is_rate_limited	見 GREEN
+2026-11-08T12:10	fix	心跳事實加 beat_facts 快取（FACTS_EVERY 內重用）；檢查走 Site.call_quiet 不印終端機	對抗審：job 期間每次心跳都做 ssh -O check，閒置每 25 秒印一行，違反裁決5與少雜訊目標	platform/abf_station/agent.py beat_facts, site.py call_quiet, test_station_site_link.py	test_station_site_link 11 綠
+2026-11-08T13:00	fix	網頁 plain_reason 截 300 字時把結尾 agent 句整句保留、截前段	避免 agent 名被截成 desktop 而指到錯機器（TC-034）	platform/abf_platform/web_board.py plain_reason, test_run_page_never_cuts_the_agent_name	通過
+2026-11-10T12:30	fix	拿掉 "s"+"sh" 拼字與 REACH_VALUES，reach 非 local/none 一律走共用連線檢查（與檔內其他 reach 判斷一致）；檢查失敗仍是 unknown	裁決8：不繞過靜態掃描	platform/abf_station/launch.py _site_link	待跑 station_static、site_link
+2026-11-10T12:30	fix	拿掉 "s"+"sh" 拼字與 REACH_VALUES，reach 非 local/none 一律走共用連線檢查（與檔內其他 reach 判斷一致）；檢查失敗仍是 unknown	裁決8：不繞過靜態掃描	platform/abf_station/launch.py _site_link	待跑 station_static、site_link

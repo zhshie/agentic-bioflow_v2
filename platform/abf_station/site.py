@@ -63,7 +63,11 @@ class Site:
         self.settings_file = str(settings_file)
         self.log = log
 
-    def call(self, args, input=None, timeout=None):
+    def call_quiet(self, args, timeout=None):
+        """call(), but nothing is written to the terminal log: for the read-only look the agent repeats on a timer."""
+        return self.call(args, timeout=timeout, quiet=True)
+
+    def call(self, args, input=None, timeout=None, quiet=False):
         """Run `on_site.sh <args>`; args is a list of strings. Returns a SiteResult, never raises for a failing command.
 
         input (bytes) is handed to the command on its standard input and is never logged or put on a command line;
@@ -78,7 +82,8 @@ class Site:
         except ValueError:
             site_limit = int(DEFAULT_SITE_TIMEOUT)
         shown = " ".join(args)
-        self.log("site: " + (shown if len(shown) <= 400 else shown[:400] + "..."))
+        if not quiet:
+            self.log("site: " + (shown if len(shown) <= 400 else shown[:400] + "..."))
         try:
             p = subprocess.run(["bash", str(self.script)] + list(args), capture_output=True, env=env,
                                input=input, stdin=None if input is not None else subprocess.DEVNULL,
