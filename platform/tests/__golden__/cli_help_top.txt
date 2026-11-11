@@ -1,13 +1,14 @@
 usage: abf-platform [-h] [--version] [--json] [--debug]
-                    {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}
+                    {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,auto-send,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}
                     ...
 
 abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-
 cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http]
-| runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...]
+| runs assign|offer-cleanup | auto-send list [--since ISO] | dataset register|list|show | rebuild
+[<folder>...]
 
 positional arguments:
-  {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}
+  {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,auto-send,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}
     serve               run the receiver for Nextflow's trace messages and the agents' requests
     web                 run the confirmation page where a person presses send (own process, this
                         machine only by default)
@@ -20,6 +21,7 @@ positional arguments:
     mcp                 run the read-only MCP server (stdio, or --http)
     rebuild             drop the index and build it again from Nextflow's records
     runs                the owner of a run in the hand-off record
+    auto-send           the sends that went through on a person's own SU budget (read only)
     dataset             datasets: a name, a version, a samplesheet and the places of its files
                         (the platform keeps names and places only)
     launch              show a whole analysis, ask on the terminal, and hand it to the agent
