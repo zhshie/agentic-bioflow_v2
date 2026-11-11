@@ -310,6 +310,7 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
                       ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),      # 012b: the launch form and the three buttons that only ask; guided-launch-2: the diagram picture
                       ("/login", ("GET", "HEAD")), ("/login", ("POST",)), ("/logout", ("POST",)),
                       ("/register", ("OPTIONS", "POST")), ("/revoke", ("OPTIONS", "POST")), ("/run/file", ("GET", "HEAD")), ("/run/log", ("GET", "HEAD")), ("/settings", ("GET", "HEAD")),
+                      ("/settings/budget", ("POST",)),      # dev-mode-launch: the person's own two SU limits
                       ("/settings/inventory", ("POST",)), ("/settings/personal", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-pick-installed: the reload button of the site list
                            # settings-register-pipeline: the two steps of registering a pipeline version
                       ("/token", ("OPTIONS", "POST")), ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),

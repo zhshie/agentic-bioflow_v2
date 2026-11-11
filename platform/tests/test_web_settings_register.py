@@ -807,7 +807,7 @@ def test_d05_button_words(w, ann):
     # settings-pick-installed: the Slurm block also has the button that reloads the site list (the register button now sits in the folded advanced form)
     assert buttons <= {"登記", "移除", "重新讀取站台清單", "開啟", "關閉", "儲存"} and {"登記", "移除"} <= buttons
     en = {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(c.get("/settings?lang=en").text), re.S)}
-    assert en - {"Turn on", "Turn off"} == {"Register", "Remove", "Reload site list"}      # 012a: the two switches of the personal section
+    assert en - {"Turn on", "Turn off"} == {"Register", "Remove", "Reload site list", "Save"}      # dev-mode-launch: the save button of the two SU limits;     # 012a: the two switches of the personal section
     page = step1(c, fields("remove")).text
     assert {plain(b) for b in re.findall(r"<button[^>]*>(.*?)</button>", mid_of(page), re.S)} == {"確認"} and ">返回</a>" in page
 

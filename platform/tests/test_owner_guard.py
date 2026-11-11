@@ -132,6 +132,8 @@ NO_TOOL = {
     "task_log_view": "web run log page (web-run-tasks-log): the tail of one failed task log, read only; read_task_log is the tool for the same file",
     "get_my_settings": "web settings page (012a): the person's own two switches, read only",
     "set_my_setting": "web settings page (012a): the person's own two switches",
+    "get_my_budget": "web settings page (dev-mode-launch): the person's own two SU limits, read only",
+    "set_my_budget": "web settings page (dev-mode-launch): the person's own two SU limits; only the page may set them (constitution 8.0.0)",
     "approve": "the person's yes on the web confirmation page",
     "caller_area": "helper: the caller's upload folder",
     "clean_requests": "web page: clean-work requests",

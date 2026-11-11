@@ -810,7 +810,7 @@ def test_tch11_read_only(w):
         forms = re.findall(r"<form\b[^>]*>", t)
         assert 'action="/logout"' in forms[0]
         # settings-register-pipeline: /settings now also holds the register and remove forms of that task (action /settings/pipelines)
-        own = r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">' if url != "/settings" else r'<form (class="(act|lform)" )?method="post" action="/settings/(pipelines|inventory|personal)">'      # settings-pick-installed: and the reload button of the site list; 012a: and the two switch forms
+        own = r'<form class="act" method="post" action="/act/(resume|relaunch|cancel)">' if url != "/settings" else r'<form (class="(act|lform)" )?method="post" action="/settings/(pipelines|inventory|personal|budget)">'     # settings-pick-installed: and the reload button of the site list; 012a: and the two switch forms
         assert all(re.fullmatch(own, f) for f in forms[1:])     # 012b
         assert len(forms) > 1          # the failed run is on the Now page and on its own page: both have the buttons that ask
         assert t.count("<button") == len(forms)
@@ -960,7 +960,7 @@ def test_tcs39_s40_s41_s42_settings(w):
     assert r.status_code == 200
     mid = pane(r.text, "middle")
     assert "<h1>設定</h1>" in mid
-    assert re.findall(r"<h2>(.*?)</h2>", mid) == ["使用前檢查", "運算環境", "憑證", "密碼與金鑰", "個人", "營運者後台", "角色（老師／學生）"]      # settings-page: the checklist is the first section
+    assert re.findall(r"<h2>(.*?)</h2>", mid) == ["使用前檢查", "運算環境", "憑證", "密碼與金鑰", "個人", "預算內免逐次確認", "營運者後台", "角色（老師／學生）"]      # dev-mode-launch: the person's own two SU limits;     # settings-page: the checklist is the first section
     for word in ("AI 模型金鑰", "逐步模式", "開發模式"):
         assert word in mid
     # settings-register-pipeline ruling 1: apart from the register and remove forms of that task, the middle column still has nothing to press
@@ -1240,7 +1240,7 @@ def test_tn10_n13_n17_n19_n20_nothing_beyond_the_plan(w):
             # cost-page-by-environment: the run page now carries the one-row cost table (Environment / Usage / Status / Scope)
             checked = re.sub(r'<table class="tbl"><thead><tr><th>(環境|Environment)</th>.*?</table>', "", t, flags=re.S) if tag == "<table" else t
             assert tag not in checked, (url, tag)
-        settings_free = re.sub(r'<form[^>]*action="/settings/(pipelines|inventory|personal)".*?</form>', "", t, flags=re.S) if url == "/settings" else t     # settings-register-pipeline: its own forms are checked in test_web_settings_register.py
+        settings_free = re.sub(r'<form[^>]*action="/settings/(pipelines|inventory|personal|budget)".*?</form>', "", t, flags=re.S) if url == "/settings" else t     # settings-register-pipeline: its own forms are checked in test_web_settings_register.py
         assert [m for m in re.findall(r"<input\b[^>]*>", settings_free) if 'type="hidden"' not in m or not ('name="csrf"' in m or 'name="run"' in m or 'name="lang"' in m or ('name="ce"' in m and url == "/settings"))] == []     # 012b: the buttons carry the run id (and the language)
         # settings-pick-installed: the folded "advanced" block of a Slurm environment on /settings is a <details class="padv"> (the plan says so)
         assert t.count("<details") - t.count('<details class="menu">') - (t.count('<details class="padv">') if url == "/settings" else 0) == len(re.findall(r"<details open\b[^>]*data-stage=", pane(t, "right")))

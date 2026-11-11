@@ -819,7 +819,7 @@ def test_tc068_no_new_way_to_log_in(w):
     # TC-068
     client = w.web()
     # 009i: the login is still the one name + web password; 011a added the board; the other routes added are the OAuth ones, which log nobody in
-    assert {r.path for r in client.app.routes} == {"/", "/settings", "/settings/personal", "/login", "/logout", "/c/{rid}", "/consent/{rid}", "/authorize", "/token",
+    assert {r.path for r in client.app.routes} == {"/", "/settings", "/settings/personal", "/settings/budget", "/login", "/logout", "/c/{rid}", "/consent/{rid}", "/authorize", "/token",
                                                    "/register", "/revoke", "/.well-known/oauth-authorization-server",
                                                    "/launch", "/launch/diagram", "/act/{verb}", "/act/{verb}/edit", "/usage", "/welcome",
                                                    "/settings/pipelines", "/settings/pipelines/confirm", "/settings/inventory",      # settings-pick-installed: the reload button of the site list
