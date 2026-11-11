@@ -49,9 +49,9 @@ nin() {
 
 echo "== US1: the constitution (TC-001, TC-003..TC-009) =="
 LAST=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LAST" = '**Version**: 7.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-05' ]; then
-  ok "TC-001: last line is exactly the 7.0.0 version line"
-else bad "TC-001: last line is exactly the 7.0.0 version line" "got: $LAST"; fi
+if [ "$LAST" = '**Version**: 8.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-11' ]; then
+  ok "TC-001: last line is exactly the 8.0.0 version line"
+else bad "TC-001: last line is exactly the 8.0.0 version line" "got: $LAST"; fi
 
 P1=$(awk '/^### I\. /{f=1} /^### II\. /{f=0} f' "$C")
 inn "TC-003: principle I is titled Build Only What Seqera Cannot or Will Not Do Here" "$P1" '### I. Build Only What Seqera Cannot or Will Not Do Here'

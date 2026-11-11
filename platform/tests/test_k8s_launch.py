@@ -1405,7 +1405,7 @@ def test_the_schema_of_the_platform_is_that_of_the_base(ip):
         rows = sorted(con.execute("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").fetchall())
     finally:
         con.close()
-    assert len(rows) == 7 and digest(repr(rows).replace(", 'lint_pipeline'", "")) == "1d9448eb1cea8a7cccbb1a6f5bd13fef90142cc2e1b0bc7d68c5f2409ef708bb"      # 017c2a: lint_pipeline joins the CHECK list; the rest of the schema is the base digest
+    assert len(rows) == 7 and digest(repr(rows).replace(", 'lint_pipeline'", "")) == "223c0f60888a869d41a86cf3d846c74f7e4ac40cfbfc448d73a5f4a78e1fa7eb"      # dev-mode-launch: users gained auto_su_single and auto_su_month, confirmations gained budget_note (was 1d9448eb1cea...); 017c2a: lint_pipeline joins the CHECK list; the rest of the schema is the base digest
     assert [p for p in PLATFORM_DIR.rglob("*") if "migrat" in p.name.lower()] == []
     assert "No migration needed" in (REPO_ROOT / "specs" / "k8s-launch" / "ledger.md").read_text(encoding="utf-8")
 
@@ -1431,10 +1431,10 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in app.routes) == ROUTES_V3
     wapp = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", platform_path=tmp_path / "platform.db")
     got = sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in wapp.routes)
-    assert len(got) == 31 and digest(repr(got)) == "1f81facf6cad2a0c50f37b70a3d86b6364cc4d3bbc86526c1d04437e52a4b798"      # web-run-tasks-log adds GET /run/log (30 before; resume-edit-web had added GET /act/{verb}/edit)
+    assert len(got) == 32 and digest(repr(got)) == "e1138f6ee8aa5f255dec303b01a775b6902a8943bb3950dcb25d23ac6ce21338"      # dev-mode-launch adds POST /settings/budget (31 before, 1f81facf6cad...; without it the 31 hash as before); web-run-tasks-log adds GET /run/log (30 before; resume-edit-web had added GET /act/{verb}/edit)
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
-    assert len(names) == 60 and digest(repr(names)) == "49b160116a812f893f51786365283176959c1e2b48396f3db60e26d721757cfb"      # web-run-tasks-log adds task_log_view (59 -> 60); pipe-reg-store adds four registration actions (54 -> 58, 012b-2 adds preview_samplesheet); cost-page-by-environment adds run_usage (58 -> 59); mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
+    assert len(names) == 62 and digest(repr(names)) == "66776253a00f4c5704cf22067095478d21ea729d75082ead0bf5931e3b4d80cb"      # dev-mode-launch adds get_my_budget and set_my_budget (60 -> 62, was 49b160116a81...; without them the 60 hash as before); web-run-tasks-log adds task_log_view (59 -> 60); pipe-reg-store adds four registration actions (54 -> 58, 012b-2 adds preview_samplesheet); cost-page-by-environment adds run_usage (58 -> 59); mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
     assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
 
 

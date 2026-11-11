@@ -113,6 +113,13 @@ the token could then log in and press for the person. The honest boundary is in 
 `docs/PLATFORM.md`: an AI that can run commands on the person's own machine can do what the person
 can; the gate stops the AI clients that reach the platform only over MCP.
 
+**Note (dev-mode-launch, 2026-11-11).** Constitution 8.0.0 adds a way for a yes that is not one of
+the channels above: the person's own SU budget, recorded as `BUDGET`. It is a yes given in advance,
+set by the person on the settings page only; the action layer alone may record it, for a `launch`,
+`resume`, `relaunch` or `cancel` on a site counted in SU and inside both limits, and it refuses
+`BUDGET` when an entry passes it in as the confirming channel. The three channels and everything
+else in this record stand as they were (`docs/PLATFORM.md`, "A yes given in advance").
+
 ### Where the platform runs, and who is calling
 
 "One URL" and the maintainer's definition of v3.0.0 (a student in Claude Desktop runs a 16S

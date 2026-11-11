@@ -1,0 +1,28 @@
+ts	phase	decision	why	evidence	result
+2026-11-10	build	先寫實作再補測試檔（偏離先 RED 的流程）	前一段對話在補測試前就寫了實作，來不及補 RED	platform/tests/test_budget_launch.py	17 個綠
+2026-11-10	build	su.month_total 不能在 su.py 外被呼叫，加 su.month_used_at 包一層	test_env12_month_total_has_no_caller 釘住	platform/abf_platform/su.py	通過
+2026-11-10	build	憲法 8.0.0 與釘住測試改動交還 developer-agent	constitution.md 與 tests/*.sh 被 executor hook 擋（契約或閘門檔），不繞過	.specify/memory/constitution.md	BLOCKED
+2026-11-10	build	auto-send list 以唯讀連線讀 confirmations	計畫要求唯讀、fail-closed	platform/abf_platform/cli.py cmd_auto_send_list	test_bg_22 綠
+2026-11-11	build	commit 結尾用 Fable 5.2 那一行	系統提醒指定此行，只有使用者本人的指示能蓋過它	7d67679e	照做
+2026-11-11	build	測試檔改用 Edit 工具寫，不從 shell 寫	hook 擋 shell 寫契約或閘門檔，不繞過	platform/tests/test_budget_launch.py	照做
+2026-11-11	build	裁決 17 用語同步、launch skill 一句、ADR 0006 加註	憲法 8.0.0 已核可	7d67679e	完成
+2026-11-11	build	補寫 test_bg_25 到 test_bg_46	原有測試沒涵蓋 TC-001 到 TC-076 的多數案例	19221e2f	57 過 1 紅（test_bg_41）
+2026-11-11	build	拿掉 budget_post 的「兩格都填或都空」規則	專長守則：路由不得有第二套邏輯；TC-003、TC-004 要能只設一個上限	fc11a227	test_budget_launch.py 58 過
+2026-11-11	build	CHANGELOG 的 dev-mode-launch 條目移到 keep-submissions 之下	test_tc073_the_changelog_top_entry_names_the_change 釘住第一條	fc11a227	test_keep_submissions.py 綠
+2026-11-11	build	設定頁提示句拿掉「你」	test_cost_settings_finished_pages 禁用字	platform/abf_platform/web_devmode.py:25	仍紅，剩 bg_unset 一處
+2026-11-11	blocker	停下回報，不改 bg_unset 也不改禁用字清單	TC-057 要求頁面顯示「未設定＝每次都問你」，與 DESIGN.md 禁用字「你」衝突，不屬裁決 14 的「新增項目」	platform/tests/test_web_wording_sweep.py:494	BLOCKED
+2026-11-11	blocker	裁決 14 的釘住集合更新交給下一位	已用約 75 輪；34 條失敗已逐條讀過並分類	ledger.md	交接
+2026-11-11	build	bg_unset 改為「未設定＝每次都需確認」	裁決 18；DESIGN.md 禁用字「你」	f693c3d3	test_budget_launch.py、test_web_wording_sweep.py 綠
+2026-11-11	build	釘住的指令清單與兩個 CLI 快照加 auto-send	裁決 14，只加新增項目	18c08bc7	test_cli_snapshots.py、test_cli_contract.py 綠
+2026-11-11	build	釘住的路由、動作、通道、設定頁清單加預算項目	裁決 14，只加新增項目	d808c4ca	test_web_board.py 等綠
+2026-11-11	build	釘住的結構加三個欄位並重算摘要值	裁決 14；拿掉新增項目後舊摘要值不變，已驗證	a0f288ab	test_k8s_launch.py 綠
+2026-11-11	build	test_cleanup_store 的舊列比對改成「舊值相同加最後一欄 NULL」	升級後 confirmations 多 budget_note；比對更嚴不放寬，同檔第 539 行有先例	platform/tests/test_cleanup_store.py:223	test_cleanup_store.py 綠
+2026-11-11	build	budget.py 說明文字不寫 clean_work	test_cleanup_store.py:501 禁止其他模組出現該字；改程式註解不改測試	platform/abf_platform/budget.py:6	綠
+2026-11-11	build	commit 結尾用 Claude Fable 5.2 那一行	系統提醒指定，只有使用者本人的指示能蓋過	a0f288ab	照做
+2026-11-11	blocker	不改 test_no_schema_change，停下回報	它釘「schema 檔對 origin/v3 無差異」，沒有集合可加項目，要過得改判斷邏輯，裁決 14 不准	platform/tests/test_mcp_launch_pipeline.py:355	BLOCKED
+2026-11-11	blocker	全套跑一次後停下	只剩 test_no_schema_change 一條紅，需 lead 裁決	efa19405	151/152
+2026-11-11	build	test_no_schema_change 加 ALLOWED_NEW_COLUMNS，只含三個預算欄，並改成比對實際建出的資料庫結構	裁決 21 明文例外；該測試原本沒有集合，逐欄比對才能做到只加不減，文字 diff 做不到	platform/tests/test_mcp_launch_pipeline.py::test_no_schema_change	單檔 27 過
+2026-11-11	build	不 push	裁決 19、21 說要推，但派工訊息與 executor 守則說不推，由 lander 推	specs/dev-mode-launch/ledger.md	commit 留在本機
+2026-11-11	blocker	第五輪（驗收退回 TC-077、TC-081、TC-087、TC-057）不改任何檔，回報卡住	四條都要改憲法或測試合約才會過，兩者都是 executor 不准動的檔，裁決 13 也明文禁止；計畫的裁決 17、18 與合約第 136、140、146 行互相矛盾	specs/dev-mode-launch/test-case.md:136	卡住，等 lead 與 verifier
+2026-11-11	blocker	不刪 .specify/amendments/8.0.0-budget-and-workflow/	那是 lead 委派的修憲紀錄；單獨刪掉 TC-087 仍不會過，若 lead 決定保留 Part B 還用得到	5894113f	保留，交 lead 裁決
+2026-11-11	blocker	不把 TC-057 的合約文字還原成 be5f8bc8 的版本	還原也是改合約檔；還原後「每次都問你」又會撞 DESIGN.md 禁用字與 test_web_wording_sweep，要由 verifier 重出這一題	794166e4	不動，交 verifier

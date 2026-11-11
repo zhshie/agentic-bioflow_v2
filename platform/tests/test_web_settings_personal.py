@@ -80,7 +80,7 @@ def test_personal_section_has_two_switches(w):
     text, mid = mid_of(c)
     sec = personal(mid)
     assert "逐步模式" in sec and "開發模式" in sec and "之後開放" not in sec and sec.count("<button") == 2
-    assert re.findall(r"<h2>(.*?)</h2>", mid) == ["使用前檢查", "運算環境", "憑證", "密碼與金鑰", "個人", "營運者後台", "角色（老師／學生）"]
+    assert re.findall(r"<h2>(.*?)</h2>", mid) == ["使用前檢查", "運算環境", "憑證", "密碼與金鑰", "個人", "預算內免逐次確認", "營運者後台", "角色（老師／學生）"]      # dev-mode-launch: the budget section follows 個人
 
 
 def test_defaults_step_on_dev_off(w):
@@ -298,7 +298,7 @@ def test_refusal_sentence_in_top_flash(w):
     r = post(c, "role", "1", csrf=token(c, "dev_mode"))
     mid = pane(r.text, "middle")
     assert r.status_code == 400 and re.search(r'<h1>設定</h1><p class="bad">', mid)
-    assert len(re.findall(r"<h2>", mid)) == 7 and "Traceback" not in r.text and "role" not in re.search(r'<p class="bad">(.*?)</p>', mid, re.S).group(1)
+    assert len(re.findall(r"<h2>", mid)) == 8 and "Traceback" not in r.text and "role" not in re.search(r'<p class="bad">(.*?)</p>', mid, re.S).group(1)
 
 
 def test_refusal_keeps_current_values(w):
@@ -463,7 +463,7 @@ def test_store_adds_only_two_integer_columns(w):
     cols = {r[1]: r[2] for r in con.execute("PRAGMA table_info(users)")}
     con.close()
     assert cols["step_mode"] == "INTEGER" and cols["dev_mode"] == "INTEGER"
-    assert set(cols) == {"id", "name", "lab", "created_at", "disabled_at", "password_hash", "temp_until", "step_mode", "dev_mode"}
+    assert set(cols) == {"id", "name", "lab", "created_at", "disabled_at", "password_hash", "temp_until", "step_mode", "dev_mode", "auto_su_single", "auto_su_month"}      # dev-mode-launch: the two SU limits
 
 
 def test_flags_start_no_jobs(w):

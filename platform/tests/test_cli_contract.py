@@ -118,6 +118,8 @@ MATRIX = dict([
          fail=([USER_BOB], ["runs", "assign", "r1", "--user", "zed"])),
     leaf("runs offer-cleanup", ["runs", "offer-cleanup", "--bogus"], happy=([], ["runs", "offer-cleanup", "--all"]),
          fail=([], ["runs", "offer-cleanup"])),
+    leaf("auto-send list", ["auto-send", "list", "--bogus"], happy=([], ["auto-send", "list"]),      # dev-mode-launch: the BUDGET sends, read only
+         fail=([], ["auto-send", "list", "--since", "yesterday"])),
     leaf("dataset register", ["dataset", "register"], happy=([], ["dataset", "register", "--name", "p", "--version", "v1",
                                                                  "--samplesheet", "s.csv", "--file", "a_R1.fq.gz"]),
          fail=([], ["dataset", "register", "--name", "p", "--version", "v1", "--samplesheet", "nosuch.csv", "--file", "a"])),

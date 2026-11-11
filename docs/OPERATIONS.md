@@ -126,6 +126,7 @@ All of these run as the operator on the platform host.
 | `abf-platform rebuild` | Drop the index and build it again from Nextflow's records. |
 | `abf-platform runs assign` | Give a run that nobody owns to a user (`--user`; changing an existing owner needs `--force`). |
 | `abf-platform runs offer-cleanup` | Offer the owner of a run that succeeded a clean-up request for its work folder (`RUN ...` or `--all`, `--user` to narrow). It only previews unless you add `--apply`; with it only pending requests are written, and nothing is deleted until the owner presses send on the confirmation page. |
+| `abf-platform auto-send list` | List the sends that went through on a person's own SU budget (channel `BUDGET`), one line each, oldest first: time, user, kind, run, confirmation id, note. `--since ISO` narrows it. It only reads. |
 
 ### Public URL (progress reports)
 

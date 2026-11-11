@@ -49,6 +49,9 @@ WEB_ONLY = {
     # 012a-settings-page: the person's own two switches; no MCP tool, so no AI can turn development mode on or off for anyone
     "get_my_settings": "網頁專用唯讀 (GET /settings): the caller's own step-by-step and development-mode flags; reads only; no MCP tool",
     "set_my_setting": "寫入需在網頁按鈕確認 (POST /settings/personal, the PAGE channel); no MCP tool",
+    # dev-mode-launch (constitution 8.0.0): the person's own two SU limits; no MCP tool, so no AI can set or read a limit
+    "get_my_budget": "網頁專用唯讀 (GET /settings): the caller's own two SU limits; reads only; no MCP tool",
+    "set_my_budget": "寫入需在網頁按鈕確認 (POST /settings/budget, the PAGE channel); no MCP tool",
     # pipe-reg-store: the registration record's actions; no web route yet, pipe-reg-settings-ui 接上; no MCP tool
     "list_pipeline_registrations": "暫列，pipe-reg-settings-ui 接上 (no route yet): the caller's pipeline registrations; reads only; no MCP tool",
     "list_registered_pipelines": "暫列，pipe-reg-launch-filter 接上 (no route yet): the caller's registered pipeline versions; reads only; no MCP tool",
@@ -63,7 +66,7 @@ OWED_BEFORE_012B = {"list_compute_envs", "get_compute_env", "list_agents", "list
 # v3 (keep-submissions, resume/relaunch): request_forget, request_resume, request_relaunch are what the tools forget, resume, relaunch call; forget_check and keep_screen are helpers; the FORGET_* and RUN_NOT_FOUND words are constants.
 INTERNAL = {"offer_cleanup", "offer_cleanups", "request_pipeline_launch", "request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
             "person_at", "caller_area", "confined_samplesheet", "read_confined_samplesheet", "forget_check", "keep_screen",
-            "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "CHAT", "TERMINAL", "DEFAULT_WEB_BASE",
+            "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "CHAT", "BUDGET", "TERMINAL", "DEFAULT_WEB_BASE",
             "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND",
             # #138 read_task_log words, and estimate_su (a v3 helper with no MCP tool, TC-029, and no web route)
             "RUN_NOT_FOUND_TEXT", "READ_WHICH", "NO_WORKDIR", "LOG_NOT_FOUND", "estimate_su", "READ_CHARS",

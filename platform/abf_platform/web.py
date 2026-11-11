@@ -67,7 +67,7 @@ from starlette.responses import HTMLResponse, PlainTextResponse, RedirectRespons
 from starlette.routing import Route
 
 from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
-from . import actions, oauth, store, web_board, web_cost, web_launch, web_refusal, web_settings
+from . import actions, budget, oauth, store, web_board, web_cost, web_launch, web_refusal, web_settings
 from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
@@ -1185,7 +1185,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                  for e in envs if e.get("platform") == web_settings.SLURM_TYPE}      # what each Slurm site last reported it has installed (reads only)
         return HTMLResponse(web_settings.render(user["name"], csrf(sid, "logout"), runs, lang, envs, csrf(sid, "settings-pipeline"), flash, given,
                                                 lists, csrf(sid, "settings-inventory"), actions.get_my_settings(tokens_path, caller=caller),
-                                                csrf(sid, "settings-personal"), store.has_live_pat(tokens_path, user["user_id"])),
+                                                csrf(sid, "settings-personal"), store.has_live_pat(tokens_path, user["user_id"]),
+                                                dict(actions.get_my_budget(tokens_path, caller=caller), hosted=budget.is_hosted()), csrf(sid, "settings-budget")),
                             status_code=code, headers=_HEADERS)
 
     async def settings(request):
@@ -1216,6 +1217,33 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if not done.get("ok"):
             return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "fail", text=t["pref_failed"]), None, 400)
         return RedirectResponse("/settings?notice=personal-saved%s" % ("&lang=en" if lang == "en" else ""), status_code=303, headers=_HEADERS)
+
+    # ---- budget (constitution 8.0.0): the person's own two SU limits, saved only from their own page with the PAGE channel.
+    async def budget_post(request):
+        lang = web_board.pick_lang(request.query_params.get("lang"))
+        if not same_origin(request):
+            return pf_refused(lang, "foreign")
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        form = await body_of(request)
+        lang = web_board.pick_lang(form.get("lang"))
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        t = web_settings.words(lang)
+
+        def number(v):
+            v = str(v or "").strip()
+            return None if v == "" else float(v)       # a ValueError says the box is not a number
+        try:
+            single, month = number(form.get("single")), number(form.get("month"))
+            if not _same(form.get("csrf", ""), csrf(sid, "settings-budget")) or budget.is_hosted():
+                raise ValueError("refused")
+            done = actions.set_my_budget(tokens_path, single, month, confirmed_by=actions.PAGE, caller=caller)
+        except ValueError:
+            done = {"ok": False}
+        if not done.get("ok"):
+            return await settings_page(sid, user, caller, lang, lambda envs: web_settings.make_flash(envs, "fail", text=t["bg_bad"]), None, 400)
+        return RedirectResponse("/settings?notice=budget-saved%s" % ("&lang=en" if lang == "en" else ""), status_code=303, headers=_HEADERS)
 
     # ---- settings-register-pipeline: register or remove a pipeline version on the person's own compute environment, in two steps.
     # Step one only checks (check_site_pipeline_change reads) and shows what will change; step two, after the person presses the button, is the
@@ -1419,6 +1447,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
                             Route("/settings/personal", personal_post, methods=["POST"]),
+                            Route("/settings/budget", budget_post, methods=["POST"]),
                             Route("/settings/pipelines", pipelines_post, methods=["POST"]),
                             Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]),
                             Route("/settings/inventory", inventory_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),

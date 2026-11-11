@@ -81,7 +81,7 @@ has "TC-026 development lead merges after the maintainer's yes" "$T/gov" 'develo
 has "TC-027 supersedes" "$T/gov" 'supersedes all other practices'
 has "TC-027 MUST NOT restate" "$T/gov" 'MUST NOT restate'
 last=$(grep -v '^[[:space:]]*$' "$CO" | tail -1)
-if [ "$last" = '**Version**: 7.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-05' ]; then echo "TC-028 version line                                                    ok"; else echo "FAIL: TC-028 got: $last"; fails=$((fails+1)); fi
+if [ "$last" = '**Version**: 8.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-11' ]; then echo "TC-028 version line                                                    ok"; else echo "FAIL: TC-028 got: $last"; fails=$((fails+1)); fi
 
 echo "== US3: PRODUCT.md =="
 has "TC-030 nano4" "$T/who" 'NCHC nano4'

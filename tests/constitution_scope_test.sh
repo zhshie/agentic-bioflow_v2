@@ -37,9 +37,9 @@ hasnt() { # hasnt <label> <file> <extended regex>
 }
 
 echo "== TC-021: the constitution =="
-has "version is 7.0.0 (2.0.0 made this change; 2.0.1, 2.1.0, 3.0.0, 4.0.0, 4.1.0, 5.0.0, 6.0.0, 6.0.1, 6.0.2, 6.1.0, 6.2.0 and 7.0.0 came after)" "$C" '**Version**: 7.0.0'
+has "version is 8.0.0 (2.0.0 made this change; 2.0.1, 2.1.0, 3.0.0, 4.0.0, 4.1.0, 5.0.0, 6.0.0, 6.0.1, 6.0.2, 6.1.0, 6.2.0, 7.0.0 and 8.0.0 came after)" "$C" '**Version**: 8.0.0'
 has "the 2.0.0 amendment entry is still there"        "$C" '### 2.0.0 (2026-10-02)'
-has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-11-05'
+has "Last Amended is the day of the latest amendment" "$C" '**Last Amended**: 2026-11-11'
 has "Ratified date is untouched"               "$C" '**Ratified**: 2026-09-28'
 # The Safety Net section opens with its scope. Read the section on its own so a
 # mention elsewhere in the file cannot satisfy these.
@@ -135,7 +135,7 @@ sn_has "TC-044: only a MAJOR amendment changes the rules"              'change o
 # mismatch this test prints the current fingerprint.
 # Input: the section as extracted into $SN above, printed with printf '%s\n',
 # carriage returns removed (tr -d '\r'), hashed with SHA-256.
-PINNED_SN_SHA256=ee51f3e242ab5ccef38a8e449aed544b98bf10802c6507ab5999c8143309f2b4
+PINNED_SN_SHA256=8a59945b56b093823dd07c7441335266693c99623391917dbbf74ad114caa321
 sha256_stdin() { # first hash tool that exists; none at all is a failure, never a pass
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
   elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
@@ -289,7 +289,7 @@ if [ -z "$E4" ]; then bad "TC-E4: 6.0.2 entry exists"; else
 fi
 # TC-E5
 LASTV=$(grep -v '^[[:space:]]*$' "$C" | tail -1)
-if [ "$LASTV" = '**Version**: 7.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-05' ]; then ok "TC-E5: version line is last and exact"; else bad "TC-E5: version line is last and exact" "got: $LASTV"; fi
+if [ "$LASTV" = '**Version**: 8.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-11' ]; then ok "TC-E5: version line is last and exact"; else bad "TC-E5: version line is last and exact" "got: $LASTV"; fi
 # TC-E6
 for t in constitution_6_test constitution_checks_exist_test; do
   E6OUT=$(bash "tests/$t.sh" 2>&1) && ok "TC-E6: $t.sh passes" || bad "TC-E6: $t.sh passes" "$(printf '%s\n' "$E6OUT" | grep -E 'FAIL|NO CHECK|DANGLING|SENTENCE' | head -3 | tr '\n' '|')"

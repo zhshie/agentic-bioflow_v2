@@ -9,6 +9,7 @@ argument-hint: [pipeline] [path to input data]
 > below that uses `tw` (the Seqera command line) is the v2 flow and applies to v2
 > only. The v2 text is kept as it was for people still on v2 (`docs/MIGRATION.md`).
 > On v3 the MCP `launch` only asks; in a client with no form the person's own yes may come in the chat: call `launch` again with the `request_id` it returned and `user_confirmed=true`, only after they answered.
+> If `launch` answers that it was sent inside the person's own SU budget (`channel: BUDGET`, constitution 8.0.0), tell the person so with the numbers it gives and do not ask again; you can never set or change that budget, only the person can, on the settings page.
 
 Paths below such as `scripts/...` and `docs/...` are this plugin's own files,
 never the user's working directory. Installed as a plugin they are under

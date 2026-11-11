@@ -39,7 +39,18 @@ exists.
   client holds the person's token and declares forms, so a client program an AI controls can
   answer it: the token is what must be kept where an AI cannot read it. Over stdio there is no
   caller, so the same-user check does not apply there; over HTTP and on the page there always
-  is one. A file that submits is allow-listed by the
+  is one. One yes MAY be given in advance (BUDGET; it is off until the person turns it on): the
+  person, logged in on the platform's own settings page, sets two limits of their own in the
+  site's service units (SU), a single-send limit and a monthly limit. While both are set and above zero, a launch, a
+  resume or a relaunch that an AI asks for on a site whose use is counted in SU is queued
+  without a new answer only when its estimate is not above the single-send limit and that
+  person's own use this month plus the estimate is not above the monthly limit; a cancel of a
+  run on such a site is queued the same way. Whatever is unset, zero, over a limit or cannot be worked out goes back to the
+  four channels. A send that a cloud provider bills, a `forget` and the clearing of a work
+  directory are never on the budget, and a deployment marked as hosted never takes it. Only
+  the person can set or raise the limits, and only on that page: no tool, token, chat model or
+  settings file can. It is weaker than a yes for each send: the person agreed to an amount,
+  not to this run, and the estimate comes from earlier runs and can be wrong. A file that submits is allow-listed by the
   check together with the test that refuses an unconfirmed launch; nothing else submits. After
   the hand-off, everything known about the run comes from Nextflow's records. Where the backend
   is Seqera, the command layer follows Seqera's nouns (compute environment, then pipelines →
@@ -187,17 +198,28 @@ plan, and change only by a MAJOR amendment of this constitution.
 - A launch command is shown in full and waits for explicit confirmation before it runs
   (`hooks/confirm_launch.sh` in the Claude Code kit; on the platform, the gate in
   `platform/abf_platform/actions`, which takes a person's yes only from the terminal, the form
-  of an MCP client, the confirmation page or the person's own reply in the chat).
+  of an MCP client, the confirmation page or the person's own reply in the chat). The one
+  exception is the yes a person gave in advance by setting their own two SU limits on the
+  settings page (BUDGET, principle I.2): on the platform, a send inside both limits on a site
+  whose use is counted in SU runs on that yes, and the platform records it with the estimate
+  and the limits. Outside the limits, or where either is unset, the rule holds as before.
+  `hooks/confirm_launch.sh` has no such exception.
 - Every write tool of the platform (today `launch`, `launch_pipeline`, `cancel`, `resume`, `relaunch` and `forget`) refuses
   until a person has answered on one of those four channels; a token, a pending request or the
   model's own answer is never that answer. A chat reply counts only as the person's own, relayed with the
-  request id and `user_confirmed=true`. A new write tool joins this rule with its own
+  request id and `user_confirmed=true`. The only other yes is BUDGET (principle I.2), for a
+  launch, a resume, a relaunch or a cancel inside the two SU limits the person set on their
+  own settings page: it never covers `forget`, the clearing of a work directory, or a send
+  that a cloud provider bills, and it is never accepted from a caller: only the platform's own
+  gate records it, after it has worked out that the request is inside both limits, and what
+  it cannot work out is asked as before. A new write tool joins this rule with its own
   refusal test before it ships.
   *Check:* `platform/tests/test_actions_layer.py` (`test_tcb04_*` to `test_tcb08_*`),
   `platform/tests/test_human_channel.py` (`test_tch09_*`, `test_tca14_*`),
   `platform/tests/test_resume_entrypoints.py` (`test_tc142_*`, `test_tc144_*`),
   `platform/tests/test_keep_submissions.py` (`test_tc034_*`, `test_tc037_*`, `test_tc038_*`),
-  `platform/tests/test_chat_confirm.py` (`test_tcm_*`), run by `tests/run_all.sh` (through its four platform parts).
+  `platform/tests/test_chat_confirm.py` (`test_tcm_*`),
+  `platform/tests/test_budget_launch.py` (`test_bg_*`), run by `tests/run_all.sh` (through its four platform parts).
 - Credentials and personal details live only in the deployment's own settings area, readable by
   the owner only; never printed, never in git, never in a params file. The plugin never fills in one
   member's credential from another member's settings: it asks the user for the value.
@@ -257,6 +279,24 @@ plan, and change only by a MAJOR amendment of this constitution.
   touches a protected path (`.github/`, hooks, this constitution, `plugin.json`,
   `platform/abf_station/`) also carries a proof of what else it can affect and passes a second,
   adversarial review before it is merged.
+  Since 8.0.0 three things are written down, and none of them replaces the maintainer's yes
+  wherever this rule asks for it. (a) Acceptance on a real site (a run on a real cluster or in a
+  real cloud account) MAY take place after the merge: CI and the independent acceptance still
+  come first, the pull request lists each real-site check that is still owed, a change is not
+  called done and is not released while one is owed, and a real-site check that fails reopens
+  the change. (b) When a task fails or is sent back, a ruling agent MAY rule on it in place of
+  the development lead: an agent that runs without a conversation, is neither the executor nor
+  the reviewer of that task, and writes each ruling down with its reason. It MUST NOT rule on
+  spending money, credentials or keys, permissions, this constitution, a release, or the
+  protected hooks, nor on anything else this rule keeps for the maintainer's yes; those go to
+  the maintainer himself, always. (c) A change that touches a protected path MAY be merged
+  automatically, without the development lead merging it by hand, only when the pull request
+  carries the written record that the adversarial review passed on the very commit that is
+  merged, made by a reviewer that is neither the author nor the first reviewer. This never
+  applies to an amendment of this constitution, a release, a modified or removed requirement,
+  or anything that loosens the Safety Net; and where the record is missing, or the review is
+  in doubt about any of these, the change waits for the development lead, or for the
+  maintainer where his yes is needed.
 
 ## Amendments
 
@@ -754,6 +794,103 @@ before. The browser chat page does not offer the two new arguments to its model.
 for a yes to be given).
 **Approval.** The maintainer approved the full text of this amendment in his own words on 2026-11-06 (「好」), after it was explained to him that the channel is the weakest of the four; the development lead merges the pull request after CI is green and the acceptance passes.
 
+### 8.0.0 (2026-11-11): a yes given in advance through the person's own SU budget; real-site acceptance, the ruling agent and automatic merging of a protected path
+
+**Rationale.** This amendment has two parts. Part A is about the product. During acceptance on
+NCHC nano4 every send waited for the maintainer to press yes, and he became the bottleneck. On
+2026-10-13 he said 「設計成在開發階段你可以自由送出，實際產品再改回來。取消直接開放」, and on
+2026-11-03 「開發模式讓 AI 直接送出是對的」. On 2026-11-07 he settled the shape, as the
+development lead relayed it (a relay, not his recorded words): inside an SU budget on nano4 an
+AI's send needs no yes each time; anything a cloud bills always needs one; the person sets the
+two thresholds on the settings page, a single-send one and a monthly one; with none set,
+everything is asked as before. The yes is therefore one the person gives in advance, for an
+amount, and this entry says plainly that such a yes is weaker than a yes for each send. Part B is
+about how this repository is developed. The development loop stopped whenever a failed task
+waited for the development lead, who exists only while the maintainer has a conversation open,
+and acceptance on a real site waited for a connection to the site that only he can open. On
+2026-11-10 the maintainer approved three changes to the Development Workflow, again as relayed
+by the development lead: acceptance on a real site may come after the merge; a failure may be
+handled by a ruling agent; a protected path may be merged automatically after the adversarial
+review.
+
+**What changes.**
+- Principle I.2 gains one yes that is given in advance, BUDGET. It is off until the person turns
+  it on: the person, logged in on the platform's own settings page, sets a single-send limit and
+  a monthly limit in SU. While both are set and above zero, a launch, a resume or a relaunch that
+  an AI asks for on a site whose use is counted in SU (today NCHC nano4) is queued without a new
+  answer only when its estimate is not above the single-send limit and that person's own use
+  this month plus the estimate is not above the monthly limit. The platform records such a send
+  as BUDGET with the time, the person, the estimate and the two limits, and
+  `abf-platform auto-send list` prints every one of them.
+- Whatever is unset, zero, over a limit or cannot be worked out goes back to the four channels
+  and is asked as before: a missing limit, a pipeline with no earlier successful run on that
+  site to estimate from, a month's use that cannot be added up, any error. A limit of 0 allows
+  nothing.
+- A send that a cloud provider bills is never on the budget, whatever the limits say. `forget` is
+  never on the budget, and the clearing of a work directory is never on the budget. A deployment
+  marked as hosted never takes a BUDGET yes.
+- Only the person can set or raise the limits, and only on that page: no tool, token, chat model
+  or settings file can, and no command of `abf-platform` writes them. One person cannot read or
+  set another's.
+- What is honestly weaker. It is weaker than a yes for each send: the person agreed to an amount,
+  not to this run. The estimate is the largest SU of that pipeline's earlier successful runs on
+  that site, so the estimate can be wrong. Once both limits are set, a cancel of a run on such a
+  site is no longer asked for each time (a cancel spends nothing); a cancel of a run in a cloud
+  environment is still asked. When an automatic resume is built it will count toward the same
+  limits; none is built by this amendment.
+- Its relation to 5.0.0 and 7.0.0. The sentence "a pending request, a token, or any answer the
+  model itself can give is none of them" still holds for the four channels and is left as it was
+  written. BUDGET is not a fifth channel a person operates at the moment of sending: it is the
+  person's own earlier act on the settings page, and only the platform's gate can record it. A
+  caller that hands the word BUDGET to a write tool is refused like any other caller without a
+  person's yes.
+- The Safety Net's launch rule and write-tool rule each name this one exception and its limits;
+  the line that lists the write tools is unchanged, and the check line of the write-tool rule
+  adds `test_bg_*` of `platform/tests/test_budget_launch.py`. No other Safety Net rule changes:
+  the rules on deleting data, on clearing `work/`, on credentials and on a credential that
+  arrives inside received data are word for word what they were, and `hooks/confirm_launch.sh`
+  has no budget exception.
+- Development Workflow, three additions to its last rule, none of which replaces the
+  maintainer's yes where the rule asks for it. (a) Acceptance on a real site may take place
+  after the merge; CI and the independent acceptance still come first, the pull request lists
+  what is still owed, a change is not called done and is not released while a check is owed, and
+  a failed check reopens it. (b) A ruling agent, which is neither the executor nor the reviewer
+  of the task, may rule on a failed task in place of the development lead; it never rules on
+  spending money, credentials or keys, permissions, this constitution, a release or the
+  protected hooks. (c) A change to a protected path may be merged automatically only with the
+  written record that the adversarial review passed on the very commit that is merged; never an
+  amendment, a release, a modified or removed requirement, or anything that loosens the Safety
+  Net.
+- What part B loosens, said plainly. (a) lets branch `v3` hold a change that no real site has
+  run yet. (c) removes the development lead's merge by hand for the paths that carry the Safety
+  Net's gates (`hooks/`, `platform/abf_station/`), so whether such a change loosens the Safety
+  Net is then judged by the adversarial review and no longer also by the development lead. No
+  Safety Net rule is reworded by part B.
+
+**Sync Impact Report.** Updated together: `docs/PLATFORM.md` (the budget yes beside the three
+MCP ways), `docs/PRINCIPLES.md` (history), `docs/OPERATIONS.md` (`auto-send list`),
+`docs/TESTING.md` (the manual check that this pull request is a draft), `CHANGELOG.md`, the
+tests that pin the version and the Safety Net's fingerprint (`tests/charter_v4_workflow_test.sh`,
+`tests/constitution_scope_test.sh`, `tests/platform_direction_docs_test.sh`), the new
+`tests/budget_doc_test.sh`, and the record in `.specify/amendments/8.0.0-budget-and-workflow/`.
+`README.md` and `CLAUDE.md` cite the version of the rules they quote (6.0.0, 6.0.1), which
+this amendment does not change. The workspace of the development lead holds the ruling agent
+and the automatic merge; it is not in this repository and is brought in line there.
+
+**Impact on existing deployments.**
+- The platform's databases are upgraded in place the first time they are opened: `users` gains
+  two empty columns for the limits and `confirmations` gains one for the note. An empty limit
+  means not set.
+- A deployment where nobody sets both limits behaves exactly as under 7.0.0: every send is
+  asked for, and no BUDGET row is ever written.
+- The settings page shows two number fields; `abf-platform auto-send list` is a new command that
+  only reads. No MCP tool is added or changed, and no tool description changes.
+- Part B changes only how this repository is developed.
+
+**Version.** MAJOR, under Governance: Principle I.2 and two Safety Net rules are redefined (a yes
+may be given in advance), and the Development Workflow is materially changed.
+**Approval.** Approved by the maintainer on 2026-11-11: A (budget channel), B(a), B(b), B(c) — all yes; B(c) was kept at his explicit choice over the lead's recommendation to defer. His words, as the development lead recorded them: 「全部好」.
+
 ## Governance
 
 - This constitution supersedes all other practices and documents in this repository.
@@ -769,4 +906,4 @@ for a yes to be given).
   check the principles and the Safety Net. A violation needs a written justification in the plan,
   or the change stops.
 
-**Version**: 7.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-05
+**Version**: 8.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-11

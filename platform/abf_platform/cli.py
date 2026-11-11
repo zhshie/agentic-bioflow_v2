@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http] | runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...]"""
+"""abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http] | runs assign|offer-cleanup | auto-send list [--since ISO] | dataset register|list|show | rebuild [<folder>...]"""
 import argparse
 import asyncio
 import json
@@ -650,6 +650,50 @@ def cmd_dataset_show(args):
     return 0
 
 
+def _bundle_run_name(bundle_json):
+    try:
+        b = json.loads(bundle_json) if bundle_json else {}
+        b = b.get("bundle", b) if isinstance(b, dict) else {}
+        r = b.get("run_name") or ((b.get("resume") or b.get("relaunch") or {}).get("origin") or {}).get("run_name") or b.get("run")
+        return r if isinstance(r, str) else "-"
+    except (ValueError, AttributeError):
+        return "-"
+
+
+def cmd_auto_send_list(args):
+    """The sends that went through on a person's own SU budget (channel BUDGET), one line each for the daily summary. Read only."""
+    import datetime
+    since = 0
+    if args.since:
+        try:
+            since = datetime.datetime.fromisoformat(args.since).timestamp()
+        except ValueError:
+            _err("rejected: --since is not an ISO time: %s (--since 不是 ISO 時間); nothing was listed" % args.since,
+                 why="時間格式不對", next="用 2026-11-10 或 2026-11-10T08:00:00 這樣的寫法")
+            return 1
+    index = store.default_index_path()
+    state = store.default_platform_path(index)
+    names = store.user_names(store.default_tokens_path(index))
+    rows = []
+    if os.path.exists(str(state)):
+        con = sqlite3.connect("file:%s?mode=ro" % str(state).replace("\\", "/"), uri=True, timeout=30)
+        try:
+            if "budget_note" in {r[1] for r in con.execute("PRAGMA table_info(confirmations)")}:
+                rows = con.execute("SELECT confirmed_at, caller_user_id, kind, bundle_json, id, budget_note FROM confirmations "
+                                   "WHERE channel = 'BUDGET' AND confirmed_at IS NOT NULL AND confirmed_at >= ? ORDER BY confirmed_at, id",
+                                   (since,)).fetchall()
+        finally:
+            con.close()
+    if not rows:
+        _say("no budget-approved sends")
+        return 0
+    for at, uid, kind, bundle_json, rid, note in rows:
+        when = datetime.datetime.fromtimestamp(at, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _say("\t".join([when, names.get(uid, "?"), kind or "-", _bundle_run_name(bundle_json), rid,
+                        (note or "").replace("\t", " ").replace("\n", " ")]))
+    return 0
+
+
 def cmd_runs_assign(args):
     """Give a run that nobody owns to a user (116b). Terminal only: it writes launches.user_id of the newest row of the run and nothing else."""
     user = store.user_by_name(store.default_tokens_path(), args.user)
@@ -897,6 +941,12 @@ def build_parser():
     ro.add_argument("--list", action="store_true", help="only list what would be offered (the default)")
     ro.add_argument("--apply", action="store_true", help="write the requests; without it nothing is written")
     ro.set_defaults(func=cmd_runs_offer_cleanup)
+
+    asd = sub.add_parser("auto-send", help="the sends that went through on a person's own SU budget (read only)")
+    assub = asd.add_subparsers(dest="auto_send_command", required=True)
+    asl = assub.add_parser("list", help="list them, one per line (time, user, kind, run, confirmation id, note), oldest first", allow_abbrev=False)
+    asl.add_argument("--since", help="only the sends at or after this ISO time")
+    asl.set_defaults(func=cmd_auto_send_list)
 
     da = sub.add_parser("dataset", help="datasets: a name, a version, a samplesheet and the places of its files (the platform keeps names and places only)")
     dsub = da.add_subparsers(dest="dataset_command", required=True)
