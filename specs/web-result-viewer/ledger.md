@@ -108,3 +108,13 @@ TC-095–098 為 UNVERIFIED(operator)，合併後由 lead 驗。TC-099 meta-refr
   2. **另開任務改全站自動重整的作法**（例如改成使用者自己按「重新整理」，或可關掉的重整）：要動 `DESIGN.md:93`、`web_board.py:958`、合約 TC-029／037／068 與釘住重整的既有測試。本件等那件做完再驗 TC-099，或先以選項 1 過關。
   3. 只處理等待頁（HTTP `Refresh` 標頭）：我不建議，理由如上。
 - 狀態：HEAD 的程式與測試自 `290f7474` 起沒有變動（本段與 `decisions.tsv` 是唯一差異）。本輪沒有重跑全套。`executor-status` 寫 BLOCKED。
+
+## 重派 20261112-0040-L6-web（2026-11-12，依「裁決（lead，11-11 深夜，接 TC-099）」方案 (1)）
+- [x] 裁決選方案 (1)：合約豁免基準就有的自動重整，延伸到預覽等待頁；TC-029／037／068 的 15 秒重整照舊；不得改頁面行為。所以本輪**沒有程式或測試改動**，修正輪七的 BLOCKED 由這則裁決解除。
+- 核對（本輪重新查，不是照抄）：
+  1. `platform/abf_platform/` 內 `http-equiv` 只出現一處：`web_board.py:958`（基準 `d4dd182e` 就有的那一行）。本件對基準的差異沒有新增任何 `<meta http-equiv="refresh">`；唯一碰到重整的一行是 `render_file_page` 把 `refresh_url` 的路徑由寫死的 `/run/file` 改成 `route` 參數（預覽等待頁重整回 `/run/preview`，TC-037／068 要求），用的是同一個既有 refresh。
+  2. `web_preview.py` 沒有自己的 refresh；PNG、報告、too_large、不提供預覽、站台連不上五種預覽頁沒有 refresh，axe serious／critical 為 0（`screenshots/summary.md:44-46`）。
+  3. 等待頁、輸出頁、完成頁各一筆 `meta-refresh`，都是那同一個既有 refresh（`screenshots/summary.md:14-15,42`、`base-summary.md`），屬裁決豁免範圍；沒有其他 serious／critical。
+- 留給 verifier 的事：合約檔第 135 行（TC-099，手動）的預期欄還是舊字「沒有 serious 或 critical 項」，沒有豁免字樣。裁決說由 verifier 改；executor 不能改合約檔，所以沒有動。
+- 本段所在的 commit 是最終 HEAD；`CI=true` 全套在這個 commit 上跑，結果寫在 `executor-status` 與 executor 回報。
+- 尚未推送，由 lander 推同一分支（PR 384，不 force）。TC-053 至 TC-057 的瀏覽器層與 TC-095 至 TC-098 仍是「待實機驗」（UNVERIFIED-OPERATOR）。
