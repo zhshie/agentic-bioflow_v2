@@ -58,3 +58,12 @@
 - 整包 pytest 其餘已知與本任務無關的紅：Nextflow 釘住的 25 個 error（只能經 `tests/platform_test.sh` 跑）、`test_aws_upload`／`test_azure_upload`／`test_byte_channel_a` 整包跑時偶發（單獨跑綠）。
 - 沒有 push、沒有開 PR、沒有動憲法與三條憲法釘住測試。
 - 全套（`abf-fast-suite … --retry-failed-once`）在 efa19405 跑過一次：151/152。唯一紅的是 `platform_shard_5_test.sh`，裡面只有 `test_mcp_launch_pipeline.py::test_no_schema_change` 一條失敗（1 failed, 1031 passed），重試後仍紅。其餘釘住測試全綠。
+
+## 第四輪（run 20261111T0712-L48-dev-mode，裁決 21）
+- [x] 裁決 21：`platform/tests/test_mcp_launch_pipeline.py::test_no_schema_change`（該檔的 TC-032）。原本沒有可加項目的集合，所以新增 `ALLOWED_NEW_COLUMNS`，內容只有三項：`tokens.users.auto_su_single`、`tokens.users.auto_su_month`、`state.confirmations.budget_note`。
+  - 原斷言（schema 檔對 `origin/v3` 三點比較無差異）仍先跑；無差異就直接過（合併後回到原狀）。
+  - 有差異時：`migrations`、`schema.sql` 仍必須零差異；`store.py` 不得有任何刪除行（numstat 刪除數為 0）；用 merge-base 的 `store.py` 與本分支的 `store.py` 各建三個資料庫，逐表逐欄比對，只允許多出上列三欄，表的增減、欄的刪除或型別變動、其他新欄都算失敗。
+  - 新增兩條測試：`test_schema_allowance_is_only_the_three_budget_columns`（釘住集合內容與只加不減）、`test_schema_at_reads_the_working_tree_and_holds_the_budget_columns`。既有的 `test_schema_pin_*` 四條沒動。
+  - 單檔 27 個全過。
+- 沒有 push：裁決 21 與 19 要求推送，但本輪派工訊息與 executor 守則都寫明不得 push（由 lander 推）。本機 commit 留在分支上。
+- 未決（沿用第一輪記錄）：憲法 diff 含 Development Workflow 一條，與 TC-081 的範圍不符，仍待 lead 裁決；本輪沒有動憲法。

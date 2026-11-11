@@ -21,3 +21,5 @@ ts	phase	decision	why	evidence	result
 2026-11-11	build	commit 結尾用 Claude Fable 5.2 那一行	系統提醒指定，只有使用者本人的指示能蓋過	a0f288ab	照做
 2026-11-11	blocker	不改 test_no_schema_change，停下回報	它釘「schema 檔對 origin/v3 無差異」，沒有集合可加項目，要過得改判斷邏輯，裁決 14 不准	platform/tests/test_mcp_launch_pipeline.py:355	BLOCKED
 2026-11-11	blocker	全套跑一次後停下	只剩 test_no_schema_change 一條紅，需 lead 裁決	efa19405	151/152
+2026-11-11	build	test_no_schema_change 加 ALLOWED_NEW_COLUMNS，只含三個預算欄，並改成比對實際建出的資料庫結構	裁決 21 明文例外；該測試原本沒有集合，逐欄比對才能做到只加不減，文字 diff 做不到	platform/tests/test_mcp_launch_pipeline.py::test_no_schema_change	單檔 27 過
+2026-11-11	build	不 push	裁決 19、21 說要推，但派工訊息與 executor 守則說不推，由 lander 推	specs/dev-mode-launch/ledger.md	commit 留在本機

@@ -283,9 +283,9 @@ def test_no_web_route_for_it(d, w):
 SCHEMA_PATHS = ["migrations", "abf_platform/store.py", "abf_platform/schema.sql"]
 
 
-def schema_diff(cwd, base="origin/v3"):
+def schema_diff(cwd, base="origin/v3", paths=None):
     # three dots: compare with the merge-base, so only the branch's own changes count
-    return subprocess.run(["git", "diff", "--stat", base + "...HEAD", "--"] + SCHEMA_PATHS,
+    return subprocess.run(["git", "diff", "--stat", base + "...HEAD", "--"] + (SCHEMA_PATHS if paths is None else paths),
                           cwd=str(cwd), capture_output=True, text=True).stdout
 
 
@@ -352,7 +352,108 @@ def test_no_schema_change():
         f = _fetch("v3")
     if f.returncode != 0:
         pytest.skip("cannot fetch origin/v3: " + (f.stderr or f.stdout).strip()[:200])
-    assert schema_diff(HERE.parent).strip() == ""
+    if schema_diff(HERE.parent).strip() == "":
+        return
+    # dev-mode-launch ruling 21 (constitution 8.0.0): the branch may add the three budget columns and nothing else.
+    # Everything but store.py is still pinned to no difference at all.
+    assert schema_diff(HERE.parent, paths=[p for p in SCHEMA_PATHS if p != STORE_PATH]).strip() == ""
+    # store.py: nothing of the base is removed or rewritten, and the databases it builds differ by those columns only
+    assert _git_out(HERE.parent, "diff", "--numstat", "origin/v3...HEAD", "--", STORE_PATH).split()[1] == "0"
+    base = _git_out(HERE.parent, "merge-base", "origin/v3", "HEAD").strip()
+    assert schema_violations(schema_at(base), schema_at(None)) == []
+
+
+STORE_PATH = "abf_platform/store.py"
+# The only schema additions allowed on a branch (database, table, column). Add-only: an entry here never excuses a removal or a change.
+ALLOWED_NEW_COLUMNS = {
+    ("tokens", "users", "auto_su_single"),
+    ("tokens", "users", "auto_su_month"),
+    ("state", "confirmations", "budget_note"),
+}
+
+
+def _git_out(cwd, *a):
+    return subprocess.run(["git", *a], cwd=str(cwd), capture_output=True, text=True, check=True).stdout
+
+
+def schema_at(rev):
+    """{(database, table): {column: (type, notnull, default, pk)}} of the three databases store.py builds; rev None is the working tree."""
+    import importlib.util
+    import tempfile
+    with tempfile.TemporaryDirectory() as t:
+        src = Path(t) / ("store_%s.py" % (rev or "head"))
+        text = (PKG / "store.py").read_text(encoding="utf-8") if rev is None else \
+            _git_out(HERE.parent, "show", "%s:platform/%s" % (rev, STORE_PATH))
+        src.write_text(text, encoding="utf-8")
+        spec = importlib.util.spec_from_file_location(src.stem, str(src))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        out = {}
+        for db in ("index", "state", "tokens"):
+            con = getattr(mod, "connect_" + db)(Path(t) / (db + ".db"))
+            try:
+                for (name,) in con.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").fetchall():
+                    out[(db, name)] = {r[1]: (r[2], r[3], r[4], r[5]) for r in con.execute("PRAGMA table_info(%s)" % name)}
+            finally:
+                con.close()
+        return out
+
+
+def schema_violations(base, head, allowed=ALLOWED_NEW_COLUMNS):
+    """Every way `head` differs from `base` other than a column in `allowed` being added; [] when there is none."""
+    bad = []
+    for key in sorted(set(base) | set(head)):
+        if key not in head:
+            bad.append("table removed: %s.%s" % key)
+        elif key not in base:
+            bad.append("table added: %s.%s" % key)
+        else:
+            for col in sorted(set(base[key]) | set(head[key])):
+                if col not in head[key]:
+                    bad.append("column removed: %s.%s.%s" % (key + (col,)))
+                elif col not in base[key]:
+                    if key + (col,) not in allowed:
+                        bad.append("column added: %s.%s.%s" % (key + (col,)))
+                elif base[key][col] != head[key][col]:
+                    bad.append("column changed: %s.%s.%s" % (key + (col,)))
+    return bad
+
+
+def test_schema_allowance_is_only_the_three_budget_columns():
+    # ruling 21: add-only, and only these three
+    assert ALLOWED_NEW_COLUMNS == {("tokens", "users", "auto_su_single"), ("tokens", "users", "auto_su_month"),
+                                   ("state", "confirmations", "budget_note")}
+    base = {("tokens", "users"): {"id": ("INTEGER", 0, None, 1), "name": ("TEXT", 1, None, 0)},
+            ("state", "confirmations"): {"id": ("TEXT", 0, None, 1)}}
+
+    def head(**change):
+        h = {k: dict(v) for k, v in base.items()}
+        h[("tokens", "users")].update({"auto_su_single": ("REAL", 0, None, 0), "auto_su_month": ("REAL", 0, None, 0)})
+        h[("state", "confirmations")]["budget_note"] = ("TEXT", 0, None, 0)
+        return h
+    assert schema_violations(base, base) == []
+    assert schema_violations(base, head()) == []
+    h = head()
+    h[("tokens", "users")]["other"] = ("TEXT", 0, None, 0)                  # any other new column
+    assert schema_violations(base, h) == ["column added: tokens.users.other"]
+    h = head()
+    h[("state", "users")] = {"auto_su_single": ("REAL", 0, None, 0)}        # an allowed name in another place is a new table
+    assert schema_violations(base, h) == ["table added: state.users"]
+    h = head()
+    del h[("tokens", "users")]["name"]                                      # an allowed addition never excuses a removal
+    assert schema_violations(base, h) == ["column removed: tokens.users.name"]
+    h = head()
+    h[("tokens", "users")]["name"] = ("TEXT", 0, None, 0)                   # or a change
+    assert schema_violations(base, h) == ["column changed: tokens.users.name"]
+    h = head()
+    del h[("state", "confirmations")]
+    assert schema_violations(base, h) == ["table removed: state.confirmations"]
+
+
+def test_schema_at_reads_the_working_tree_and_holds_the_budget_columns():
+    s = schema_at(None)
+    assert {"auto_su_single", "auto_su_month"} <= set(s[("tokens", "users")])
+    assert "budget_note" in s[("state", "confirmations")]
 
 
 # ---- constitution ----
