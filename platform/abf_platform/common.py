@@ -181,8 +181,10 @@ def bundle_sha256(bundle):
 # What an agent may tell the platform about itself in hello: the facts a launch screen has to show and a bundle is built from.
 # None of them is a credential; each is bounded, and a value of the wrong type is dropped. The platform stores them with this
 # function and the agent builds the same shape with it, so the two sides compare like with like.
-FACT_TEXT = {"slurm_account": 64, "reach": 16, "endpoint": 300, "forward_file": 1100, "storage_root": 1100}
+FACT_TEXT = {"slurm_account": 64, "reach": 16, "endpoint": 300, "forward_file": 1100, "storage_root": 1100,
+             "site_link": 8, "site_link_at": 40}
 FACT_FLAGS = ("platform_local",)
+SITE_LINKS = ("open", "closed", "unknown")      # the agent's own report of the shared connection to the site (mcp-site-connection-status)
 
 
 def public_url(value):
@@ -208,6 +210,8 @@ def clean_facts(facts):
     for key, limit in FACT_TEXT.items():
         v = facts.get(key)
         out[key] = v if isinstance(v, str) and 0 < len(v) <= limit else None
+    if out["site_link"] not in SITE_LINKS:      # only three words are kept: anything else is never read as open
+        out["site_link"] = None
     for key in FACT_FLAGS:
         v = facts.get(key)
         out[key] = v if isinstance(v, bool) else None

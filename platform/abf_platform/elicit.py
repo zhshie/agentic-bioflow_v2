@@ -1,4 +1,4 @@
-# Not a prompt inside the tool or a "confirm=true" argument: the model fills those in itself; a form of the MCP client is shown by the client and answered by the person at its screen, so the answer cannot come from the model.
+# Not a prompt inside the tool or a bare "confirm=true" argument (the chat channel's user_confirmed counts only with a request id the person has seen): the model fills those in itself; a form of the MCP client is shown by the client and answered by the person at its screen, so the answer cannot come from the model.
 """Asking the person through the MCP client's own form (spec 009c).
 
 A client that supports the MCP form request shows `message` to the person and returns what the person pressed. This module sends the

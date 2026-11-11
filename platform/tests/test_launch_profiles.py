@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from helpers import tool_json
+from helpers import CHAT_ARGS, tool_json
 from human_harness import World, form_answer
 from profiles_harness import EIGHT, NAMES, args_of, ask, feed, install_eight, profiles_map, tables
 from test_launch_bundle import SHEET, inputs, refused, render
@@ -412,7 +412,7 @@ def test_tc055_no_parameter_can_say_yes(w):
     launch = [t for t in tools if t.name == "launch"][0]
     props = set(launch.input_schema["properties"])
     assert "profiles" in props
-    assert not [p for p in props if re.search(r"confirm|approve|yes|send|force|skip|accept|送出|void", p)]
+    assert not [p for p in props - CHAT_ARGS if re.search(r"confirm|approve|yes|send|force|skip|accept|送出|void", p)]
     assert launch.input_schema["required"] == ["pipeline", "revision", "run_name"]
 
 
