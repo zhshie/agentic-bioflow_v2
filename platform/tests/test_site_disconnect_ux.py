@@ -164,10 +164,12 @@ def test_no_bar_when_not_fresh_closed(w, link, age):
     # TC-014, TC-015, TC-016: no bar, and the page is the same bytes as with the link open
     w.user("ann")
     set_link(w, AGENT, "open")
-    base = page(w, "ann", "/")
+    def plain(t):
+        return re.sub(r'value="[0-9a-f]{64}"', "", t)      # the csrf token differs per login
+    base = plain(page(w, "ann", "/"))
     set_link(w, AGENT, link, age=age)
-    html = page(w, "ann", "/")
-    assert "linkbar" not in html.replace(".linkbar", "") and html == base
+    html = plain(page(w, "ann", "/"))
+    assert 'class="linkbar"' not in html and html == base
 
 
 def test_bar_goes_when_open_again(w):
@@ -368,7 +370,7 @@ def test_open_command_from_on_site_is_valid_and_keepalive(tmp_path):
     assert lines
     line = lines[0]
     assert "ControlPersist=yes" in line and "ServerAliveInterval=60" in line and "ServerAliveCountMax=10" in line and "8h" not in line
-    assert jobs.valid_open_command(line, "me@example.org") is not None
+    assert jobs.valid_open_command(line, "example.org") is not None
 
 
 def test_scripts_do_not_promise_survival():

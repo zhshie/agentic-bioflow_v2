@@ -414,7 +414,7 @@ def test_style_sheet_text_is_the_one_before_this_task(rig, fk):
     assert hashlib.sha256(css.encode("utf-8")).hexdigest() == CSS_SHA256
 
 
-CSS_SHA256 = "719ce2abf9783006813e34889d8180ef2123d266168ed70e0969f8532ea1f59a"      # re-pinned by web-bugs-b (#342 columns, #343 phone targets)
+CSS_SHA256 = "15f0b560af24184065cbe6b0e6cc6cd6517cacbf1f7746ef7770b50b7b96a46c"      # re-pinned by web-bugs-b (#342 columns, #343 phone targets)
 
 
 def test_one_send_button_no_step_mode(rig, fk):

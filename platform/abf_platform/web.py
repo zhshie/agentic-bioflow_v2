@@ -67,7 +67,7 @@ from starlette.responses import HTMLResponse, PlainTextResponse, RedirectRespons
 from starlette.routing import Route
 
 from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
-from . import actions, oauth, store, web_board, web_cost, web_launch, web_refusal, web_settings
+from . import actions, oauth, site_link, store, web_board, web_cost, web_launch, web_refusal, web_settings
 from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
@@ -202,6 +202,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         user = store.web_session_user(tokens_path, sid, clock()) if sid else None
         # 012a: the development-mode banner of this request is that of this person only (set again for every request, never carried over)
         web_board.DEV_MODE.set(bool(user is not None and store.user_prefs(tokens_path, user["user_id"])["dev_mode"]))
+        # mcp-site-keepalive-disconnect-ux: the agents of this person that just said their site connection is closed (this request only)
+        site_link.SITE_DOWN_AGENTS.set(tuple(site_link.closed_agents(platform_path, user["user_id"], clock())) if user is not None else ())
         return (sid, user) if sid else (None, None)
 
     def csrf(sid, rid):

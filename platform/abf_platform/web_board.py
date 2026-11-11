@@ -16,6 +16,7 @@ import re
 import time
 import urllib.parse
 
+from . import site_link
 from . import web_devmode
 from . import web_downstream
 from . import web_finished
@@ -40,6 +41,7 @@ DEV_MODE = web_devmode.DEV_MODE
 
 STRINGS = {
     "zh": {
+        "linkbar_down": site_link.BAR_ZH,
         "refusal_site_down": "站台連線沒開，工作沒有送出。",
         "refusal_site_down_do": "平台主機 %s。請在 WSL 終端機貼上這一行，輸入 passphrase 與 OTP，然後重新呼叫 launch。",
         "refusal_site_down_nocmd": "請查看站台主機的終端機提示，照提示重新登入站台後再重新呼叫 launch。",
@@ -114,6 +116,7 @@ STRINGS = {
         "f_e_failed": "無法取得檔案，請稍後重試。",
     },
     "en": {
+        "linkbar_down": site_link.BAR_EN,
         "refusal_site_down": "The connection to the site is not open; nothing was submitted.",
         "refusal_site_down_do": "stat" "ion host %s: paste this line into a WSL terminal, enter your passphrase and OTP, then call launch again.",
         "refusal_site_down_nocmd": "check the terminal prompt of the stat" "ion host, log in to the site as it says, then call launch again.",
@@ -232,6 +235,7 @@ STYLE = (
     "code{font-family:" + MONO + "}small{font-size:12px;color:var(--muted)}"
     ".bad{color:var(--failed)}.ok{color:var(--succeeded)}"
     ".devbar{display:flex;gap:8px;align-items:center;padding:8px 16px;background:var(--lost-bg);color:var(--lost);font-weight:600}"
+    ".linkbar{display:flex;gap:8px;align-items:center;padding:8px 16px;background:var(--failed-bg);color:var(--failed);font-weight:600}"
     ".pref{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.pref form{margin:0}"
     ".narrow{max-width:640px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px}"
     ".mast{display:flex;align-items:center;gap:16px;height:40px;padding:0 16px;background:var(--ink);color:var(--surface)}"
@@ -997,7 +1001,7 @@ def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, pa
     lang = pick_lang(lang)
     t = STRINGS[lang]
     bar = ('<div class="devbar" role="status"><span aria-hidden="true">!</span><span>%s</span></div>' % esc(web_devmode.banner(lang))) if DEV_MODE.get() else ""
-    body = '%s%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), bar, _left(t, runs, run, lang, csrf, here), middle(t, lang),
+    body = '%s%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), bar + site_link.bar_html(site_link.SITE_DOWN_AGENTS.get(), lang), _left(t, runs, run, lang, csrf, here), middle(t, lang),
                                                   right(t, lang))
     return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)
 
