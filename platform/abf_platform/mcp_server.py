@@ -199,10 +199,10 @@ def _add_write_tools(server, platform_path, index_path):
     @server.tool(name="launch", annotations=_WRITES,
                  description="Ask to launch a Nextflow run on a compute environment (to continue a failed run: resume or "
                              "relaunch). This does NOT start anything: it returns a summary (sent false), a page address. The person "
-                             "answers in their form, on that page or in the chat; you cannot answer for them. After that call "
-                             "launch again with the same arguments (plus request_id and the flag once they answer). Samples: samplesheet "
+                             "answers in their form, on that page or in the chat; you cannot answer for them. Then call "
+                             "launch again with the same arguments (plus request_id and the flag, after they answer). Samples: samplesheet "
                              "(an uploaded CSV) or samplesheet_text (the CSV, at most 1 MiB). "
-                             "Or a dataset of yours (dataset, optionally dataset_version): its samplesheet is used. "
+                             "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used. "
                              "Or none, with profiles such as [\"test\"]. 站台連線掉線時會被擋。")
     async def launch_tool(ctx: Context, pipeline: Annotated[str, Field(description="The pipeline to run: an nf-core name such as nf-core/rnaseq, or a pipeline the site already has. Use it with revision, which says which release or branch to run.")], revision: str, run_name: str, samplesheet: str | None = None,
                           samplesheet_text: str | None = None, ce_name: str | None = None,

@@ -62,6 +62,21 @@ ts=2026-11-11T21:36:57+08:00 machine=DESKTOP-7J5L5BJ event=reopened
 ```
 沒有 `platform/abf_station/`、`.github/`、`hooks/`、`.specify/`、`.claude-plugin/` 的改動；沒有 `CREATE TABLE`／`ALTER TABLE`。
 
+## 全套結果與卡住的兩點（2026-11-11 重跑）
+全套第一次真的跑完是在 dcf3a8e8（前一輪寫的「綠」只跑過相關檔）。失敗的檔：`no_second_run_state_test.sh`、`platform_test.sh`、`platform_shard_2／3／5／6／7／8`。逐項：
+
+已修（在 dcf3a8e8 之後的 commit）：
+- [x] `pitfalls_format_test.sh`：條數釘 96→97；第 61 條內文補 `linkbar`、`jobs.enqueue_confirmed`（Touches 的字要出現在內文）。
+- [x] launch 的 description：前一輪為了 600 字元上限改掉了三處被別的測試釘住的字（`after they answer`、`Or name a dataset of yours…`）。現在還原這兩處，改成只動兩處沒被釘的字（`After that call`→`Then call`、`a CSV you uploaded`→`an uploaded CSV`），長度剛好 600。`test_launch_profiles`（tc058）、`test_chat_confirm`（tcm_50）、`test_dataset_launch` 已綠。
+- [x] 因新增 `.linkbar` 規則與 `linkbar_down` 字串而必然改變的釘值：`test_clean_page.py` 的 `BASE_STYLE`（前一輪打錯一碼，…841→…840，與 `STYLE_SHA256` 前 16 碼一致）；`test_web_nano4_path.py:249` 上傳頁 zh／en 雜湊、`:545` `len(STYLE)` 11742→11872；`test_web_settings_ce_mobile.py` 的 `web_board.STRINGS` 雜湊。
+- `test_aws_ce`／`test_azure_ce::test_a_missing_credential_file_says_where_to_put_it` 只在重試那一輪失敗（重試資料夾路徑較長，訊息被截），第一輪是綠的；與本件無關。
+
+**卡住，需要裁決（沒動）：**
+1. **不變量 2 的 DAEMON 閘**：`tests/no_second_run_state_test.sh` 掃到 `scripts/keepalive_log.sh:36` 的 `while :; do`，「only the allow-listed channels may (I.2)」。連帶 `test_keep_submissions.py::test_tc090_the_second_state_scan_passes`、`test_resume_edit_params_station.py::test_no_second_copy_of_run_state` 也紅。計畫（裁決 1）要一支常駐記錄迴圈，但沒有點名這支測試，也沒授權在 `DAEMON_ALLOW`（該測試檔 48 行）加一列。這是憲法閘，executor 不自行加白名單，也不改寫迴圈去避開掃描。要的裁決：准許加一列 `scripts/keepalive_log.sh|<理由>`（例如：只記錄站台連線開或關，不保存任何 run 的狀態），或改變 (6) 的做法。
+2. **用字閘**：`test_web_wording_sweep.py::test_banned_words_cover_every_zh_string_table` 不准網頁 zh 字串表出現「run」（網頁用「分析」）。計畫 (2) 與 TC-009 逐字規定的 zh 紅條文字有兩個「run」（「已在跑的 run 不受影響；新的 run 在恢復前無法送出」）。兩者不能同時成立；改字要動 TC（executor 不能改），把字串移出 `STRINGS` 則是躲閘。要的裁決：zh 文字改成「分析」（verifier 改 TC-009／010 等），或在該測試為這一鍵開例外。若改字，`test_web_settings_ce_mobile.py` 的 STRINGS 雜湊與 ledger 的畫面證據要跟著重做。
+
+下一步（接手的人）：拿到兩點裁決後照做，跑上面幾支相關檔，再跑一次全套。
+
 ## 備註
 - 計畫「允許更新」只點名 `STYLE_SHA256`；另外四個檔（test_clean_page、test_web_guided_launch_preview、test_web_resume_edit、test_web_settings_register）釘的是整頁位元組雜湊，`STYLE` 多一條規則後必然改變，所以一併重釘。`test_launch_docs.py:32` 計畫點名的是 79 行，實際釘住「8 hours」的是 32 行，只改那一句。這兩點請審查者確認。
 - 全套結果見最後一次 executor 報告與 `executor-status`。

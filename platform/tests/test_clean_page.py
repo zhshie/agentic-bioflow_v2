@@ -165,7 +165,7 @@ BASE_EXPIRED = {'expired-launch-zh': (200, '76b15593b02a8d14'), 'expired-cancel-
 BASE_POST = {'pressed-launch': (200, 'b01bcdf51f015270'), 'pressed-cancel': (200, '0c7f34a36adc74c9'), 'late-launch': (410, 'b8f41783a9fc25fb'), 'late-cancel': (410, 'b8f41783a9fc25fb')}
 # web-upload-page ruling 25: the left column's upload item is a link now, so the six board digests are the new ones (only that item differs)
 BASE_BOARD = {'succeeded-zh': (200, 'c17134072fe3351c'), 'succeeded-en': (200, 'ddca0fc838bc2f2b'), 'failed-zh': (200, '0b0faefd957cf0b5'), 'failed-en': (200, 'b948904a2add3ce1'), 'running-zh': (200, '9a64923f07d2931c'), 'running-en': (200, '01857a57d2a541b3')}
-BASE_STYLE = '15f0b560af241841'
+BASE_STYLE = '15f0b560af241840'
 
 
 def launch_and_cancel(w, ann):

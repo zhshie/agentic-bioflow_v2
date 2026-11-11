@@ -7,3 +7,6 @@ ts	phase	decision	why	evidence	result
 2026-11-11T21:40	evidence	補畫面證據：WSL 內 Playwright＋axe 截 zh／en × 1440／390，截圖放 repo 外	前一輪寫「無瀏覽器」，TC-031 要 ledger 有截圖檔名與 open 後消失的紀錄	specs/mcp-site-keepalive-disconnect-ux/ledger.md	紅條 4 組皆在、回 open 後 0 個；axe 只有看板原有的 meta-refresh
 2026-11-11T22:00	fix	pitfalls_format_test 的條數釘 96 改 97；第 61 條內文補上 linkbar 與 enqueue_confirmed 兩個字	計畫要求新增一條 PITFALLS，條數釘必然加一（前例 2be24546、b986b95f）；Touches 的字必須出現在內文	tests/pitfalls_format_test.sh:93	pitfalls_format_test 全綠
 2026-11-11T22:05	blocker	不自行把 scripts/keepalive_log.sh 加進 no_second_run_state_test.sh 的 DAEMON_ALLOW，也不改寫迴圈避開掃描	那是憲法不變量 2 的閘；計畫沒有點名這支測試，裁決 1 只接受了常駐記錄迴圈本身	tests/no_second_run_state_test.sh:48	BLOCKED，待裁決
+2026-11-11T23:20	fix	launch description 還原被釘的兩句，改縮沒被釘的兩處，長度 600	前一輪的縮字弄壞 tc058、tcm_50、dataset_launch	platform/abf_platform/mcp_server.py:202	三支測試綠
+2026-11-11T23:25	repin	重釘 BASE_STYLE、上傳頁雜湊、len(STYLE)、web_board.STRINGS 雜湊	新增 .linkbar 規則與 linkbar_down 字串的必然結果；計畫只點名 STYLE_SHA256，請審查者確認	platform/tests/test_web_nano4_path.py:249	三支測試綠
+2026-11-11T23:30	blocker	不改 zh 紅條文字、不把字串移出 STRINGS、不改用字測試	計畫與 TC-009 逐字規定的文字含 run，用字閘不准；兩者衝突要裁決	test_web_wording_sweep.py::test_banned_words_cover_every_zh_string_table	BLOCKED，待裁決
