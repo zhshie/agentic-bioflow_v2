@@ -57,3 +57,4 @@
 - [ ] 卡住：`platform/tests/test_mcp_launch_pipeline.py::test_no_schema_change`（TC-032，第 355 行）。它斷言 `git diff --stat origin/v3...HEAD -- <schema 檔>` 為空；本任務合法改了 `platform/abf_platform/store.py`（+62 行，三個欄位）。這條沒有「集合」可加項目，要過只能改判斷邏輯或基準，裁決 14 明文不准，所以沒動，等 lead 裁決。可選的最小改法：(a) 該測試對本分支允許 `store.py` 的差異只含這三個欄位的新增行；(b) 合併後它自然變綠（三點比較），由 lead 決定合併前接受這一條紅。
 - 整包 pytest 其餘已知與本任務無關的紅：Nextflow 釘住的 25 個 error（只能經 `tests/platform_test.sh` 跑）、`test_aws_upload`／`test_azure_upload`／`test_byte_channel_a` 整包跑時偶發（單獨跑綠）。
 - 沒有 push、沒有開 PR、沒有動憲法與三條憲法釘住測試。
+- 全套（`abf-fast-suite … --retry-failed-once`）在 efa19405 跑過一次：151/152。唯一紅的是 `platform_shard_5_test.sh`，裡面只有 `test_mcp_launch_pipeline.py::test_no_schema_change` 一條失敗（1 failed, 1031 passed），重試後仍紅。其餘釘住測試全綠。
