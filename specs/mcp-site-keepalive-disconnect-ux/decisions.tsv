@@ -4,3 +4,4 @@ ts	phase	decision	why	evidence	result
 2026-11-11T11:30	green	紅條走 ContextVar（同 DEV_MODE），site_link.py 內放字串常數，web_board.STRINGS 引用	避免 web_board 與 agents 循環匯入	platform/abf_platform/site_link.py	綠
 2026-11-11T11:45	repin	STYLE 雜湊與各頁雜湊重釘；launch description 縮幾個字	TC-025 要求新增 .linkbar 規則，所有頁面位元組必然改變；launch 描述上限 600	test_clean_page.py 等	綠
 2026-11-11T12:00	fix	test_launch_docs.py:32 改斷言	文件依 TC-073 不再承諾 8 小時	test_launch_docs.py:32	綠
+2026-11-11T21:40	evidence	補畫面證據：WSL 內 Playwright＋axe 截 zh／en × 1440／390，截圖放 repo 外	前一輪寫「無瀏覽器」，TC-031 要 ledger 有截圖檔名與 open 後消失的紀錄	specs/mcp-site-keepalive-disconnect-ux/ledger.md	紅條 4 組皆在、回 open 後 0 個；axe 只有看板原有的 meta-refresh
