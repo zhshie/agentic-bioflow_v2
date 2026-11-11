@@ -1152,7 +1152,7 @@ Take 4 screenshots of the log page and 4 of the Logs tab (1440 and 390 px wide, 
 
 ## Budget yes (dev-mode-launch): the reviewer checks one thing by hand
 
-- TC-078: the pull request that carries constitution 8.0.0 is a draft, was opened without `--auto`, and is not merged. Its Approval line says `PENDING` until the maintainer says yes in his own words. Look at the pull request page: draft badge present, merge button not used.
+- TC-078: the pull request that carries constitution 8.0.0 is a draft, was opened without `--auto`, and is not merged. Its Approval line is no longer `PENDING`: the maintainer approved the amendment on 2026-11-11 and the line carries his own words. Look at the pull request page: draft badge present, merge button not used.
 
 ## mcp-site-connection-status：驗收者檢查三件事
 

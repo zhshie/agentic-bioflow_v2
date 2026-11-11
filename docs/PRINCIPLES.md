@@ -62,7 +62,7 @@ host that holds it. What it cannot do is written in the amendment and in
 the person can. The check that holds the rule is that an unconfirmed launch is refused
 through the MCP tool and through the web route.
 
-*A yes given in advance (constitution 8.0.0, a draft until the maintainer approves it).* During
+*A yes given in advance (constitution 8.0.0, approved by the maintainer on 2026-11-11).* During
 acceptance on NCHC nano4 every send waited for the maintainer, and he became the bottleneck. A
 person may now set two SU limits of their own on the settings page, a single-send one and a
 monthly one; inside both, a send an AI asks for on a site counted in SU is queued without a new
