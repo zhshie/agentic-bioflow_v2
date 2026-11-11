@@ -151,6 +151,46 @@ source: 維護者 11-07 定案（Q1）；DESIGN.md 畫面 8（Results）、9（D
 3. **TC-095–098（真 MultiQC 報告與圖片要人眼驗）**：改為合併後由 lead 以操作者身分用真實 run 驗，不是合併條件；verifier 標 UNVERIFIED(operator) 不算 FAIL，其餘條全 PASS 即可過關。
 4. 推送、開 PR：網頁畫面 B 級，附 1440／390 × zh／en 四張截圖，掛自動合併（既有規則）。
 
+## 裁決（dev-resolver，2026-11-11）
+- **動作：needs-lead（category: hooks）**。帳本回覆 exit 3「ruling refused (never automatic: hooks); left with the lead」，即交給 lead；本件不會自動重派。
+- **失敗不是偶發，重跑不會綠**。PR #384（head `6e7563e1`，與 worktree HEAD 相同）的必要檢查 `run_all` 紅，來源是 `shard 3/4`（run 42866919635 第 2 次嘗試，job 130017885374）。該分片輸出逐字為：`854 passed, 1 skipped, 1 warning`、`pytest exit code of each shard, in order:  0 0 0 0`、`platform tests: pytest exit 0, 1 skipped`、`FAIL (CI=true): 1 test(s) were skipped, and nothing may be skipped on CI`；`--retry-failed-once` 重跑同樣結果，`== FAILED twice ==`／`FAILED platform_shard_6_test.sh`。其餘 shard 1、2、4 皆 SUCCESS。
+- **被跳過的那一條**：`SKIPPED [1] tests/test_web_result_viewer.py:636: UNVERIFIED: no Python with playwright (set ABF_PLAYWRIGHT_PYTHON)`，即 `test_tc053_054_055_056_057_the_report_cannot_reach_the_site`（TC-053 至 TC-057 瀏覽器層安全測試）。擋下它的規則在 `tests/platform_test.sh:444-446`（CI 模式下 skipped 不為 0 即 exit 1）。`.github/workflows/*.yml` 內搜尋 playwright／chromium 無任何結果，CI 上沒有瀏覽器。
+- **測試案例本身沒有錯，所以不是 fix-contract**：test-case.md TC-053 寫「不得以 skip 當通過；沒真的跑出來閱卷標 UNVERIFIED」，與本計畫「裁決（lead，2026-11-07）」第 3 點「必須真的跑…不得 skip 當通過」一致；測試照此在沒有瀏覽器時 skip 並標 UNVERIFIED。衝突在「計畫要求瀏覽器測試留在測試套件」對上「CI 不准有任何 skip 而 CI 沒有瀏覽器」。
+- **為何不能判 retry**：要讓 `run_all` 綠只有幾條路，每條都不是 resolver 能裁的：(1) 在 CI 工作流程裝 Playwright 與 Chromium 並設 `ABF_PLAYWRIGHT_PYTHON`，要改 `.github/workflows/`（受保護路徑）；(2) 改 `tests/platform_test.sh` 的不准 skip 規則（閘門檔，且屬放寬門檻，禁止）；(3) 把瀏覽器測試移出 CI 會跑的套件，等於改掉 lead 11-07 裁決第 3 點的方向。resolver 不得以跳過案例或放寬門檻把紅變綠。
+- **工作本身的狀態**：ledger 記載 TC-053 至 TC-057 已在本機以 Playwright＋Chromium 真的跑過並通過；CI 上該分片其餘 854 條全過。lead 11-08 14:30 裁決第 1–4 點（三處既有測試調整、TC-099 豁免、TC-095–098 改合併後由操作者驗）不受本裁決影響。
+- **另外看到、未調查**：同一 PR 的 `gitleaks` 與 `pip-audit`（security 工作流程）也是 FAILURE；`fail_reason` 只點名 `run_all`，是否為必要檢查、是否基準既有，本輪沒有證據，請 lead 一併確認。
+- **下一輪要做什麼（由 lead 決定後才重派）**：lead 在上述 (1) 與 (3) 之間擇一並寫成新的裁決段。選 (1)：由有權限者改 CI 工作流程，之後原樣重跑檢查，不需重新實作、不改 `test_web_result_viewer.py`。選 (3)：須明寫瀏覽器測試改在哪裡跑、由誰驗，並由獨立 verifier 重新閱卷；斷言不得變弱。兩者都不得改動 `platform_test.sh` 的不准 skip 規則。
+
+## 裁決（dev-resolver，2026-11-11，第二則：lead 11-11 裁決未被執行）
+- **動作：retry**（帳本回覆 exit 0：`ruling 1/2 registered (retry); task is ready again`）。本則不取代上一則 dev-resolver 裁決的事實部分；上一則留給 lead 的二選一，lead 已在本檔最末段「裁決（lead，2026-11-11，回應 PR #384 CI 紅燈）」N～N+2 選定做法，本則只處理「該裁決沒有被做」。
+- **證據一（紅燈原因與上次完全相同）**：PR #384 現在的 head 是 `424fea5c`，tests 工作流程 run 42981074537 的 `shard 1/4` 輸出逐字為 `SKIPPED [1] tests/test_web_result_viewer.py:636: UNVERIFIED: no Python with playwright (set ABF_PLAYWRIGHT_PYTHON)`、`724 passed, 1 skipped, 1 warning`、`FAIL (CI=true): 1 test(s) were skipped, and nothing may be skipped on CI`、`== FAILED twice ==`／`FAILED platform_shard_8_test.sh`；`run_all` 因此印 `not every shard succeeded`。shard 2、3、4 皆 SUCCESS。
+- **證據二（lead 的做法一行都沒進分支）**：`origin/feat/web-result-viewer` 的 `platform/tests/test_web_result_viewer.py:633-636` 仍是 `py = os.environ.get("ABF_PLAYWRIGHT_PYTHON") or shutil.which("python3")` 接 `pytest.skip("UNVERIFIED: no Python with playwright (set ABF_PLAYWRIGHT_PYTHON)")`；分支上沒有 `scripts/dev/check_result_viewer_sandbox.py`（`scripts/dev/` 下只有 `check_settings_mobile.py`）。`6e7563e1` 之後分支新增的只有三個「Merge branch 'v3' into feat/web-result-viewer」（`9359d1c2`、`126dce67`、`424fea5c`），沒有任何針對本件的提交。
+- **證據三（執行端看不到該裁決）**：worktree 內的計畫副本 `specs/web-result-viewer/plan.md` 只有四個裁決段（lead 11-07、自動補 11-07、lead 11-08、lead 11-08 14:30），沒有任何 11-11 的段落；worktree 停在 `6e7563e1`，落後遠端 47 個提交。佇列顯示 lead 於 11-11 12:25 與 14:55 兩次 retry 皆標 done，任務卻在 15:25 被重新掛回等待合併（`armed_at`），隨後同一條檢查再紅。另：lead 11-11 裁決段寫在「專長守則」之後，不在帳本慣例的位置（專長守則之前）。
+- **為何判 retry**：實作本身沒有新問題（該分片其餘 724 條全過、另三個分片全綠），失敗是「已寫好的裁決沒有送到執行端」的流程問題；lead 選的做法不需要動 CI 工作流程，也不需要動 `tests/platform_test.sh` 的不准 skip 規則，所以上一則的 hooks 類別不再適用。
+- **下一輪必須做的事（與前兩次重派不同之處）**：
+  1. 開工前把 worktree 快轉到 `origin/feat/web-result-viewer`（只准 fast-forward 或一般 merge，不改寫歷史），並把本檔最新內容重新複製成 `specs/web-result-viewer/plan.md`；確認副本內看得到 lead 11-11 的 N～N+2 才往下做。
+  2. 照 lead 11-11 裁決 N+1 的 (a)～(d) 實作，以該段文字為準：瀏覽器部分搬到 `scripts/dev/check_result_viewer_sandbox.py` 並在 `docs/TESTING.md` 補手動驗收一節；pytest 內保留不需瀏覽器的等價斷言（沿用原測試的攻擊樣本）；pytest 內不得留任何 `skip`／`skipif`；既有斷言一條都不得放寬。
+  3. 推送前在本機以 `CI=true` 跑 `tests/run_all.sh`，確認輸出是 0 skipped 且全綠，把該輸出貼進 ledger。
+  4. 推同一分支（不 force、不開新 PR）。**只要 `test_web_result_viewer.py` 還有 skip，或沒有新的實作提交，就不得回報為已掛自動合併**；做不到就回報失敗並寫明卡在哪裡。
+  5. 改動後由獨立 verifier 重新閱卷（測試檔被改寫，不能沿用舊的 PASS）；瀏覽器內才能驗的幾條依 lead 裁決 (d) 標為待實機驗，列在 PR 內文。
+- **界線**：不得新增或修改 `.github/workflows/*`、`tests/platform_test.sh` 或其他 `tests/*.sh` 閘門檔；lead 裁決提到的 `tests/check_settings_mobile_smoke_test.sh` 只是參考範例。若執行中發現非動這些檔不可，停下來回報失敗交 lead，不自行處理。
+- **另外看到、未調查**：同一 PR 的 `gitleaks`（security 工作流程）仍是 FAILURE，`pip-audit` 已 SUCCESS；`fail_reason` 只點名 `run_all`。`gitleaks` 是否會擋合併、是否基準既有，本輪沒有證據，請 lead 確認。
+- 這是本件帳本上的第 1 則裁決（上限 2）。若下一輪仍以同一原因失敗，下一則只能是 needs-lead。
+
+## 裁決（dev-resolver，2026-11-11，第三則：開工前就被既有 worktree 擋下）
+- **動作：needs-lead**（無類別；帳本回覆 exit 0：`web-result-viewer: handed to the lead by the resolver`）。本件不會自動重派。
+- **失敗內容**（`fail_reason` 逐字）：`BLOCKED(setup): branch feat/web-result-viewer is already checked out in worktree wt/web-result-viewer-fix, so supervise cannot create wt/web-result-viewer`。
+- **證據一（屬實）**：`git worktree list --porcelain` 顯示 `worktree …/wt/web-result-viewer-fix`／`HEAD 6e7563e147b4…`／`branch refs/heads/feat/web-result-viewer`；`wt/web-result-viewer` 這個目錄不存在。同一分支不能同時被兩個 worktree 取出，所以 supervise 建不出新的 worktree。
+- **證據二（那個 worktree 裡沒有未保存的東西）**：`git status --short --branch` 只印 `## feat/web-result-viewer...origin/feat/web-result-viewer [behind 47]`，沒有任何已改或未追蹤的檔；`git log origin/feat/web-result-viewer..HEAD` 為空（0 個未推送的提交）；`git stash list` 為空。本機 HEAD `6e7563e1`，遠端 head `424fea5c`。
+- **證據三（工作本身自上一則裁決後沒有前進）**：`origin/feat/web-result-viewer` 的 `platform/tests/test_web_result_viewer.py:636` 仍是 `pytest.skip("UNVERIFIED: no Python with playwright (set ABF_PLAYWRIGHT_PYTHON)")`；`scripts/dev/` 下只有 `check_chrome_login.py` 與 `check_settings_mobile.py`，沒有 `check_result_viewer_sandbox.py`；`6e7563e1..origin` 之間沒有任何非合併提交。也就是上一則 dev-resolver 裁決（第二則）的步驟 1–5 一步都還沒做，因為這一輪在建 worktree 時就停了。
+- **為何不判 retry**：這次停在 supervise 的準備階段，還沒讀到計畫，所以在計畫裡再寫一則裁決改變不了下一輪的結果；本件已用掉 1 則 retry，第二則若再以同樣原因失敗就沒有額度了。「下一輪能否自行處理這個 worktree」沒有證據，不能憑猜測裁。移除或改用既有 worktree 是對 lead 自己建的工作目錄動手，resolver 不做。
+- **不是 fix-contract、也不是 unverified-operator**：沒有任何測試案例被指為有錯；機器端也不是全綠（CI 的 `run_all` 仍會因上述 skip 而紅）。
+- **請 lead 做的事（擇一，做完再重派）**：
+  1. 釋放分支：把 `wt/web-result-viewer-fix` 從 worktree 清單移除（依證據二，裡面沒有未推送或未提交的內容），讓 supervise 能照常建立 `wt/web-result-viewer`；或
+  2. 沿用既有 worktree：讓佇列／supervise 指向 `wt/web-result-viewer-fix`，並先把它快轉到 `origin/feat/web-result-viewer`（只准 fast-forward，不改寫歷史）。
+- **重派後下一輪要做什麼**：原樣執行上一則 dev-resolver 裁決（第二則）的步驟 1–5 與其界線，依據是本檔最末段「裁決（lead，2026-11-11）」N～N+2；不需重新設計，也不得放寬任何斷言。
+- **提醒**：本件帳本上已有 1 則裁決（上限 2）。lead 重派時請確認重派檔沒有 BOM，且 worktree 內的 `specs/web-result-viewer/plan.md` 是本檔最新內容。
+
 ## 專長守則（ui）
 
 ### executor
@@ -184,3 +224,12 @@ source: 維護者 11-07 定案（Q1）；DESIGN.md 畫面 8（Results）、9（D
   - repo 還沒有 `ui_check.py`：verifier 自己用 Playwright（經 `with_server.py`）拍同樣 4 張截圖；axe 沒跑就標 **axe：UNVERIFIED**，並寫明缺什麼。
   - 截圖只能存到 repo 之外或 `.gitignore` 排除的資料夾，**絕不存進 Drive 工作區**；報告只貼路徑與張數。
   - 起不了應用程式（缺依賴、埠被占）標 UNVERIFIED 並寫明需要什麼，不改以靜態 HTML 當作通過。
+
+## 裁決（lead，2026-11-11，回應 PR #384 CI 紅燈：瀏覽器測試在 CI 被跳過）
+N. **事實**：PR #384 的 CI 分片 1 紅，原因只有一個——`platform/tests/test_web_result_viewer.py:636` 的 Playwright 測試在 CI 因「沒有裝 Playwright 的 Python」而 `pytest.skip`，而 CI 規定「任何測試都不准被跳過」（724 過、1 跳過 → 失敗）。其餘分片綠。PR 與基底的衝突 lead 已解（commit 6e7563e1）。
+N+1. **做法（照 repo 既有慣例：需要真瀏覽器的檢查放 `scripts/dev/check_*.py`，不放 pytest，參考 `scripts/dev/check_settings_mobile.py` 與 `tests/check_settings_mobile_smoke_test.sh`）**：
+  (a) 把該 Playwright 測試的瀏覽器部分搬成 `scripts/dev/check_result_viewer_sandbox.py`（用 `ABF_PLAYWRIGHT_PYTHON`，沒有就印明確訊息並非零結束），並在 `docs/TESTING.md` 補一節手動驗收步驟（標示為實機／瀏覽器驗，【實機驗】）；
+  (b) 在 pytest 內保留**不需瀏覽器、CI 一定能跑**的等價斷言：回應標頭與頁面 HTML 層面驗證沙盒 iframe（`sandbox` 屬性不含 `allow-same-origin`、CSP、不可執行腳本的內容型別等，沿用原測試的攻擊樣本 `ATTACK`）；不得只刪除不補；
+  (c) pytest 中不得再有任何 `skip`／`skipif`；全套 `tests/run_all.sh` 在 CI 條件下（`CI=true`）要 0 跳過、全綠。
+  (d) 不得放寬任何既有斷言；原本瀏覽器內才能驗的那幾條，在 (a) 的腳本與 TESTING.md 中仍保留，並在 PR 內文列為「待實機驗」（UNVERIFIED-OPERATOR）。
+N+2. PR #384 已存在並掛自動合併：直接推同一分支 `feat/web-result-viewer`（不 force、不開新 PR）。分批 commit＋push。
