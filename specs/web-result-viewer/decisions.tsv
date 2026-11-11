@@ -1,0 +1,20 @@
+ts	phase	decision	why	evidence	result
+2026-11-07T20:10	A-RED	步驟 A 測試先寫並提交	先紅後綠	tests/test_web_result_viewer.py	22 紅 6 綠
+2026-11-07 21:10	A-GREEN	render_file_page 加 route 參數，讓預覽頁的重試與刷新連結回到 /run/preview	不加則重試會跳到下載路由	web_board.py render_file_page	tests pass
+2026-11-07 21:10	A-GREEN	既有路由清單測試加入新路由（只加不改）	新增 /run/preview /run/image 必然改變清單	test_results_files.py:604 等 7 檔	pass
+2026-11-07 21:50	B-GREEN	報告路由 CSP 照計畫，未放寬；iframe 大小用 width／height 屬性	不改 STYLE；先照計畫字，真 MultiQC 未能驗	web_preview.py report_headers/render_report	tests pass
+2026-11-07 21:50	B-GREEN	瀏覽器測試用系統 python3 的 playwright 開 Chromium，站台以 uvicorn 執行緒起	venv 沒有 playwright	test_web_result_viewer.py test_tc053...	pass
+2026-11-08T00:00	fix	加入 web_preview.STRINGS 到措辭掃描表、k8s 路由釘住改為 33 條	全套測試紅：新表未涵蓋、路由數 30→33	platform/tests/test_web_wording_sweep.py, test_k8s_launch.py:1434	單檔 163 通過
+2026-11-08T10:00	fix	test_scope 要求新原始檔有 Nothing existing 標頭，web_preview.py 補上；test_web_guided_launch_preview 的「無 preview 路由」過濾排除 /run/preview	計畫指定 /run/preview 路由名，該測試本意是向導不得新增樣本表預覽路由，排除值只此一條	platform/tests/test_scope.py tc070; test_web_guided_launch_preview.py:450	兩檔單跑通過
+2026-11-08T11:40	FIX-UI	截圖改拍真預覽頁並補基準 axe 比對	舊截圖 results 與 board 位元組相同；meta-refresh 需證明為既有	screenshots/summary.md, base-summary.md	預覽頁 axe 0 違規；基準同樣 8 筆 meta-refresh
+2026-11-08T13:00	FIX-UI2	補拍 too_large 等四種預覽狀態截圖，並對全部狀態跑 axe	TC-093 漏拍、TC-099 未掃全部狀態	screenshots/summary.md 補拍一節	新增 16 張；無 serious／critical（除既有 meta-refresh）
+2026-11-08T13:10	FIX-TEST	不自行核可三處既有測試改動，改在 ledger 請 lead 核可	TC-078／086 要求計畫點名；新路由與新表使它們必然改變，executor 無權核可	ledger.md 修正輪二	等待核可
+2026-11-10T12:20	fix	在 ledger 逐處列出三處既有測試改前→改後	lead 11-08 裁決核可，需讓 verifier 對照	ledger.md 修正輪三	待全套
+2026-11-10T12:30	fix-redos	以單趟線性掃描 _svg_head 取代 _SVG_HEAD 回溯正則	堆疊空註解使正則 2^n 步，卡住伺服器主迴圈	web_preview.py _svg_head；test_web_result_viewer.py test_svg_head_check_is_linear_time	該檔 47 測試通過，待全套
+2026-11-10T12:40	fix-adv	圖片路由 CSP 補 frame-ancestors none；DOCTYPE 以引號與子集感知的單趟掃描找結尾	TC-075 要求除報告路由外皆不可被嵌框；Illustrator SVG 的 DOCTYPE 子集含 >	web_preview.py image_headers、_doctype_end；test_svg_with_internal_dtd_subset_and_image_csp	本檔 48 過，待全套
+2026-11-11T18:00	fix-ci-skip	瀏覽器層 TC-053..057 移到 scripts/dev 的手動腳本，pytest 留同一 ATTACK 樣本的標頭與 HTML 斷言；腳本的 smoke 檢查放 pytest，不新增 shell 測試檔	CI 無瀏覽器且不准 skip（lead 11-11 N+1）；resolver 界線禁止新增或修改 shell 閘門檔	8b3c928c	RED：新釘 1 紅（腳本不存在），其餘 48 綠
+2026-11-11T18:05	fix-ci-skip	沒有 Playwright 或瀏覽器時腳本印 UNVERIFIED 並以 77 結束	比照 scripts/dev/check_settings_mobile.py 慣例；裁決要求非零結束且不得當通過	scripts/dev/check_result_viewer_sandbox.py:72	單檔 49 過 0 跳過；實機跑 exit 0 五條 ok
+2026-11-11T20:40	fix-ci-skip	不重做 (a)–(d)，只在 CI=true 下跑全套驗證	8b3c928c 與 ad6f1ade 已完成裁決 N+1，ledger 已勾；裁決要求推送前 CI=true 全套 0 skipped	ad6f1ade	151/151 全綠，八個 platform 分片皆 ok（0 skipped）
+2026-11-11T21:20	fix-ci-skip	本輪（20261111-2115-L6-web）不重做 (a)–(d)，逐項核對後只在最終 commit 以 CI=true 再跑一次全套	(a)–(d) 已在 8b3c928c、ad6f1ade 完成且測試檔無 skip；7979a943 是之後的紀錄 commit，GREEN 必須是 HEAD 當下的全套結果	7979a943	全套結果寫在 executor-status 與回報
+2026-11-11T21:58	fix-tc099	TC-099 的 critical meta-refresh 不在本輪修，回報 BLOCKED，沒有改程式	三頁的自動重整同出既有的一行程式；合約 TC-029／037／068 要求等待頁 15 秒重整，與 TC-099 互斥；輸出頁與完成頁的重整依 lead 11-08 14:30 裁決不在本件做；改用 HTTP Refresh 標頭只是避開掃描器	platform/abf_platform/web_board.py:958	BLOCKED：等 lead／維護者決定豁免進合約或另開任務
+2026-11-12T00:50	fix-tc099	依 lead 11-11 深夜裁決方案 (1) 不改程式與測試，只核對沒有新增 meta-refresh 後在最終 commit 跑全套	裁決豁免基準就有的那一個 refresh 並延伸到預覽等待頁，且明寫不得改頁面行為；TC-099 預期欄由 verifier 改，executor 不得動合約檔	platform/abf_platform/web_board.py:958	http-equiv 全站僅此一處；全套結果寫在 executor-status 與回報

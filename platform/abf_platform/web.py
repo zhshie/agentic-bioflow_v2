@@ -12,6 +12,9 @@ The only routes there are:
   GET  /launch       the launch form (spec 012b), ?from=<run id> fills it from an earlier run of the same person; needs the cookie
   GET  /run/log         the log (?run=&task=&which=err|out|log) of one failed task of the caller's own run as a page; the agent reads it (web-run-tasks-log)
   GET  /run/file        one file of the caller's own run's results as a download (?run=&path=; results-files); the agent reads it, 404 as the board's own page when the run is not theirs
+  GET  /run/preview     the page that shows one result file of the caller's own run: a PNG or SVG through <img>, else the line that the type has no preview (web-result-viewer)
+  GET  /run/image       the PNG or SVG itself for that <img>; 404 with no body for anything else
+  GET  /run/report      a white-listed HTML report itself, for the sandboxed iframe of the preview page; 404 with no body for anything else
   GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's own agent read from the public repository (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page.
@@ -67,7 +70,7 @@ from starlette.responses import HTMLResponse, PlainTextResponse, RedirectRespons
 from starlette.routing import Route
 
 from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
-from . import actions, oauth, store, web_board, web_cost, web_launch, web_refusal, web_settings
+from . import actions, oauth, store, web_board, web_cost, web_launch, web_preview, web_refusal, web_settings
 from . import uploads_web, web_upload
 
 COOKIE = "abf_web"
@@ -665,6 +668,74 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
         code, doc = web_board.render_log_page(answer, run, task, which, lang)
         return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+
+    def preview_answer(request):
+        """The shared start of the three routes that show a result file (web-result-viewer): (None, response) when the caller is not logged in, else
+        (context, None) with the user, language, run, path and the name-only kind of the file. The read itself is `actions.run_file`, as for the download."""
+        sid, user = user_of(request)
+        if user is None:
+            return None, unauth(request)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        return dict(user=user, caller=caller, lang=web_board.pick_lang(request.query_params.get("lang")), run=request.query_params.get("run") or "",
+                    path=request.query_params.get("path") or "", retry=request.query_params.get("retry") == "1"), None
+
+    def read_answer(ctx, retry=False):
+        return actions.run_file(index_path, platform_path, ctx["run"], ctx["path"], caller=ctx["caller"], retry=retry)
+
+    async def run_preview_get(request):
+        """GET /run/preview: the page that shows one result file: a picture through <img>, or the one line that the type has no preview. Only the
+        picture page carries `img-src` in its policy; every other state is a page of the base headers."""
+        ctx, early = preview_answer(request)
+        if early is not None:
+            return early
+        lang, run, path = ctx["lang"], ctx["run"], ctx["path"]
+        if web_preview.kind_of(path) is None:      # no read for a name that has no preview; the owner rule still holds
+            view = await run_in_threadpool(lambda: actions.get_run(index_path, run, caller=ctx["caller"], platform_path=platform_path))
+            if view.get("found") is False:
+                return HTMLResponse(web_board.render_not_found(ctx["user"]["name"], lang), status_code=404, headers=_HEADERS)
+            return HTMLResponse(web_preview.render_none(run, path, lang), headers=_HEADERS)
+        answer = await run_in_threadpool(lambda: read_answer(ctx, ctx["retry"]))
+        if answer.get("found") is False:
+            return HTMLResponse(web_board.render_not_found(ctx["user"]["name"], lang), status_code=404, headers=_HEADERS)
+        if answer["state"] != "ready":
+            code, doc = web_board.render_file_page(answer, run, lang, route="/run/preview")
+            return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+        kind = web_preview.kind_of(path, answer["data"])
+        if kind is None:
+            return HTMLResponse(web_preview.render_none(run, path, lang), headers=_HEADERS)
+        if kind == "html":
+            return HTMLResponse(web_preview.render_report(run, path, answer["name"], lang), headers=web_preview.page_headers(_HEADERS, kind))
+        return HTMLResponse(web_preview.render_image(run, path, answer["name"], lang), headers=web_preview.page_headers(_HEADERS, kind))
+
+    async def run_image_get(request):
+        """GET /run/image: the bytes of a PNG or SVG that is ready, with the type we decided; anything else is an empty 404 that says nothing."""
+        ctx, early = preview_answer(request)
+        if early is not None:
+            return early
+        nothing = Response(b"", status_code=404, headers=_HEADERS)
+        if web_preview.kind_of(ctx["path"]) not in ("png", "svg"):
+            return nothing
+        answer = await run_in_threadpool(lambda: read_answer(ctx))
+        if answer.get("found") is False or answer.get("state") != "ready":
+            return nothing
+        kind = web_preview.kind_of(ctx["path"], answer["data"])
+        if kind not in ("png", "svg"):
+            return nothing
+        return Response(answer["data"], headers=web_preview.image_headers(_HEADERS, kind))
+
+    async def run_report_get(request):
+        """GET /run/report: the bytes of a white-listed HTML report that is ready, for the sandboxed iframe of the preview page. The headers are its own
+        (`web_preview.report_headers`): the report runs scripts but in an opaque origin that can reach nothing; anything else is an empty 404."""
+        ctx, early = preview_answer(request)
+        if early is not None:
+            return early
+        nothing = Response(b"", status_code=404, headers=_HEADERS)
+        if web_preview.kind_of(ctx["path"]) != "html":
+            return nothing
+        answer = await run_in_threadpool(lambda: read_answer(ctx))
+        if answer.get("found") is False or answer.get("state") != "ready":
+            return nothing
+        return Response(answer["data"], headers=web_preview.report_headers(_HEADERS))
 
     def find_by_name(caller, name):
         """(the id of the newest run of this name among the person's own runs in the index, whether only the person's own hand-off record has it)."""
@@ -1425,6 +1496,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
                             Route("/run/file", run_file_get, methods=["GET"]),
                             Route("/run/log", run_log_get, methods=["GET"]),
+
+                            Route("/run/preview", run_preview_get, methods=["GET"]), Route("/run/image", run_image_get, methods=["GET"]),
+                            Route("/run/report", run_report_get, methods=["GET"]),
                             Route("/launch", launch_post, methods=["POST"]),
                             Route("/upload", upload_get, methods=["GET"]), Route("/upload", upload_post, methods=["POST"]),
                             Route("/upload/{batch}", upload_batch_get, methods=["GET"]),
