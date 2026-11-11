@@ -1152,7 +1152,15 @@ At 390 px also check `document.documentElement.scrollWidth === document.document
 
 ## 結果檢視：圖片預覽與沙盒 iframe 報告 (web-result-viewer): the reviewer checks by hand
 
-自動測試涵蓋標頭、iframe 屬性與真瀏覽器的攻擊腳本（`test_web_result_viewer.py`，需要 Playwright 與 Chromium，沒有就標 UNVERIFIED）。下面是要人看的部分。
+自動測試（`platform/tests/test_web_result_viewer.py`，不需瀏覽器，CI 一定會跑、不跳過任何一條）涵蓋回應標頭、iframe 屬性，以及攻擊樣本 `ATTACK` 經三條路由送出時的標頭與內容型別。真瀏覽器的部分不在 pytest 內（CI 沒有瀏覽器，且不准跳過測試），改由下面第 0 步的腳本執行。下面是要人看與要人跑的部分。
+
+0. **【實機驗】報告內的程式碰不到網站（TC-053 至 TC-057）**：在 WSL 或 Linux，從 repo 根目錄執行 `cd platform && python ../scripts/dev/check_result_viewer_sandbox.py`（用平台的 Python；Playwright 裝在別的 Python 時加 `ABF_PLAYWRIGHT_PYTHON=<那個 python>`）。腳本起一個用完即丟的平台，以登入狀態用 Chromium 開啟攻擊樣本報告的預覽頁，再印出報告內程式得到的結果與網站收到的請求。應看到五行 `ok`，最後一行 `check_result_viewer_sandbox: PASS`，結束碼 0：
+   - TC-053：報告讀 `document.cookie` 得到錯誤或空字串，任何位置都沒有登入 cookie 的值；
+   - TC-054、TC-055：`fetch('/settings')` 與 `fetch('/run/file?…')` 都是錯誤，網站沒有收到這兩種請求；
+   - TC-056：讀 `window.parent.document` 丟出錯誤；
+   - TC-057：表單 `submit()` 後網站沒有收到任何非 GET 請求，外層預覽頁網址不變、仍只有一個 iframe。
+
+   結束碼 77（訊息以 `UNVERIFIED` 開頭）表示沒有 Playwright 或沒有瀏覽器，什麼都沒驗，**不算通過**；結束碼 1 表示某一條失敗。結果（輸出全文與執行日期）貼進 `specs/web-result-viewer/ledger.md`，在 PR 內文列為「待實機驗」直到有人跑過。
 
 1. **真 MultiQC（TC-095）**：登入後在某個成功 run 的輸出頁，按 `multiqc/multiqc_report.html` 旁的「預覽」。圖表應顯示。若因 CSP 載不出，只能放寬 `/run/report` 的政策，且 `sandbox`（不含 allow-same-origin）、`connect-src 'none'`、`form-action 'none'`、`frame-ancestors 'self'` 四項不得動；放寬的字與原因寫進 `specs/web-result-viewer/ledger.md`（沒放寬就寫「未放寬」，TC-069）。
 2. **summary_report（TC-096）**：同上，開一份真的 ampliseq `summary_report.html`。

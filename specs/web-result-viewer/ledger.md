@@ -58,3 +58,22 @@ TC-095–098 為 UNVERIFIED(operator)，合併後由 lead 驗。TC-099 meta-refr
 修正輪四（ADVERSARY ReDoS）：web_preview.py 的 SVG 檔頭檢查由回溯正則改為線性掃描 _svg_head（行為同：BOM、空白、<?xml?>、註解、DOCTYPE 後接 <svg）；新增 test_svg_head_check_is_linear_time。無既有測試被改。
 
 修正輪五（ADVERSARY）：(1) web_preview.image_headers 的 CSP 補回 frame-ancestors 'none'（TC-075，圖片路由與其他路由同，只有報告路由例外）；(2) 新增 _doctype_end，DOCTYPE 內部子集 [ ... ] 與引號、子集註解內的 > 不再提早結束，Illustrator 匯出的真 SVG 可預覽；仍為單趟線性。測試：test_web_result_viewer.py 的 test_tc070_071_074_075 補圖片路由 frame-ancestors 斷言，新增 test_svg_with_internal_dtd_subset_and_image_csp。
+
+## 修正輪六（2026-11-11，依 lead 11-11 裁決 N+1 (a)–(d)：瀏覽器測試在 CI 被跳過）
+- [x] (a) 瀏覽器部分搬到 `scripts/dev/check_result_viewer_sandbox.py`（DRIVER 與五條斷言原樣搬過去，攻擊樣本直接 import 測試檔的 `ATTACK`）；沒有 Playwright 或沒有瀏覽器時印 `UNVERIFIED: …` 並以 77 結束，不印 PASS。`docs/TESTING.md` web-result-viewer 一節加第 0 步【實機驗】。
+- [x] (b) pytest 保留不需瀏覽器的等價斷言：`test_tc053_054_055_056_057_the_attacking_report_is_served_sandboxed`（同一個 `ATTACK`）：外層頁恰一個 iframe、`sandbox` 屬性值恰為 `"allow-scripts"`、無 srcdoc、頁面無 script、報告原文不在外層頁；`/run/report` 位元組相同，CSP 逐指令解析後 `sandbox` 恰為 `allow-scripts`、`connect-src`／`form-action`／`default-src`／`frame-src`／`base-uri` 皆 `'none'`、沒有任何指令允許網路來源、無 Set-Cookie／CORS 標頭；登入 cookie 值不在本文與標頭；同一份位元組經 `/run/image` 為 404、經 `/run/file` 為 attachment＋octet-stream＋nosniff；改名 `evil.html` 則 404；三條路由不接受 POST。
+- [x] (c) `test_web_result_viewer.py` 內沒有任何 skip／skipif／xfail；`test_tc053_057_browser_check_is_a_manual_script_and_nothing_here_is_skipped` 釘住這一點，並釘住腳本存在、用同一個 ATTACK、保留原五條斷言、沒有 Playwright 時結束碼 77 且不印 PASS、TESTING.md 有【實機驗】一節。
+- [x] (d) 既有斷言沒有放寬：本輪只動 `test_web_result_viewer.py` 的瀏覽器測試那一段（刪去的是 Playwright 測試本體，其五條斷言逐條移到腳本），其他測試檔零改動；CI 工作流程與 shell 閘門檔零改動（腳本的 smoke 檢查因此放在 pytest，不新增 shell 測試檔）。
+- 實機結果（2026-11-11，WSL，平台 venv 的 Python＋系統 python3 的 Playwright／Chromium，`cd platform && python ../scripts/dev/check_result_viewer_sandbox.py`，結束碼 0）：
+  ```
+  the report's script wrote: {"cookie":"ERR:SecurityError","parent":"ERR:SecurityError","form":"called","settings":"ERR:TypeError","file":"ERR:TypeError"}
+  the site received: [('GET', '/run/preview?run=id-ann-done&path=multiqc_report.html'), ('GET', '/run/report?run=id-ann-done&path=multiqc_report.html')]
+  ok   TC-053 the report cannot read the login cookie
+  ok   TC-054 fetch of /settings is blocked and never reaches the site
+  ok   TC-055 fetch of /run/file is blocked and never reaches the site
+  ok   TC-056 window.parent.document throws
+  ok   TC-057 the form sends nothing and the outer page stays
+  check_result_viewer_sandbox: PASS
+  ```
+  這是 executor 自己跑的，不是獨立驗收；TC-053 至 TC-057 的瀏覽器層在 PR 內文仍列「待實機驗」（UNVERIFIED-OPERATOR），由 verifier／lead 重跑該腳本。
+- 單檔：`tests/test_web_result_viewer.py` 49 過、0 跳過。
