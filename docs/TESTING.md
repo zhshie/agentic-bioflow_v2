@@ -1068,6 +1068,20 @@ Manual case, done by the developer-agent on a temporary draft-PR branch (never o
 2. Confirm the `run_all` status is not affected.
 3. Delete the temporary branch when done. The fake secret must never reach the merged history.
 
+### Gitleaks report artifact (gitleaks-classify)
+
+When "Scan full history" fails, the `gitleaks` job still uploads `gitleaks-report.json` as the artifact `gitleaks-report` (kept 14 days). The secret fields are redacted because the scan keeps `--redact`. The report is for sorting findings; this change adds no allowlist entry and does not change `.gitleaks.toml`.
+
+- **Download**: open the run page in Actions, scroll to Artifacts at the bottom, download `gitleaks-report`.
+- **List**: `jq -r '.[] | [.RuleID,.File,.Commit] | @tsv' gitleaks-report.json`
+- **Fields**: `File` is the path of the finding, `RuleID` is the gitleaks rule that fired, `Commit` is the commit that introduced it, `StartLine` is the line in that file. `Secret` and `Match` read `REDACTED`. `Author`, `Email`, `Date` are personal data from git log: only people with read access to the repository can download the artifact.
+- **If a finding is a real key**: stop at once, tell the maintainer, and have the key rotated. Do not rewrite history. Do not write an allowlist entry first. Never paste the key anywhere (issue, ledger, chat).
+
+Manual cases, done by the developer-agent:
+1. Fake-key check (TC-017, TC-018): with gitleaks 8.30.1 run `gitleaks git --redact --no-banner --report-format json --report-path gitleaks-report.json` in a throwaway repo holding one `AKIA`-shaped fake key. Search the report for the fake key: it must not be found. One finding must show `File`, `RuleID`, `Commit`, `StartLine`. If the key is found, stop and do not upload.
+2. After merge (TC-020): run the `security` workflow on v3 with `workflow_dispatch`; confirm the Artifacts section lists `gitleaks-report` and the download is a JSON list.
+3. Checks (TC-019, TC-022, TC-032): the SHA in the `actions/upload-artifact` line equals `gh api repos/actions/upload-artifact/git/ref/tags/<tag>` (if `object.type` is `tag`, resolve once more with `git/tags/<sha>`). `git diff --name-only <base>...HEAD` lists only `.github/workflows/security.yml`, `tests/ci_security_workflow_test.sh`, `docs/TESTING.md` and `specs/gitleaks-classify/`; `.gitleaks.toml`, `tests.yml` and `platform/` are not in it.
+
 ### Head job ended by the scheduler (manual, on nano4)
 
 1. Launch a small run, then `scancel` its head job (or let a test node fail) so Nextflow writes no end.

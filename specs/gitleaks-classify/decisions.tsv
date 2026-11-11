@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-11-07	RED	先寫 8 個新檢查再動 workflow	測試先行	677ca26f	3 項紅（符合預期）
+2026-11-07	查證	upload-artifact 用 v4.6.2 的 SHA ea165f8d	以 gh api 查 tag，輕量 tag 不需再解	ledger.md SHA lookup	完成
+2026-11-07	卡住	security.yml 無法由 executor 寫入	.github/ 受寫入防護，計畫也說由 developer-agent 寫	hook 拒絕 Edit	改在暫存副本驗證新檢查全過，完整內容寫入 ledger
+2026-11-07	卡住	假金鑰實驗未做	WSL 指令被 Blast Radius 擋下兩次	ledger.md Not done	交 developer-agent
