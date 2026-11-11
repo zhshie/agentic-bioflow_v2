@@ -16,3 +16,4 @@ ts	phase	decision	why	evidence	result
 2026-11-11T18:05	fix-ci-skip	沒有 Playwright 或瀏覽器時腳本印 UNVERIFIED 並以 77 結束	比照 scripts/dev/check_settings_mobile.py 慣例；裁決要求非零結束且不得當通過	scripts/dev/check_result_viewer_sandbox.py:72	單檔 49 過 0 跳過；實機跑 exit 0 五條 ok
 2026-11-11T20:40	fix-ci-skip	不重做 (a)–(d)，只在 CI=true 下跑全套驗證	8b3c928c 與 ad6f1ade 已完成裁決 N+1，ledger 已勾；裁決要求推送前 CI=true 全套 0 skipped	ad6f1ade	151/151 全綠，八個 platform 分片皆 ok（0 skipped）
 2026-11-11T21:20	fix-ci-skip	本輪（20261111-2115-L6-web）不重做 (a)–(d)，逐項核對後只在最終 commit 以 CI=true 再跑一次全套	(a)–(d) 已在 8b3c928c、ad6f1ade 完成且測試檔無 skip；7979a943 是之後的紀錄 commit，GREEN 必須是 HEAD 當下的全套結果	7979a943	全套結果寫在 executor-status 與回報
+2026-11-11T21:58	fix-tc099	TC-099 的 critical meta-refresh 不在本輪修，回報 BLOCKED，沒有改程式	三頁的自動重整同出既有的一行程式；合約 TC-029／037／068 要求等待頁 15 秒重整，與 TC-099 互斥；輸出頁與完成頁的重整依 lead 11-08 14:30 裁決不在本件做；改用 HTTP Refresh 標頭只是避開掃描器	platform/abf_platform/web_board.py:958	BLOCKED：等 lead／維護者決定豁免進合約或另開任務

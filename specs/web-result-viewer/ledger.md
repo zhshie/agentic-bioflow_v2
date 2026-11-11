@@ -91,3 +91,20 @@ TC-095–098 為 UNVERIFIED(operator)，合併後由 lead 驗。TC-099 meta-refr
 - 核對 (a)–(d)，沒有新的程式或測試改動：`424fea5c..HEAD` 只動 `docs/TESTING.md`、`platform/tests/test_web_result_viewer.py`、`scripts/dev/check_result_viewer_sandbox.py` 與本目錄的紀錄檔；CI 工作流程與 shell 閘門檔差異為空；測試檔內沒有 skip／skipif／xfail；刪掉的 Playwright 測試其五條斷言都在腳本裡。
 - 本段所在的 commit 是最終 HEAD；`CI=true` 全套在這個 commit 上跑，結果寫在 `executor-status` 與 executor 回報（寫回本檔會再改 HEAD，所以不寫在這裡）。
 - 尚未推送：分支領先 `origin/feat/web-result-viewer`（`424fea5c`），由 lander 推同一分支（PR 384，不 force）。TC-053 至 TC-057 的瀏覽器層在 PR 內文列「待實機驗」（UNVERIFIED-OPERATOR）。
+
+## 修正輪七（2026-11-11 21:58，verifier FAIL：TC-099）：卡住，沒有改程式
+- [ ] TC-099（axe 無 serious／critical）：verifier 記 FAIL，三頁各一筆 critical `meta-refresh`：輸出頁、完成頁、預覽等待頁。本輪沒有可在計畫範圍內做的修正，回報 BLOCKED。
+- 查到的事實（本輪重新核對，不是照抄前幾輪）：
+  1. 三頁的 `<meta http-equiv="refresh">` 都出自同一行既有程式 `platform/abf_platform/web_board.py:958`（`REFRESH_SECONDS = 15`，`web_board.py:27`）。看板、輸出頁、完成頁、`/run/file` 等待頁與本件的預覽等待頁共用它。基準 `d4dd182e` 就有（`screenshots/base-summary.md:30-37`）。
+  2. 合約本身要求等待頁要有這個重整：TC-029「含 15 秒自動重整」、TC-037「重整目標是同一個 `/run/preview`」、TC-068「15 秒重整回到預覽頁」。本件測試照此釘住（`platform/tests/test_web_result_viewer.py:262`、`:553`）。axe 的 `meta-refresh` 規則對任何有延遲的重整都記 critical，所以 TC-029／037／068 與 TC-099 對等待頁不可能同時成立。
+  3. `DESIGN.md:93` 把「15-second refresh」寫成全站設計；計畫「範圍」限定 `web_board.py` 只改下載格與字串；lead 11-08 14:30 裁決第 2 點寫「lead 另開維護任務處理既有自動重整，不在本件做」。輸出頁與完成頁的重整因此不在本件可動的範圍，而且有多個既有測試檔釘住 `http-equiv="refresh"`。
+  4. 本件新增、且沒有重整的預覽頁（PNG、報告、too_large、不提供預覽、站台連不上）serious／critical 都是 0（`screenshots/summary.md`）。
+- 為什麼不自己修：
+  - 改掉輸出頁、完成頁的自動重整＝改既有行為、改 `DESIGN.md` 的設計決定、改既有測試，三項都超出計畫，且 lead 已明寫不在本件做。
+  - 拿掉等待頁的重整會讓 TC-029／037／068 變紅；那是合約，我不能改合約也不能改弱測試。
+  - 把等待頁改成用 HTTP `Refresh` 標頭可以讓 axe 掃不到，但使用者照樣被自動重整，無障礙問題沒有解，只是避開掃描器；輸出頁與完成頁也仍是 critical。這是設計取捨，專長守則規定不得自行取捨，所以不做。
+- 要請 lead／維護者決定的事（擇一）：
+  1. **豁免進合約**：維護者同意 lead 11-08 14:30 第 2 點，由 verifier 在合約註明「既有的 15 秒自動重整（`meta-refresh`）本件不計」。請同時講明預覽等待頁算不算在內：裁決原文「新增的預覽頁必須維持 0 個 serious／critical」字面上包含等待頁，但等待頁的重整是 TC-029 要求的。
+  2. **另開任務改全站自動重整的作法**（例如改成使用者自己按「重新整理」，或可關掉的重整）：要動 `DESIGN.md:93`、`web_board.py:958`、合約 TC-029／037／068 與釘住重整的既有測試。本件等那件做完再驗 TC-099，或先以選項 1 過關。
+  3. 只處理等待頁（HTTP `Refresh` 標頭）：我不建議，理由如上。
+- 狀態：HEAD 的程式與測試自 `290f7474` 起沒有變動（本段與 `decisions.tsv` 是唯一差異）。本輪沒有重跑全套。`executor-status` 寫 BLOCKED。
