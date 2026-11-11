@@ -31,7 +31,14 @@ jobs:
           tar -xzf gitleaks.tar.gz gitleaks
           sudo mv gitleaks /usr/local/bin/gitleaks
       - name: Scan full history
-        run: gitleaks git --redact --no-banner --config .gitleaks.toml
+        run: gitleaks git --redact --no-banner --config .gitleaks.toml --report-format json --report-path gitleaks-report.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        if: always()
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Scan this PR's commits
         if: github.event_name == 'pull_request'
         run: gitleaks git --redact --no-banner --config .gitleaks.toml --log-opts "origin/${{ github.base_ref }}..HEAD"
