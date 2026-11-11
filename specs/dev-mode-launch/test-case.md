@@ -129,21 +129,21 @@
 
 ## 區段 6 — 憲法 8.0.0 草案、文件、範圍
 
-計畫對應：裁決 A、G、H；2026-11-10 裁決 1、2、4；「完成標準」。注意：計畫舊稿的「TC-076」對應本區段 TC-077、TC-078，「TC-085」對應 TC-086。
+計畫對應：裁決 A、G、H；2026-11-10 裁決 1、2、4；「完成標準」。注意：計畫舊稿的「TC-076」對應本區段 TC-077、TC-078，「TC-085」對應 TC-086。合約修訂（lead 裁決 18、22，2026-11-11）：TC-057、TC-077、TC-081、TC-087 四列依計畫裁決改寫，原因是憲法草案與批准紀錄在出題之後才由 lead 委派寫入（commit 5894113f、0c61c766、794166e4）；其餘各列與 be5f8bc8 相同。
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-077 | 2026-11-10 裁決 1、2；裁決 G | 功能 | 8.0.0 條目已寫入 `.specify/memory/constitution.md` | 讀 8.0.0 條目的 Approval 欄 | Approval 欄唯一內容是 `**Approval.** PENDING: 維護者尚未對修正案全文表示同意。合併前必須由維護者親口同意後補上其原話。`；不含任何維護者引言（也沒有「同意，但4)按照1)」） | 自動：`D` |
+| TC-077 | lead 裁決 17、22（2026-11-11，取代 2026-11-10 裁決 1、2 的 PENDING）；裁決 G | 功能 | 8.0.0 條目已寫入 `.specify/memory/constitution.md` | 讀 8.0.0 條目的 Approval 欄 | Approval 欄唯一內容與 `tests/budget_doc_test.sh` 的 `WANT` 逐字相同：`**Approval.** Approved by the maintainer on 2026-11-11: A (budget channel), B(a), B(b), B(c) — all yes; B(c) was kept at his explicit choice over the lead's recommendation to defer. His words, as the development lead recorded them: 「全部好」.`；不含 `PENDING`；不含「同意，但4)按照1)」；條目內沒有 `approved the full text`、`approved this change in his own words` 這兩種說法 | 自動：`D` |
 | TC-078 | 同上；A 級（放寬安全網）要維護者親口同意才能合併 | 功能 | 本片 PR | 查 PR 狀態 | PR 為 draft；沒有 `--auto`（自動合併）；沒有被合併 | 手動：`docs/TESTING.md`（執行者須在該檔手動部分寫出此步驟） |
 | TC-079 | 裁決 G「新條目 `### 8.0.0 (<日期>)`，六段」；計畫 `D` 檔 | 功能 | 憲法檔 | 讀 8.0.0 條目與檔尾版本行 | 條目標題為 `### 8.0.0 (YYYY-MM-DD)`，含 Rationale、What changes、Sync Impact Report、Impact on existing deployments、Version（MAJOR）、Approval 六段；檔尾版本行的日期與條目標題日期是同一字串 | 自動：`D`、`tests/constitution_scope_test.sh` |
 | TC-080 | 裁決 A 第 3、5 點；`D`「含 never 雲端與 forget」 | 功能 | 8.0.0 條目文字 | 讀 What changes | 明寫「never」：雲端（Google Batch 等）送出永遠要確認、`forget` 與清工作目錄永遠要本人；並如實寫出限制：比逐次確認弱、預估可能不準、自動續跑算入額度、cancel 在兩數字都設時不再逐次問；寫明它與 5.0.0／7.0.0「待確認請求、token、模型的回答不是通道」的關係；寫明設數字只有本人在設定頁 | 自動：`D` |
-| TC-081 | 範圍「憲法只准改 I.2、Safety Net 規則與其 Check 行、新增 8.0.0 條目、檔尾版本行」 | 例外 | 憲法 diff（對 base） | 比對 diff | 只有上述段落有變動；`(today …)` 括號原文一字不動（`tests/constitution_6_test.sh` TC-045）；7.0.0 與更早條目一字不動 | 自動：`tests/constitution_6_test.sh`；ACCEPTANCE 讀 diff |
+| TC-081 | 範圍「憲法只准改 I.2、Safety Net 規則與其 Check 行、新增 8.0.0 條目、檔尾版本行」；lead 裁決 13、22（2026-11-11）另准 Development Workflow 的「Since 8.0.0」一段（8.0.0 條目的 B 部分 (a)(b)(c)） | 例外 | 憲法 diff（對 base） | 比對 diff | 只有上述段落（含 Development Workflow「Since 8.0.0」那一段）有變動；`(today …)` 括號原文一字不動（`tests/constitution_6_test.sh` TC-045）；7.0.0 與更早條目一字不動 | 自動：`tests/constitution_6_test.sh`；ACCEPTANCE 讀 diff |
 | TC-082 | 裁決 G「Check 行加 `test_budget_launch.py`（前綴 `test_bg`）」 | 功能 | 憲法 Safety Net 的 write-tool 規則 | 跑 `tests/constitution_checks_exist_test.sh` | Check 行含新測試檔且該檔存在，檢查通過 | 自動：`tests/constitution_checks_exist_test.sh` |
 | TC-083 | 裁決 G「更新釘住測試讓全套綠」 | 功能 | 憲法改完 | 跑 `tests/constitution_scope_test.sh`、`tests/platform_direction_docs_test.sh`、`tests/charter_v4_workflow_test.sh`、`tests/dev_workflow_test.sh` | 全部通過；`PINNED_SN_SHA256` 與版本字串更新為新值，其他斷言沒有被刪或放寬 | 自動：以上各檔 |
 | TC-084 | 計畫 `D`、`tests/operations_doc_test.sh` | 功能 | 文件（`docs/PLATFORM.md`、`docs/OPERATIONS.md`、`docs/TESTING.md`、`CHANGELOG.md`、`skills/launch/SKILL.md`） | 掃文件內每個 `abf-platform auto-send …` | 每個都對應真的 `sub.add_parser`；`skills/launch/SKILL.md` 只多一句，被釘的句子不動；`docs/adr/0006-…` 只加註 | 自動：`D`、`tests/operations_doc_test.sh` |
 | TC-085 | 範圍「新測試檔首 40 行內 `# Nothing existing: <理由，≥15 字>`」 | 功能 | `platform/tests/test_budget_launch.py` | 跑 `test_scope.py`（TC-070） | 檔首 40 行內有 `# Nothing existing:` 且理由至少 15 字 | 自動：`platform/tests/test_scope.py` |
 | TC-086 | 2026-11-10 裁決 4（`deploy/` 託管單元檔延後） | 功能 | `deploy/` 目錄 | 檢查 `deploy/`、`env.example` | 若 `deploy/` 下已存在含 `ABF_HOSTED` 的單元檔，其值為 1；`env.example` 無論如何不含 `ABF_HOSTED`；沒有單元檔則該項略過並註明；`tests/hosted_deploy_test.sh` 的 TC-016、TC-017、TC-007 一字不改且通過 | 自動：`D`、`tests/hosted_deploy_test.sh` |
-| TC-087 | 範圍「只准改這些」與「不准碰」 | 例外 | 本片 diff（對 base） | `git diff --stat` | 只含「範圍：檔案」所列檔；`spec.md`、`test-case*.md`、`docs/ROADMAP.md`、`.github/`、`web_devmode.py` 既有函式沒有變動；既有釘住的測試只新增例外案例，沒有刪除或放寬斷言 | 自動：`D`（檔案清單）；ACCEPTANCE 讀 diff |
+| TC-087 | 範圍「只准改這些」與「不准碰」 | 例外 | 本片 diff（對 base） | `git diff --stat` | 只含「範圍：檔案」所列檔，另加 lead 裁決 13、14、21、22 明列的檔：`.specify/amendments/8.0.0-budget-and-workflow/`（修正案紀錄）、裁決 14 的釘住測試與 golden 檔（只加項目）、`platform/tests/test_mcp_launch_pipeline.py`（裁決 21，只准三個預算欄位）；`spec.md`、`docs/ROADMAP.md`、`.github/`、`web_devmode.py` 既有函式沒有變動；`test-case*.md` 對合約原稿（be5f8bc8）的差異只限 lead 裁決 18、22 點名的 TC-057、TC-077、TC-081、TC-087 四列與區段 6 的說明行，其餘各列一字不動；既有釘住的測試只新增例外案例，沒有刪除或放寬斷言 | 自動：`D`（檔案清單）；ACCEPTANCE 讀 diff |
 | TC-088 | 完成標準「全套 `tests/run_all.sh` 全綠」 | 功能 | 實作完成 | 在 WSL 跑 `tests/run_all.sh`（已知環境紅除外） | 全綠；完成記號 `GREEN <HEAD sha>` 與 HEAD 相符、工作樹乾淨 | 自動：`tests/run_all.sh` |
 | TC-089 | 計畫「`test_tcm_47` 基準值更新逐條說明」 | 功能 | `platform/tests/test_chat_confirm.py` | 跑 `test_tcm_47_no_new_column_no_new_table` | 通過；基準結構雜湊、確認表欄位、路由清單更新為新值，分別明列新增的欄位（`auto_su_single`、`auto_su_month`、`budget_note`）與新路由（`POST /settings/budget`）；沒有改成只比部分 | 自動：`platform/tests/test_chat_confirm.py` |
 
