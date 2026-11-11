@@ -250,9 +250,9 @@ def test_bg_20_settings_page_saves_limits_and_shows_them(w, monkeypatch):
     c = w.web()
     assert w.login(c, "ann").status_code in (302, 303)
     html = c.get("/settings").text
-    assert "/settings/budget" in html and "未設定＝每次都問你" in html
+    assert "/settings/budget" in html and "未設定＝每次都需確認" in html
     from abf_platform import web_settings
-    assert "每次都問你" not in repr(web_settings.STRINGS)      # the words live in web_devmode's table, so test_ce08's digest stands
+    assert "每次都需確認" not in repr(web_settings.STRINGS)      # the words live in web_devmode's table, so test_ce08's digest stands
     token = re.search(r'action="/settings/budget">.*?name="csrf" value="([^"]+)"', html, re.S).group(1)
     r = c.post("/settings/budget", data={"csrf": "bad", "single": "20", "month": "100", "lang": "zh"})
     assert r.status_code == 400 and actions.get_my_budget(w.ip.tokens, caller=ann) == {"single": None, "month": None}
@@ -260,7 +260,7 @@ def test_bg_20_settings_page_saves_limits_and_shows_them(w, monkeypatch):
     assert r.status_code in (302, 303), r.text[:300]
     assert actions.get_my_budget(w.ip.tokens, caller=ann) == {"single": 20.0, "month": 100.0}
     html = c.get("/settings").text
-    assert 'value="20"' in html and 'value="100"' in html and "未設定＝每次都問你" not in html
+    assert 'value="20"' in html and 'value="100"' in html and "未設定＝每次都需確認" not in html
 
 
 def test_bg_21_hosted_page_says_not_enabled(w, monkeypatch):
@@ -716,7 +716,7 @@ def test_bg_41_the_page_saves_only_my_own_limits(w):
     c = w.web()
     w.login(c, "bob")
     html = c.get("/settings").text
-    assert 'value="20"' not in html and 'value="100"' not in html and "未設定＝每次都問你" in html
+    assert 'value="20"' not in html and 'value="100"' not in html and "未設定＝每次都需確認" in html
     post = {"csrf": _budget_csrf(html), "single": "7", "month": "9", "lang": "zh", "user_id": str(ann.user_id), "name": "ann", "user": "ann"}
     assert c.post("/settings/budget", data=post, headers={"origin": "http://testserver"}).status_code in (302, 303)
     assert actions.get_my_budget(w.ip.tokens, caller=ann) == {"single": 20.0, "month": 100.0}
