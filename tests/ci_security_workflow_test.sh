@@ -185,6 +185,13 @@ test_pip_audit_job_unchanged() { # TC-023
   cur="$(awk '/^  pip-audit:/{f=1} f' "$WF")"
   [ "$cur" = "$(awk '/^  pip-audit:/{f=1} f' <<<"$base")" ]
 }
+test_pip_audit_project_line_has_no_no_deps() { # TC-001..004: --no-deps only works with -r
+  [ -f "$WF" ] || return 1
+  local line
+  line=$(cg -E 'pip-audit .*(\./platform|platform/pyproject\.toml)')
+  [ -n "$line" ] || return 1
+  ! grep -q -- '--no-deps' <<<"$line"
+}
 
 for t in test_security_workflow_exists_and_is_separate \
          test_job_names_do_not_collide_with_required_check test_triggers \
@@ -196,7 +203,8 @@ for t in test_security_workflow_exists_and_is_separate \
          test_gitleaks_full_scan_writes_json_report test_gitleaks_report_stays_redacted \
          test_report_is_uploaded_always_as_artifact test_upload_artifact_is_sha_pinned \
          test_permissions_stay_read_only_after_report test_pr_scan_has_no_report \
-         test_gitleaks_toml_has_no_new_allowlist test_pip_audit_job_unchanged; do
+         test_gitleaks_toml_has_no_new_allowlist test_pip_audit_job_unchanged \
+         test_pip_audit_project_line_has_no_no_deps; do
   check "$t"
 done
 [ "$FAILS" = 0 ] || { echo "$FAILS check(s) failed"; exit 1; }
