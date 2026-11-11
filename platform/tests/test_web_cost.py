@@ -73,9 +73,10 @@ def seed(w, name, owner, where="nchc", status="succeeded", hours=1.0, started=No
         ce = ce or ("gcb1" if where == "cloud" else "nchc1")
         con = store.connect_state(w.ip.state_db)
         with con:
+        # mcp-site-connection-status: SU answers no longer guess the site of an environment without suSite, so a seeded Slurm one names its site (the one it used to default to)
             con.execute("INSERT OR IGNORE INTO compute_envs (name, platform, status, is_primary, config_json, created_at, updated_at) "
                         "VALUES (?, ?, 'ready', 0, ?, 1, 1)",
-                        (ce, platform or (GCB if where == "cloud" else "slurm-platform"), json.dumps(config or {})))
+                        (ce, platform or (GCB if where == "cloud" else "slurm-platform"), json.dumps(config if config is not None else ({} if where == "cloud" else {"suSite": "taiwania3"}))))
             at = time.time() + w.n_launch()
             con.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES (?,?,?,?,?,?)",
                         (name, "/f/" + name, ce, "a1", at, owner.user_id))

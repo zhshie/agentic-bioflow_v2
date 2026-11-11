@@ -1153,3 +1153,13 @@ Take 4 screenshots of the log page and 4 of the Logs tab (1440 and 390 px wide, 
 ## Budget yes (dev-mode-launch): the reviewer checks one thing by hand
 
 - TC-078: the pull request that carries constitution 8.0.0 is a draft, was opened without `--auto`, and is not merged. Its Approval line says `PENDING` until the maintainer says yes in his own words. Look at the pull request page: draft badge present, merge button not used.
+
+## mcp-site-connection-status：驗收者檢查三件事
+
+Automatic tests: `platform/tests/test_site_connection_status.py`, `platform/tests/test_station_site_link.py`, `tests/on_site_check_master_test.sh`. The reviewer checks by hand:
+
+1. The changed files are only the ones the plan lists (`git diff main...HEAD --stat`).
+2. The constitution and the safety net have zero diff (`git diff main...HEAD --stat -- .specify hooks .claude-plugin` is empty).
+3. Existing assertions were changed only where the plan allows: the two tool descriptions (`test_actions_layer.py` BASELINE), `test_su_in_get_run.py` (a compute environment without `suSite` is no longer the default site), `test_refusal_visibility.py` (TC-090 lets the agent facts carry `site_link`) and two lines of `ASPECT_GAPS` that closed.
+
+Procedure P2 additions: read the PITFALLS entry 60 (its Check line names the new tests), and confirm `configs/sites/nchc-nano4-ce.json` has `"suSite": "nano4"` and `configs/sites/su_rates.json` has the `nano4` partitions `ngs*` and `big-mem*`.

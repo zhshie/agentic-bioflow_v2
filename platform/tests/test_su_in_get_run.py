@@ -156,7 +156,7 @@ def test_get_run_has_su_for_a_nano4_run(tmp_path):
 
 def test_default_site_run_has_no_twd_key(tmp_path):
     # TC-011, TC-012
-    db, plat = _world(tmp_path, succeeded=1, usage=[("1:1", "A", "COMPLETED", 4, 2 * H, "ct56")], ce="plain")
+    db, plat = _world(tmp_path, succeeded=1, usage=[("1:1", "A", "COMPLETED", 4, 2 * H, "ct56")])  # the CE is gone: the default site, as before (mcp-site-connection-status: a CE without suSite is no longer the default)
     su = _get(db, plat)["su"]
     assert set(su) == SU_KEYS
     assert su["su"] == pytest.approx(8) and su["twd_nstc"] == pytest.approx(0.64) and su["site"] == "taiwania3"
@@ -323,7 +323,8 @@ def test_site_of_run_reads_suSite_of_the_ce(tmp_path):
     assert su.site_of_run(plat, "other", rates) == "taiwania3"
     _ce(plat, "plain")
     _launch(plat, "run-b", "plain")
-    assert su.site_of_run(plat, "run-b", rates) == "taiwania3"
+    assert su.site_of_run(plat, "run-b", rates) == "taiwania3"      # the default for every other caller; get_run asks strict:
+    assert su.site_of_run(plat, "run-b", rates, strict=True) is None      # mcp-site-connection-status: not guessed for get_run
     _launch(plat, "run-c", "vanished")
     assert su.site_of_run(plat, "run-c", rates) == "taiwania3"
 

@@ -718,7 +718,7 @@ def latest_launch(con, run_name):
 
 def latest_listing(state_path, ce_name, path):
     """The newest list_site_files job of this environment whose path is exactly `path`, as a dict (id, state, deadline_at, finished_at,
-    result), or None. It only reads: a page uses it to see what the site already answered, and never waits for the site."""
+    result, agent: the one that ran or was to run it), or None. It only reads: a page uses it to see what the site already answered, and never waits for the site."""
     con = store.open_readonly(state_path)
     if con is None:
         return None
@@ -734,7 +734,7 @@ def latest_listing(state_path, ce_name, path):
             if json.loads(row["args_json"]).get("path") == path:
                 result = json.loads(row["result_json"]) if row["result_json"] else None
                 return {"id": row["id"], "state": row["state"], "deadline_at": row["deadline_at"], "finished_at": row["finished_at"],
-                        "result": result}
+                        "result": result, "agent": row["agent"]}
         except (ValueError, AttributeError):
             continue
     return None
