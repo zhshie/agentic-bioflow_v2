@@ -89,7 +89,7 @@ NCHC 驗收期間每次送出都要本人按確認，維護者成為瓶頸。這
 3. **決定函式 `budget.decide`**（純函式，傳入已查好的值，便於測）。回「直接成立」只在**全部**成立時：(a) 呼叫者存在且為本人帳號（stdio 無呼叫者→要確認）；(b) 不是 `is_hosted()`；(c) 兩個數字都已設；(d) 種類是 launch、resume、relaunch 且目標 compute env 是 SU 站台（nano4，由 `su.site_of_run`／env 型別判斷），或種類是 cancel；(e) 目標不是雲端環境，且 `cloud_cost` 的雲端檢查路徑不適用（雲端一律要確認，`_cloud_check` 照舊先跑）；(f) `su.estimate_launch` 不是 None 且 ≤ 單次上限；(g) `su.month_total` 不是 None 且 本月用量＋預估 ≤ 每月上限（月界用既有 Asia/Taipei）。任何一項不成立或算不出來，**回「要確認」並照今天走表單／確認頁**，不報錯、不降級。cancel 只要 (a)(b)(c) 與擁有者規則。
 4. **動作層分支**。在 `_ask` 與 `_request_attempt` 於 `create_pending` 之後：若 `budget.decide(...)` 成立，**略過表單與確認頁**，直接 `confirm.approve(platform_path, rid, BUDGET.name, caller_id, clock)`，並把預估、兩個上限、本月已用寫進 `budget_note`；回傳與 ELICITED 成立同形的 `_queued` 結果，多帶 `channel: BUDGET` 與一句白話（「在你設定的 SU 額度內，已直接送出。預估 X SU，你的單次上限 Y、本月已用 Z／上限 W」）。`launch()`、`cancel()`、`_require_human` 仍只認 TERMINAL／ELICITED／PAGE（與 CHAT 依 #376 的特例）；`BUDGET` 直接餵它們依舊被拒。`request_forget`、`forget`、`clean_work` 不碰。擁有者規則照舊：`create_pending` 已做，BUDGET 不繞過。
 5. **`confirm.approve`**。BUDGET 只在動作層分支內呼叫（爆炸半徑證明的核心）；`caller_user_id is None` 一律 `not_yours`。`find_approved`／`find_attempt` 加 `'BUDGET'`，使重複呼叫回同一個 job。
-6. **可見性（每日摘要）**。`abf-platform auto-send list [--since <ISO>]`：列 `channel='BUDGET'` 的每筆，tab 分隔、依時間排序，欄位固定為 `confirmed_at`、呼叫者名稱、種類、run 名稱、確認編號、`budget_note`；沒有則印 `no budget-approved sends`。設定頁顯示目前兩個數字與「未設定＝每次都需確認」。**不新增橫幅**（既有 012a 橫幅是另一個旗標）。
+6. **可見性（每日摘要）**。`abf-platform auto-send list [--since <ISO>]`：列 `channel='BUDGET'` 的每筆，tab 分隔、依時間排序，欄位固定為 `confirmed_at`、呼叫者名稱、種類、run 名稱、確認編號、`budget_note`；沒有則印 `no budget-approved sends`。設定頁顯示目前兩個數字與「未設定＝每次都問你」。**不新增橫幅**（既有 012a 橫幅是另一個旗標）。
 7. **託管**。`is_hosted()`＝`bool(os.environ.get("ABF_HOSTED"))`，為真時 `decide` 一律要確認；設定頁註明「此部署不啟用」。
 8. **fail-closed**。任何例外（資料庫讀失敗、rates 檔缺、estimate 或 month_total 丟錯）一律當「要確認」，不得變成放行，TC-D 逐項覆蓋。
 
@@ -188,3 +188,7 @@ NCHC 驗收期間每次送出都要本人按確認，維護者成為瓶頸。這
 15. 目標：`tests/run_all.sh` 在 WSL 乾淨 clone 上全綠；全綠後 commit、推送同一分支（不 force），PR 維持草稿。回報要附整套測試實際數字。
 16. 若有被 hook 擋寫的檔（`tests/*.sh` 閘門檔），不要繞過：BLOCKED 並列出檔名與需要的最小修改，lead 處理。
 17. **補充（lead，憲法已批准）**：維護者已核可 8.0.0（commit 0c61c766 已把批准寫進憲法）。請把下列過時文字同步為「已核可」：`docs/PLATFORM.md`、`docs/PRINCIPLES.md` 的「a draft until the maintainer approves it」、`CHANGELOG.md` 的「draft … not yet approved」、`docs/TESTING.md` 的 TC-078（Approval 不再是 PENDING）。只改這幾處的措辭，不得動憲法本文、`tests/budget_doc_test.sh` 與釘住值；若有測試釘著這些舊字串，先看是否是「PENDING／draft」這類狀態字，只更新該狀態字，不放寬斷言。
+## 裁決（lead，2026-11-11，回應第二次退回：TC-057 措辭與設計規範衝突）
+18. **頁面文字遵守 DESIGN.md／web-wording-sweep 的禁用字表（含「你」），不開例外。** TC-057 與 plan 的措辭 lead 已改並推送（commit 794166e4）：未設定時顯示「未設定＝每次都需確認」。請把 `platform/abf_platform/web_devmode.py` 的 `bg_unset` 改成同一句「未設定＝每次都需確認」（只改這個字串；英文表若有對應句同步，語意不變），並確認整個 devmode 頁面的中文字串都不含禁用字（執行 `test_web_wording_sweep`）。這不算放寬任何斷言。
+19. 第二輪起請**分批小步**：先把 33 條釘住基準的更新做完並提交推送（每個檔一個 commit 也可以），再跑 `tests/run_all.sh`；上輪在 75 個回合用完前沒推送——請每改完一批就 commit＋push（同一分支，不 force），避免交接時沒有成果。
+20. 裁決 13–17 全部維持。
