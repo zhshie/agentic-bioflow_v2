@@ -168,10 +168,10 @@ The agent refuses to start when the file is missing or empty, when anyone but yo
 
 ```bash
 bash scripts/on_site.sh --check-reach
-#   ssh -o ControlMaster=auto -o ControlPath=<path> -o ControlPersist=8h -o ServerAliveInterval=60 <user@host> true
+#   ssh -o ControlMaster=auto -o ControlPath=<path> -o ControlPersist=yes -o ServerAliveInterval=60 -o ServerAliveCountMax=10 <user@host> true
 ```
 
-Run that printed line yourself; `ControlPersist=8h` keeps the connection for the day. Then start the agent:
+Run that printed line yourself; `ControlPersist=yes` has no idle timeout and `ServerAliveCountMax=10` puts up with about 10 minutes of network break; how long the site keeps the connection is measured, not promised: start `nohup bash scripts/keepalive_log.sh >/dev/null 2>&1 &` in the same WSL terminal and read `event=closed lasted_min=` in `~/.abf/keepalive.log` later. Then start the agent:
 
 ```bash
 abf-station run --platform http://127.0.0.1:8787 --token-file ~/.config/abf/agent.token --deployment <your root>
@@ -685,7 +685,7 @@ The head job runs on a compute node, which cannot reach your machine. The route 
 - **The relay's rule is narrow and fails closed.** It answers a plain-HTTP request in absolute form to exactly `127.0.0.1:<that port>` and nothing else on loopback; only the paths `/trace/...` and `/user-info` (the query string does not count); never CONNECT; and it closes the connection after the answer, so a second request on the same connection never reaches the platform. A missing, unreadable or malformed port file means no. A relay process started before this rule exists answers 403; the launch then says `請重啟 relay：bash scripts/egress_ctl.sh restart`.
 - **The platform and the agent must be on the same machine** (the agent's `--platform` is `http://127.0.0.1:<port>`): the reverse forward ends at the agent's loopback. Otherwise the command refuses before it asks.
 - **Before the files are written, every hop is probed** on the login node with no token: first straight to the forward, then through the relay the way the head job will go. A pass is an HTTP 401 whose header `X-ABF-Platform` carries this platform's instance id (a random id kept in `platform.db`, the same after a restart). Each failure names the hop and its fix: no shared connection (open it in WSL), tunnel closed, relay not running, relay out of date, platform not answering, or some other program on that port.
-- `abf-station unforward --deployment <root>` cancels the forward and removes both port files. Nothing does that for you: not a run ending, not a cancel. The forward ends with the shared connection (at most 8 hours, `ControlPersist`); a run that is still going then keeps running, its live progress stops and shows `lost` after three minutes of silence, and the records bring it right (below). Nothing rebuilds the forward by itself.
+- `abf-station unforward --deployment <root>` cancels the forward and removes both port files. Nothing does that for you: not a run ending, not a cancel. The forward ends with the shared connection (its lifetime is not promised; `scripts/keepalive_log.sh` measures it); a run that is still going then keeps running, its live progress stops and shows `lost` after three minutes of silence, and the records bring it right (below). Nothing rebuilds the forward by itself.
 
 ### The run token
 
