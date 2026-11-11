@@ -22,7 +22,7 @@ def personal_words(lang):
             "pref_bad": "送出的內容不正確，未變更任何內容。請重新整理頁面後再試。",
             "pref_failed": "未能儲存，未變更任何內容。請稍後再試。",
             "bg_title": "預算內免逐次確認", "bg_single": "單次上限（SU）", "bg_month": "每月上限（SU）", "bg_save": "儲存",
-            "bg_hint": "兩個上限都設好後，送到國網 Slurm 的 launch、resume、relaunch 與取消，只要預估用量在額度內就直接送出，不再逐次問你；高於額度或估不出來時仍會問你。",
+            "bg_hint": "兩個上限都設好後，送到國網 Slurm 的 launch、resume、relaunch 與取消，只要預估用量在額度內就直接送出，不再逐次確認；高於額度或估不出來時仍須逐次確認。",
             "bg_unset": "未設定＝每次都問你", "bg_set": "已設定", "bg_hosted": "此部署不啟用",
             "pf_n_" "budget-saved": "已儲存。",
             "bg_bad": "上限必須是 0 到 1,000,000 的數字（兩格都留空代表清除）。未變更任何內容。",

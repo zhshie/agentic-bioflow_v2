@@ -1238,8 +1238,6 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             single, month = number(form.get("single")), number(form.get("month"))
             if not _same(form.get("csrf", ""), csrf(sid, "settings-budget")) or budget.is_hosted():
                 raise ValueError("refused")
-            if (single is None) != (month is None):
-                raise ValueError("both boxes or none")
             done = actions.set_my_budget(tokens_path, single, month, confirmed_by=actions.PAGE, caller=caller)
         except ValueError:
             done = {"ok": False}
