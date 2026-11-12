@@ -79,3 +79,12 @@ D7 每個 `cp deploy/...` 之前寫明先 `cd` 到 repo。`docs/TESTING.md`：TC
 D8 不得寫「hidden window」這類不實的話。照 D9 的實際行為寫。
 D9 保活工作不得讓使用者每次登入看到一個不能關的黑視窗。排程工作的動作改為 `powershell.exe -NoProfile -WindowStyle Hidden -Command "& wsl.exe [-d <distro>] --exec /bin/sleep infinity"`（視窗可能閃一下就消失）。這修訂 TC-004 的「動作是 wsl.exe」為「動作是經隱藏視窗的 powershell 啟動 wsl.exe，最終執行的仍恰為 `wsl.exe [-d <distro>] --exec /bin/sleep infinity`」。是否真的不留視窗屬人工項，文件與 TESTING 照實寫「若仍看到視窗，請最小化不要關，並回報」。
 另：文件補一句——若公司政策禁止 `-ExecutionPolicy Bypass`，把腳本複製到 Windows 資料夾後以滑鼠右鍵「用 PowerShell 執行」，或回報。
+
+## 裁決（lead，2026-11-13，第二次驗收（窄 REJECT）之後）
+
+E1（最重要，看起來會像資料全部不見）：步驟 3 複製 `deploy/env.example` 之後，緊接著明寫：在複製出來的檔裡刪掉 `ABF_PLATFORM_DB=...` 那一行與 `ABF_SITE_ADDRESS=...` 那一行（後者是 Caddy 用的）；只有 `~/.bashrc` 原本就 export 了 `ABF_PLATFORM_DB` 才放回去，而且值要一模一樣；絕不自己編一個新資料夾——新資料夾等於一個空的平台。啟用服務之後加一個檢查點：網站上要看得到原本的分析記錄；是空的就停下，回到步驟 3。這段要用醒目的方式寫（獨立一段、開頭標「重要」）。`deploy/env.example` 該行的註解可加一句指向這段，但不改變數本身。
+E2 清殘留：不得給 `pkill -f 'abf-platform|abf-station'`。改為 `pgrep -af 'abf-(platform|station) (serve|web|mcp|run)'` 列出，再寫「只對列出的行程編號用 `kill <編號>`」。另外在步驟 2（`wsl --shutdown`）之前加一步：趁手動起的行程還在，先列出並存下它們的完整指令列與相關環境變數（`ABF_`、`PATH`、`JAVA_HOME`、`XDG_` 開頭的），並提醒：服務用的是 8787／8788／8789 與 `--public-url ${ABF_PUBLIC_URL}`，若手動啟動時用了別的連接埠或旗標，先改 unit 再啟用。
+E3 國網重新連線：寫成確切的三步——在原本那個互動式終端機（因為部署設定檔的位置來自 `~/.bashrc`）、先 `cd` 到 plugin 資料夾、執行 `scripts/on_site.sh --check-reach`，把它印出的那一行貼上並由本人輸入 OTP；再以 `scripts/on_site.sh --check-master; echo $?` 確認印出 0。不得指向 `reset_master.sh`（那是關連線）。寫明：agent 約每 25 秒自己重查一次，不必重啟；一分鐘內到網站的站台連線狀態看是否變回「開」（這是人工項）。
+E4 中斷時間照實寫：平台從 `wsl --shutdown` 起到服務啟用完成為止都是停的。把「寫 env、準備 unit 檔、每個 agent 的 env」這些準備工作全部移到 shutdown 之前做完，shutdown 之後只剩「確認無殘留、`daemon-reload`、`enable --now`、看狀態」，並寫「中斷時間約幾分鐘，取決於你打這幾個指令的速度」。注意：`/etc/wsl.conf` 也在 shutdown 之前改好；`~/.config/systemd/user/` 下的檔可以在 systemd 還沒開時就先放好。
+E5 `sed` 那一行不得寫死 venv 的資料夾名：寫「換成你的 venv 資料夾名（在家目錄下）」，並給一個指令找出它（看現有行程的指令列）。
+每項都要有 `tests/desktop_systemd_test.sh` 的檢查釘住；E2 的檢查要釘「文件不含寬的 pkill 樣式」。
