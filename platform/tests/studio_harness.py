@@ -29,7 +29,9 @@ class FakeSite:
     NO_RUN = "Run not found (找不到這個 run)"
 
     def size_of(self, rel):
-        return self.sizes.get(rel, len(self.files[rel].encode("utf-8")))
+        if rel in self.sizes:
+            return self.sizes[rel]
+        return len(self.files[rel].encode("utf-8", "surrogatepass"))
 
     def run_outputs(self, args):
         if not self.found:

@@ -153,7 +153,7 @@ def test_r9_a_very_long_name_is_refused_in_a_sentence(tmp_path, capsys, monkeypa
 
 
 def test_r9_a_lone_surrogate_in_the_text_is_refused_in_a_sentence(tmp_path, capsys, monkeypatch):
-    site = FakeSite(files={"bad.tsv": "a\ud800b\n", "ok.tsv": "o\n"})
+    site = FakeSite(files={"bad.tsv": "a\ud800b\n", "ok.tsv": "o\n"}, sizes={"bad.tsv": 4})
     rc, out, err = run(site, tmp_path, capsys, monkeypatch)
     assert rc == 1 and got(tmp_path / "o") == {"ok.tsv": b"o\n"}
 

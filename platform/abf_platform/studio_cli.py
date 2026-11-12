@@ -20,6 +20,10 @@ DEADLINE_SECONDS = 120.0      # how long one listing, or one file, may stay `loa
 MAX_TOTAL_BYTES = 100 * 1024 * 1024
 MAX_FILES = 200               # files fetched in one run of the command
 MAX_DEPTH = 3                 # levels of the results tree that are listed, the first included
+MAX_DIRS = 100                # folders listed in one run of the command (one call of run_outputs each, whatever the platform lists)
+MAX_PAGES = 200               # pages read of one file (a page is up to 200,000 characters, so a file of 25 MB is at most 131)
+MAX_NAME_BYTES = 255          # the longest part of a path that is written
+COMMAND_DEADLINE_SECONDS = 900.0   # the whole command, listing and reading, whatever each single wait allows
 TABLE_SUFFIXES = (".tsv", ".csv", ".txt", ".md", ".json")
 HTML_SUFFIXES = (".html", ".htm")
 LIST_LIMIT = 50               # lines of one kind that are printed one by one
@@ -59,7 +63,16 @@ STRINGS = {
         "why_abs": "絕對路徑或含反斜線",
         "why_dots": "含有 .. 或空的部分",
         "why_hidden": "含有以點開頭的部分",
-        "why_control": "含有控制字元",
+        "why_control": "含有控制字元或無法編碼的字元",
+        "why_long": "有一段名稱的長度大於 {limit} 位元組",
+        "why_local": "這台電腦無法使用該名稱",
+        "why_mismatch": "要寫入的名稱與它所在的資料夾和名稱不一致",
+        "why_badrow": "列表中的這一項格式不正確",
+        "why_dup": "在列表中出現不只一次，只取一次",
+        "why_dup_case": "與 {other} 只差大小寫，這台電腦可能視為同一個檔案，未下載",
+        "fail_pages": "讀了 {limit} 頁仍未讀完",
+        "fail_total": "整個指令已達 {seconds} 秒的總期限而停止",
+        "dirs_limit": "另有 {n} 個資料夾因已列出 {limit} 個的上限而未列出。",
     },
     "en": {
         "folder_line": "Results folder: {path}",
@@ -95,13 +108,22 @@ STRINGS = {
         "why_abs": "absolute or has a backslash",
         "why_dots": "has .. or an empty part",
         "why_hidden": "has a part that starts with a dot",
-        "why_control": "has a control character",
+        "why_control": "has a control character or a character that cannot be encoded",
+        "why_long": "a part of the name is longer than {limit} bytes",
+        "why_local": "this computer cannot use that name",
+        "why_mismatch": "the name to write is not the folder it is in plus its name",
+        "why_badrow": "this entry of the listing is not in the right shape",
+        "why_dup": "it is listed more than once; it is fetched once",
+        "why_dup_case": "it differs from {other} only in case, which this computer may take for the same file; not downloaded",
+        "fail_pages": "not read to the end within {limit} pages",
+        "fail_total": "the whole command was stopped at its total limit of {seconds} seconds",
+        "dirs_limit": "{n} more folders are not listed because of the limit of {limit} folders listed.",
     },
 }
 
 
 def _t(key, **kw):
-    return STRINGS[studio_remote.lang()][key].format(**kw)
+    return STRINGS[studio_remote.lang()][key].format(**{k: studio_remote.clean_text(v) if isinstance(v, str) else v for k, v in kw.items()})
 
 
 def _bad(text):
@@ -168,8 +190,14 @@ def _unsafe(rel):
         return _t("why_empty")
     if rel.startswith("/") or "\\" in rel or re.match(r"^[A-Za-z]:", rel):
         return _t("why_abs")
-    if re.search(r"[\x00-\x1f\x7f]", rel):
+    if re.search(r"[\x00-\x1f\x7f-\x9f]", rel):
         return _t("why_control")
+    try:
+        encoded = rel.encode("utf-8")
+    except UnicodeEncodeError:
+        return _t("why_control")
+    if any(len(p) > MAX_NAME_BYTES for p in encoded.split(b"/")):
+        return _t("why_long", limit=MAX_NAME_BYTES)
     parts = rel.split("/")
     if any(p in ("", ".", "..") for p in parts):
         return _t("why_dots")
@@ -180,13 +208,16 @@ def _unsafe(rel):
 
 def _target(base, rel):
     """The place `rel` is written to, or _Refused: inside `base` once resolved, and no link on the way (a link is never followed)."""
-    cur = base
-    for part in rel.split("/"):
-        cur = cur / part
-        if cur.is_symlink():
-            raise _Refused(_t("why_symlink"))
-    target = base.joinpath(*rel.split("/"))
-    resolved = target.resolve()
+    try:
+        cur = base
+        for part in rel.split("/"):
+            cur = cur / part
+            if cur.is_symlink():
+                raise _Refused(_t("why_symlink"))
+        target = base.joinpath(*rel.split("/"))
+        resolved = target.resolve()
+    except (OSError, ValueError):
+        raise _Refused(_t("why_local")) from None
     if resolved != base and base not in resolved.parents:
         raise _Refused(_t("why_outside"))
     return target
@@ -231,15 +262,17 @@ class _Report:
         self.problem = False           # the exit code is 1
         self.site_closed = False
         self.hidden = {}
+        self.dirs = 0                  # folders listed so far, the first level excluded
+        self.listed = {}               # lower case path -> the path as it was listed
 
     def skip(self, rel, why, problem=False):
-        self.skipped.append(rel)
+        self.skipped.append(studio_remote.clean_text(rel))
         if len(self.skipped) <= LIST_LIMIT:
             cliout.say(_t("skip", rel=rel, why=why))
         self.problem = self.problem or problem
 
     def fail(self, rel, reason):
-        self.failed.append(rel)
+        self.failed.append(studio_remote.clean_text(rel))
         _bad(_t("fail", rel=rel, reason=reason))
         self.problem = True
 
@@ -260,17 +293,32 @@ async def _site_closed(session, report, answer, compute_env):
 async def _list(session, run_id, report, candidates, path, depth, answer, compute_env):
     """List one level of the results and everything below it down to MAX_DEPTH; fills `candidates` with (path, size) of what is to be read."""
     prefix = path + "/" if path else ""
-    for row in answer.get("files") or []:
-        name = str(row.get("name"))
+    rows = answer.get("files")
+    if rows is None:
+        rows = []
+    if not isinstance(rows, list):
+        report.incomplete = report.problem = True
+        _bad(_t("fail_list", rel=path or ".", reason=studio_remote.tr("bad_answer")))
+        return
+    for row in rows:
+        name = row.get("name") if isinstance(row, dict) else None
+        if not isinstance(name, str) or not name:
+            report.incomplete = True
+            report.skip(prefix + "?", _t("why_badrow"), problem=True)
+            continue
         kind = row.get("type")
         if kind == "dir":
             enter = row.get("enter")
-            if not enter:
+            if not isinstance(enter, str) or not enter:
                 report.skip(prefix + name, _t("why_nopath"), problem=True)
             elif depth + 1 > MAX_DEPTH:
                 report.incomplete = True
                 report.skip(enter, _t("why_deep", limit=MAX_DEPTH), problem=True)
+            elif report.dirs >= MAX_DIRS:
+                report.incomplete = report.problem = True
+                report.hidden["dirs"] = report.hidden.get("dirs", 0) + 1
             else:
+                report.dirs += 1
                 sub = await _ask(session, "run_outputs", {"run_id": run_id, "path": enter})
                 if sub.get("found") is not False and sub.get("state") == "ready":
                     await _list(session, run_id, report, candidates, enter, depth + 1, sub, compute_env)
@@ -278,27 +326,36 @@ async def _list(session, run_id, report, candidates, path, depth, answer, comput
                     report.incomplete = report.problem = True
                     _bad(_t("fail_list", rel=enter, reason=_why(sub)))
             continue
-        shown = row.get("download") or prefix + name
+        download = row.get("download")
+        shown = download if isinstance(download, str) and download else prefix + name
         ext = Path(name).suffix.lower()
         size = row.get("size")
+        size = max(size, 0) if isinstance(size, int) and not isinstance(size, bool) else 0
         if kind != "file":
             report.skip(shown, _t("why_other"))
         elif ext in HTML_SUFFIXES:
             report.skip(shown, _t("why_html"))
         elif ext not in TABLE_SUFFIXES:
             report.skip(shown, _t("why_ext", ext=ext or "-"))
-        elif row.get("too_large") or (isinstance(size, int) and size > RUN_FILE_MAX_BYTES):
+        elif row.get("too_large") or size > RUN_FILE_MAX_BYTES:
             report.skip(shown, _t("why_big", size=size, limit=RUN_FILE_MAX_BYTES), problem=True)
-        elif not row.get("download"):
+        elif not isinstance(download, str) or not download:
             report.skip(shown, _t("why_nopath"), problem=True)
-        elif _unsafe(row["download"]):
-            report.skip(shown, _t("why_path", why=_unsafe(row["download"])), problem=True)
+        elif _unsafe(download) or _unsafe(name) or "/" in name:
+            report.skip(shown, _t("why_path", why=_unsafe(download) or _unsafe(name) or _t("why_abs")), problem=True)
+        elif download != prefix + name:
+            report.skip(shown, _t("why_mismatch"), problem=True)
+        elif download in report.listed.values():
+            report.skip(shown, _t("why_dup"))
+        elif download.lower() in report.listed:
+            report.skip(shown, _t("why_dup_case", other=report.listed[download.lower()]), problem=True)
         elif len(candidates) >= MAX_FILES:
             report.incomplete = True
             report.hidden["limit"] = report.hidden.get("limit", 0) + 1
             report.problem = True
         else:
-            candidates.append((row["download"], size if isinstance(size, int) else 0))
+            report.listed[download.lower()] = download
+            candidates.append((download, size))
 
 
 def _why(answer):
@@ -310,14 +367,17 @@ def _why(answer):
 
 def _reason_of(answer, default):
     reason = answer.get("reason") or answer.get("message") if isinstance(answer, dict) else None
-    return reason if isinstance(reason, str) and reason else default
+    return studio_remote.clean_text(reason) if isinstance(reason, str) and reason else default
 
 
 async def _read(session, run_id, rel):
     """Read one file page by page. Returns ("ok", bytes), ("binary", None), ("big", size) or ("fail", answer); the pieces are joined only when the
-    last one has come, so nothing short of the whole file is ever written."""
-    pieces, offset, total, more = [], 0, 0, True
+    last one has come, so nothing short of the whole file is ever written. The limit of one file counts UTF-8 bytes; a page is at most MAX_PAGES."""
+    pieces, offset, total, pages, more = [], 0, 0, 0, True
     while more:
+        if pages >= MAX_PAGES:
+            return "fail", {"reason": _t("fail_pages", limit=MAX_PAGES)}
+        pages += 1
         answer = await _ask(session, "read_run_file", {"run_id": run_id, "path": rel, "offset": offset})
         state = answer.get("state")
         if answer.get("found") is False or state not in ("ready", "too_large"):
@@ -327,12 +387,18 @@ async def _read(session, run_id, rel):
         if answer.get("kind") != "text":
             return "binary", None
         text, nxt = answer.get("text"), answer.get("next_offset")
-        total += len(text) if isinstance(text, str) else 0
-        if not isinstance(text, str) or total > RUN_FILE_MAX_BYTES or (nxt is not None and (not isinstance(nxt, int) or nxt <= offset)):
+        try:
+            piece = text.encode("utf-8") if isinstance(text, str) else None
+        except UnicodeEncodeError:
+            piece = None
+        if piece is None or (nxt is not None and (not isinstance(nxt, int) or isinstance(nxt, bool) or nxt <= offset or not piece)):
             return "fail", {"reason": studio_remote.tr("bad_answer")}
-        pieces.append(text)
+        total += len(piece)
+        if total > RUN_FILE_MAX_BYTES:
+            return "big", total
+        pieces.append(piece)
         more, offset = nxt is not None, nxt
-    return "ok", "".join(pieces).encode("utf-8")
+    return "ok", b"".join(pieces)
 
 
 def _folder_of(args):
@@ -343,8 +409,23 @@ def _folder_of(args):
 
 
 async def _fetch(args):
-    run_id, folder = args.run, _folder_of(args)
+    """The command inside one deadline for the whole of it (COMMAND_DEADLINE_SECONDS); what was written before the deadline stays, and the rest is
+    listed as not fetched."""
+    folder = _folder_of(args)
     report, candidates = _Report(), []
+    try:
+        code = await asyncio.wait_for(_work(args, folder, report, candidates), COMMAND_DEADLINE_SECONDS)
+    except asyncio.TimeoutError:
+        done = set(report.got) | set(report.failed) | set(report.skipped)
+        report.pending = [r for r, _ in candidates if r not in done]
+        report.problem = report.incomplete = True
+        _bad(_t("fail_total", seconds=COMMAND_DEADLINE_SECONDS))
+        return _finish(report, folder)
+    return code
+
+
+async def _work(args, folder, report, candidates):
+    run_id = args.run
     async with studio_remote.open_session() as session:
         root = await _ask(session, "run_outputs", {"run_id": run_id})
         if root.get("found") is False:
@@ -375,7 +456,7 @@ async def _fetch(args):
                 continue
             kind, data = await _read(session, run_id, rel)
             if kind == "binary":
-                report.skip(rel, _t("why_binary"))
+                report.skip(rel, _t("why_binary"), problem=True)
             elif kind == "big":
                 report.skip(rel, _t("why_big", size=data, limit=RUN_FILE_MAX_BYTES), problem=True)
             elif kind == "fail":
@@ -385,6 +466,10 @@ async def _fetch(args):
                     report.pending = [r for r, _ in candidates[index:]]
                     break
                 report.fail(rel, _why(data))
+            elif total + len(data) > MAX_TOTAL_BYTES:
+                report.problem = report.incomplete = True
+                report.pending = [r for r, _ in candidates[index:]]
+                break
             else:
                 try:
                     over = _write(target, data)
@@ -400,6 +485,8 @@ async def _fetch(args):
 def _finish(report, folder):
     if report.hidden.get("limit"):
         cliout.say(_t("more", n=report.hidden["limit"]))
+    if report.hidden.get("dirs"):
+        cliout.say(_t("dirs_limit", n=report.hidden["dirs"], limit=MAX_DIRS))
     if len(report.skipped) > LIST_LIMIT:
         cliout.say(_t("more", n=len(report.skipped) - LIST_LIMIT))
     if report.pending:

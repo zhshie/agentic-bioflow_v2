@@ -132,7 +132,7 @@ def test_tc019_binaries_and_html_are_never_fetched_and_each_skip_has_a_reason(tm
     site = FakeSite(files=files, binary={"weird.tsv"})
     patch_session(monkeypatch, site)
     rc, out, err = fetch(["r1", "--dir", str(tmp_path / "o")], capsys)
-    assert rc == 0 and sorted(got(tmp_path / "o")) == ["kept.tsv"]
+    assert rc == 1 and sorted(got(tmp_path / "o")) == ["kept.tsv"]      # R11 (the lead, 2026-11-12): a table the platform calls binary is a problem, exit 1
     asked = [a["path"] for a in site.names("read_run_file")]
     assert sorted(asked) == ["kept.tsv", "weird.tsv"]      # nothing else was read, the html not even to get its address
     lines = {name: [l for l in out.splitlines() if name in l] for name in ("x.bam", "y.fastq", "z.gz", "p.png", "report.html", "weird.tsv")}

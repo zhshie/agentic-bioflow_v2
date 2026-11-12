@@ -80,8 +80,18 @@ def lang():
     return "en" if loc.lower().startswith("en") else "zh"
 
 
+_NOT_SHOWN = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ud800-\udfff]")
+
+
+def clean_text(text):
+    """`text` as one line a terminal can show: a control character (the C1 ones included), a line or paragraph separator, a format character such as a
+    right-to-left override and a lone surrogate become a question mark, and a line break or a tab a space. It is for words the platform or a file name
+    supplies, which are shown to a person."""
+    return _NOT_SHOWN.sub("?", re.sub(r"[\n\r\t]", " ", text))
+
+
 def tr(key, **kw):
-    return STRINGS[lang()][key].format(**kw)
+    return STRINGS[lang()][key].format(**{k: clean_text(v) if isinstance(v, str) else v for k, v in kw.items()})
 
 
 class StudioError(Exception):
@@ -284,7 +294,10 @@ async def open_session(config=None):
     async def note(response):
         if response.status_code >= 400:
             seen.append(response.status_code)
-    async with AsyncClient(headers={"Authorization": "Bearer " + cfg["token"]}, event_hooks={"response": [note]}, timeout=Timeout(CALL_TIMEOUT)) as http:
+    # The environment's proxy settings are honoured for a public address, and never for this computer itself: a proxy would be sent the token in clear text.
+    loopback = re.match(r"https?://\[?([^\]:/]+)", cfg["server"]).group(1) in LOOPBACK
+    async with AsyncClient(headers={"Authorization": "Bearer " + cfg["token"]}, event_hooks={"response": [note]}, timeout=Timeout(CALL_TIMEOUT),
+                           trust_env=not loopback) as http:
         yield _Session(http, cfg, seen)
 
 
