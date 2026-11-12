@@ -29,7 +29,7 @@
 | TC-006 【機器可驗】 | 作法 (1)；測試 2；專長守則（跨使用者讀） | 例外 | u2 的 agent 自報 closed；u1 自己的 agent 是 open | 以 u1 呼叫 `closed_agents` | 清單為空，看不到 u2 的 agent | 自動：同上 |
 | TC-007 【機器可驗】 | 作法 (1) | 功能 | 沒有 user 的終端機呼叫（user_id 為空），兩個不同使用者的 agent 都 closed | 呼叫 `closed_agents(state_path, None, now)` | 回傳兩個 agent（視為全部，與 `jobs._target` 的規則相同） | 自動：同上 |
 | TC-008 【機器可驗】 | 作法 (1)；測試 3 | 功能 | 記下 `jobs` 表列數與每個 agent 的 `agents.last_seen_at` | 呼叫 `closed_agents` 數次 | 呼叫前後 `jobs` 列數與 `last_seen_at` 完全不變（純讀取，不寫庫、不 enqueue） | 自動：同上 |
-| TC-009 【機器可驗】 | 作法 (2)；B1；原話「連線狀態可見」 | 功能 | u1 的 agent `desktop` 自報 closed，介面語言 zh | u1 登入後載入 `/` | HTML 含 `class="linkbar"`、`role="alert"`、agent 名 `desktop`、字樣 `WSL`；含 zh 原文「站台連線已掉：請在執行 agent「desktop」那台機器的 WSL 終端機重新登入（貼上開連線指令並輸入 OTP）。已在跑的 run 不受影響；新的 run 在恢復前無法送出。」 | 自動：同上 |
+| TC-009 【機器可驗】 | 作法 (2)；B1；原話「連線狀態可見」 | 功能 | u1 的 agent `desktop` 自報 closed，介面語言 zh | u1 登入後載入 `/` | HTML 含 `class="linkbar"`、`role="alert"`、agent 名 `desktop`、字樣 `WSL`；含 zh 原文「站台連線已掉：請在執行 agent「desktop」那台機器的 WSL 終端機重新登入（貼上開連線指令並輸入 OTP）。已在跑的分析不受影響；新的分析在恢復前無法送出。」（中文用「分析」，不含「run」） | 自動：同上 |
 | TC-010 【機器可驗】 | 作法 (2)；B1 | 功能 | 同 TC-009，介面語言 en | 載入 `/` | HTML 含 `class="linkbar"`、`role="alert"`、`desktop`、`WSL`，並含 en 原文「The site connection is down. On the machine running agent "desktop", log in again in its WSL terminal (paste the connect line, type the one-time code). Runs already going are not affected; new runs cannot be sent until it is back.」（agent 名經 HTML 跳脫後的形式） | 自動：同上 |
 | TC-011 【機器可驗】 | 作法 (2)；B1 | 功能 | 同 TC-009 | 分別以 zh、en 載入 `/launch` 與 `/settings` | 兩頁在 zh、en 都含 `class="linkbar"`、agent 名與 `WSL` | 自動：同上 |
 | TC-012 【機器可驗】 | 作法 (2)、環境事實（所有頁都經 `_frame`） | 功能 | 同 TC-009 | 載入 usage、upload、downstream 三種頁 | 每一頁頂端都有 `class="linkbar"` 紅條 | 自動：同上 |
@@ -59,7 +59,7 @@
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
 | TC-033 【機器可驗】 | 作法 (3)；M1；原話「掉線時明確提示」 | 功能 | u1 的 agent `desktop` 新鮮 closed，u1 有一個待確認的 launch 申請（目標 agent `desktop`） | 人按 yes（`approve`） | 得到 `NotApproved("failed", message)`；message 以 `No open connection to the site` 開頭，含 agent 名 `desktop` 與 `WSL`，長度 ≤ 300 字元 | 自動：`platform/tests/test_site_disconnect_ux.py` |
-| TC-034 【機器可驗】 | 作法 (3)；目標「訊息明講請在哪台機器的 WSL 重新登入」 | 功能 | 同 TC-033 | 讀 message | 含「連線已掉，請在執行 agent「desktop」那台機器的 WSL 終端機重新登入，再重新送出」與「已在跑的 run 不受影響 (runs already going are not affected)」 | 自動：同上 |
+| TC-034 【機器可驗】 | 作法 (3)；目標「訊息明講請在哪台機器的 WSL 重新登入」 | 功能 | 同 TC-033 | 讀 message | 含「連線已掉，請在執行 agent「desktop」那台機器的 WSL 終端機重新登入，再重新送出」與「已在跑的分析不受影響」（zh 用「分析」，不含「run」；en 為 runs already going are not affected） | 自動：同上 |
 | TC-035 【機器可驗】 | 作法 (3)(4)；M2 | 功能 | 同 TC-033，refusal 訊息已存進被拒的申請列 | 把訊息送過 `jobs._first_sentence`／`_refusal_of_row` | 結果仍含 agent 名 `desktop`，且分類為 `site_down`（既有「站台連線沒開」分類照常運作） | 自動：同上 |
 | TC-036 【機器可驗】 | 作法 (4)；M3；原話「掉線時明確提示」 | 功能 | 經 MCP `launch` 取得表單，人答 yes | 讀 MCP 回覆 | 回覆含機器名與 `WSL`，整句原樣出現，沒有被 `REFUSAL_LIMIT=300` 或 `_first_sentence` 截掉 | 自動：同上 |
 | TC-037 【機器可驗】 | 作法 (4)（MCP 與網頁都顯示） | 功能 | 同 TC-033，改走網頁確認頁按下確認 | 讀網頁回應 | 網頁顯示整句，含 agent 名與 `WSL` | 自動：同上 |
@@ -108,8 +108,8 @@
 | TC-065 【機器可驗】 | 作法 (6)；K3 | 功能 | 連續幾輪：回 0、回 1、再回 0 | 執行並讀 log | 由 closed 轉回 open 時寫一行 `event=reopened` | 自動：同上 |
 | TC-066 【機器可驗】 | 作法 (6)；K3 | 功能 | log 檔已超過 1 MB | 執行一輪 | 舊檔被改名為 `.1`（只留一份），新檔接著寫 | 自動：同上 |
 | TC-067 【機器可驗】 | 作法 (6)（不得自寫 `ssh -O check`）；PITFALLS 16e、57 | 功能 | 假 `on_site.sh` 會記錄收到的參數；假 `ssh` 若被叫就記錄 | 執行 | 只呼叫 `on_site.sh --check-master`；假 `ssh` 完全沒被呼叫；腳本內容沒有自己的 `ssh` 指令 | 自動：同上 |
-| TC-068 【機器可驗】 | 作法 (6) | 功能 | 沒設環境變數／`ABF_KEEPALIVE_ONCE=1` | 檢查預設與 ONCE | 預設間隔 600 秒（`ABF_KEEPALIVE_INTERVAL` 可覆寫）；預設 log 為 `$HOME/.abf/keepalive.log`（`ABF_KEEPALIVE_LOG` 可覆寫）；ONCE 模式只跑一輪且不睡眠 | 自動：同上 |
-| TC-069 【機器可驗】 | 作法 (6)（`kill` 即停；不自動啟動） | 功能 | 以背景執行迴圈 | 送 `kill` 並查平台與 agent 程式碼 | 程序即停；平台與 agent 的程式碼沒有任何地方啟動 `keepalive_log.sh` | 自動：`tests/keepalive_log_test.sh`＋讀 diff |
+| TC-068 【機器可驗】 | 作法 (6) | 功能 | 沒設環境變數 | 連呼叫 `keepalive_log.sh` 兩次（第二次偵測到 closed）並檢查腳本 | 單次執行：每呼叫一次只檢查一次連線、追加一行 log，並從 log 最後一筆算 open→closed 存活分鐘，第二次偵測到 closed 時寫 event 行；預設 log 為 `$HOME/.abf/keepalive.log`（`ABF_KEEPALIVE_LOG` 可覆寫）；腳本不含 while／loop／nohup／sleep 常駐，也不在 `DAEMON_ALLOW` 內 | 自動：同上 |
+| TC-069 【機器可驗】 | 作法 (6)（`kill` 即停；不自動啟動） | 功能 | 呼叫 `keepalive_log.sh` 一次 | 查腳本結束行為與平台、agent 程式碼 | 呼叫後程序自行結束（無常駐、無需 `kill`）；平台與 agent 的程式碼沒有任何地方啟動 `keepalive_log.sh` | 自動：`tests/keepalive_log_test.sh`＋讀 diff |
 | TC-070 【機器可驗】 | 作法 (6)（不開連線、不輸入 OTP、不寫憑證） | 功能 | 讀腳本與跑出的 log | 檢查 | 腳本不開連線、不要求也不寫 OTP；log 內容只有 ts、machine、master、rc、event、lasted_min、last_open，沒有任何憑證 | 自動：同上 |
 | TC-071 【機器可驗】 | 作法 (6)（不放進 `platform/abf_station/`） | 功能 | 看新檔位置並跑 `test_station_static.py` | 檢查 | 檔案在 `scripts/keepalive_log.sh`；`platform/tests/test_station_static.py` 的 tc087（站台原始碼無 ssh／ControlPersist）仍綠 | 自動：`platform/tests/test_station_static.py` |
 | TC-072 【機器可驗】 | 完成標準（實演 `keepalive_log.sh`） | 功能 | 讀 ledger | 檢查 | ledger 貼了一段真的跑出來的 log，並標明是用假 `on_site.sh` 的模擬 | 自動：讀 ledger |
@@ -118,7 +118,7 @@
 
 | 編號 | 對應需求 | 類型 | 前置條件 | 步驟 | 預期結果 | 驗證方式 |
 |---|---|---|---|---|---|---|
-| TC-073 【機器可驗】 | 範圍：文件；完成標準 | 功能 | 讀 `docs/PLATFORM.md` | 檢查指令範例與說明 | 不再有「ControlPersist=8h keeps the connection for the day」與「at most 8 hours」；指令範例是新的保活指令；有 `nohup bash scripts/keepalive_log.sh >/dev/null 2>&1 &` 的使用方式 | 自動：讀檔（grep） |
+| TC-073 【機器可驗】 | 範圍：文件；完成標準 | 功能 | 讀 `docs/PLATFORM.md` | 檢查指令範例與說明 | 不再有「ControlPersist=8h keeps the connection for the day」與「at most 8 hours」；指令範例是新的保活指令；說明為「由人手動或既有排程呼叫一次 `bash scripts/keepalive_log.sh`」，不含 `nohup`、不宣稱常駐 | 自動：讀檔（grep） |
 | TC-074 【機器可驗】 | 範圍：文件 | 功能 | 讀 `docs/SITE_ADAPTER.md` 約 148～150 行 | 檢查 | 開連線指令與說明與新行為一致，不再宣稱 8h | 自動：讀檔（grep） |
 | TC-075 【機器可驗】 | 完成標準（PITFALLS 新增一條） | 功能 | 讀 `docs/PITFALLS.md` | 檢查新增條目 | 有 Symptom／Root cause／Check／Touches 四欄；內容說連線存活上限未知、`keepalive_log.sh` 的用法、`event=closed lasted_min` 的讀法、`ControlPersist=yes` 不等於永不掉 | 自動：讀檔 |
 | TC-076 【機器可驗】 | 允許更新的既有斷言（文件測試） | 功能 | 跑 `test_onboarding_doc.py`、`test_station_docs.py`、`test_launch_docs.py` | 執行 | 仍綠；若有改動只改被釘住的那一句 | 自動：這三個測試檔＋讀 diff |
