@@ -805,7 +805,8 @@ def test_tc023_tc019_a_busy_agent_stays_online_and_a_silent_one_is_called_silent
 # reach: ssh through a fake ssh: TC-045, TC-046, TC-087
 # ---------------------------------------------------------------------------------------
 
-def test_tc045_tc046_tc087_ssh_site_failures_are_told_in_the_site_scripts_own_words(world, tmp_path):
+def test_tc045_tc046_tc087_ssh_site_failures_are_told_in_the_site_scripts_own_words(world, short_tmp):
+    tmp_path = short_tmp   # ssh ControlPath lives under the site folder; a unix socket path is limited to ~104 characters
     # TC-045, TC-046, TC-087
     s = FakeSite(tmp_path / "ssh-site", reach="ssh")
     agent = start_agent(world.plat, s, "agent-ssh", tmp_path, env=s.agent_env(ON_SITE_TIMEOUT=3))
