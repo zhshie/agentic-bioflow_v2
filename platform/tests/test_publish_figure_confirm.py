@@ -496,7 +496,7 @@ def test_f4_replaying_a_finished_confirmed_call_says_done(w):
     assert tool_json(w.call("publish_figure", confirmed, caller=ann))["state"] == "ok"
     again = tool_json(w.call("publish_figure", confirmed, caller=ann))
     assert again["state"] == "ok" and "已存入圖庫" in again["message"] and "內容" not in again["message"].split("(")[0]
-    assert [r["state"] for r in rows(w)] == ["confirmed", "confirmed"]
+    assert [r["state"] for r in rows(w)] == ["confirmed"]      # the replay asked nothing new
     # a replay with other content is still refused
     assert tool_json(w.call("publish_figure", dict(confirmed, figures=[fig("a.png", code="print(3)\n")]), caller=ann))["state"] == "refused"
 
