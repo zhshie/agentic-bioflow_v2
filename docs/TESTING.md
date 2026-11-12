@@ -1246,7 +1246,7 @@ Pass: you saw the bar in step 3 and 4, did not see it in step 5, and it went awa
 
 ## desktop-systemd: the maintainer checks on the desktop that runs the platform
 
-Automatic test: `tests/desktop_systemd_test.sh` (the shape of the files and the docs only). It cannot show that the platform really comes back; these steps do. First follow docs/OPERATIONS.md, "Desktop platform in WSL" (it makes the one-minute stop and asks you to type the OTP again), then do them in this order. Write what you saw in `specs/desktop-systemd/ledger.md`.
+Automatic test: `tests/desktop_systemd_test.sh` (the shape of the files and the docs only). It cannot show that the platform really comes back; these steps do. First follow docs/OPERATIONS.md, "Desktop platform in WSL" (it makes a few minutes' stop and asks you to type the OTP again), then do them in this order. Write what you saw in `specs/desktop-systemd/ledger.md`.
 
 **TC-011, after a reboot.** Restart Windows, log in, open nothing, wait two minutes, open the platform's web address. You must see the page, log in and see your runs.
 
@@ -1265,7 +1265,7 @@ Automatic test: `tests/desktop_systemd_test.sh` (the shape of the files and the 
 **TC-035, no token in the settings.** Run `grep -r '<the first characters of your token>' ~/.config/systemd/user ~/.config/abf-platform` (use only the first eight characters, never the whole token): it must print nothing. Only the path of the token file is allowed to appear.
 
 **TC-013, TC-039.** Each command below, and what you must see:
-- `wsl --version` in Windows PowerShell: you must see a WSL version line (0.67.6 or newer accepts `systemd=true`) and no error; if `systemd=true` was refused at step 2 of the guide, run `wsl --update` and try again.
+- `wsl --version` in Windows PowerShell: you must see a WSL version line and no error; if it is an error, or `systemd=true` was refused at step 2 of the guide, run `wsl --update` (a recent WSL from the Microsoft Store) and try again.
 - `ps -p 1 -o comm=` in Ubuntu: you must see `systemd`.
 - `systemctl --user status`: you must see a state line (`running`) and no `Failed to connect to bus`.
 - `loginctl enable-linger $USER`: you must see no output. If it asks for a password or says access denied, use `sudo loginctl enable-linger $USER`; say in the ledger which of the two it was.

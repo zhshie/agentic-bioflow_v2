@@ -120,8 +120,10 @@ The order matters. Steps 2 to 6 only prepare files and change nothing that is ru
 Step 7 restarts WSL, which stops the platform; step 8 starts it again. Everything you need for step 8 is ready before step 7, so the
 platform is down for as short a time as possible.
 
-1. **What you need.** WSL 2 with Ubuntu 22.04 or newer (Windows PowerShell: `wsl -l -v` shows
-   VERSION 2), a recent WSL (`wsl --update` in Windows PowerShell if step 2 is not accepted), and the platform
+1. **What you need.** Before anything else, in Windows PowerShell run `wsl --version`. If it prints an error, or you are not sure what it
+   shows, run `wsl --update` now, before step 2 (an old WSL is otherwise found out only after step 7 has stopped the platform).
+   You need WSL 2 with Ubuntu 22.04 or newer (Windows PowerShell: `wsl -l -v` shows
+   VERSION 2), a recent WSL from the Microsoft Store (`wsl --update` brings it up to date), and the platform
    already installed in a virtual environment as in "Hosting one lab", step 2.
 2. **Turn systemd on (the file only).** WSL starts without systemd unless you ask for it. Open the file with
    `sudo nano /etc/wsl.conf` and make sure it holds these two lines (add them at the end if the file is empty or is not there yet):
@@ -201,18 +203,20 @@ leave them out: the default folder is used, as before.
    ```
    Compare it with what the services will do: they use the ports 8787 (serve), 8788 (mcp) and 8789 (web), and `--public-url ${ABF_PUBLIC_URL}`.
    If you started them with another port or another flag, change the unit files in `~/.config/systemd/user/` now, before step 7. Also check that every `ABF_`, `PATH`, `JAVA_HOME` and `XDG_` value
-   in the file is in the env file of step 3 or of step 4. If the file is empty, nothing was running by hand: go on.
-7. **Restart WSL. The platform is down from here.** In Windows PowerShell run `wsl --shutdown`, wait a few seconds, and open Ubuntu again.
+   in the file is in the env file of step 3 or of step 4. For each `abf-station run` line, check that its `--token-file` and `--deployment` values equal the ones in that agent's `station-<name>.env`
+   (these are command-line flags in the saved file, not environment variables). If the file is empty, nothing was running by hand: go on.
+7. **Restart WSL. The platform is down from here.** In Windows PowerShell run `wsl --shutdown`, wait a few seconds, and open Ubuntu again from the Start menu (or the WSL terminal you normally use).
    **This stops everything inside WSL**: every process you started there, the platform if it is running, and the
    shared SSH connection to the National Center (國網). After the restart you must connect again yourself and type the OTP
    (see "Opening the National Center connection again" below); nothing does that for you. The platform is stopped from this step until step 8 has finished: a few minutes, depending on how fast you type the commands.
    Check that it worked: `ps -p 1 -o comm=` must print `systemd` (before this step it prints `init`). If it prints `init`, go back to step 2; if the step 2 line is not accepted, run `wsl --update` in Windows PowerShell.
+   If you want the platform back now, follow "Going back to starting by hand" below.
 8. **Check nothing is left, then enable and start.** First do the check in "Switching from starting by hand" below: two copies fight for the same port. Then:
    ```sh
    systemctl --user daemon-reload
    systemctl --user enable --now abf-serve abf-web abf-mcp abf-station@<name>
    ```
-   You should see lines like `Created symlink ...` and no error. If it says `Failed to connect to bus`, systemd is not on for you: go back to step 2 and step 7.
+   You should see lines like `Created symlink ...` and no error. If it says `Failed to connect to bus`, systemd is not on for you: go back to step 2 and step 7. If you want the platform back now, follow "Going back to starting by hand" below.
    Then `systemctl --user is-active abf-serve abf-web abf-mcp abf-station@<name>` must print `active` four times (the agent waits for the site connection, which is opened below).
    **Checkpoint.** Open the platform's web page: your existing runs must be listed there, the ones you had before; otherwise stop here (an empty page, or no runs): do not go on and do not make anything new; go back to step 3
    and the paragraph marked 重要 (the data location is almost always the cause; nothing was deleted). Open the National Center connection again (below) after the checkpoint.
@@ -259,7 +263,8 @@ Expect the platform to be unreachable for a few minutes, from step 7 until step 
 `rm ~/.config/systemd/user/abf-serve.service ~/.config/systemd/user/abf-web.service ~/.config/systemd/user/abf-mcp.service ~/.config/systemd/user/abf-station@.service`
 and `systemctl --user daemon-reload`. Take the two lines `[boot]` and `systemd=true` out of `/etc/wsl.conf` (`sudo nano /etc/wsl.conf`),
 then in Windows PowerShell run `wsl --shutdown` and open Ubuntu again. Start the platform the way you did before: `abf-platform serve` as in
-`docs/PLATFORM.md` section 1, the agent as in section 6 of the same file, `web` and `mcp` as you did. Also remove the Windows task, otherwise
+`docs/PLATFORM.md` section 1, the agent as in section 6 of the same file; for `web` and `mcp` use the command lines you saved in step 6 (`~/abf-before-switch.txt`), and see section 9 ("The confirmation page") of the same file for
+`abf-platform web` and section 4 for `abf-platform mcp`. Also remove the Windows task, otherwise
 WSL still opens at every logon: run the script from step 10 with `-Remove`.
 
 **Opening the National Center connection again.** After `wsl --shutdown` or a reboot the shared SSH connection to the site is gone, and the agent

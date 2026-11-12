@@ -31,3 +31,10 @@ Each item has a check in tests/desktop_systemd_test.sh (RED commit first, then G
 - E4 the outage is stated (from the `wsl --shutdown` until step 8 is done, a few minutes); after the shutdown only: check no leftovers, `daemon-reload`, `enable --now`, status.
 - E5 the `sed` takes `<your-venv-folder>`; `ls -d ~/*/bin/abf-platform` (or the running process line) finds it.
 - Changed by ruling E2: D2's expectation (no `pkill -f 'abf-platform|abf-station'`; the narrow `pgrep` and `kill <process number>` instead). Changed by ruling E3: D5's expectation (`scripts/on_site.sh --check-reach` instead of `scripts/preflight.sh`). TC-010's order marks were not changed: the new order satisfies them as they were. Nothing else was weakened.
+
+## Third fix round (wording, rulings F1-F4)
+Each has a check in tests/desktop_systemd_test.sh (RED commit first, then GREEN). Documentation only.
+- F1 step 1 now starts with `wsl --version` and `wsl --update` before step 2; no minimum WSL version number is stated any more (the "0.67.6" claim was from memory and is removed from OPERATIONS.md and TESTING.md); the failure lines of steps 7 and 8 point to "Going back to starting by hand".
+- F2 step 6: each `abf-station run` line's `--token-file` and `--deployment` are compared with that agent's `station-<name>.env` (flags, not environment variables).
+- F3 "Going back to starting by hand" names `~/abf-before-switch.txt` for `web` and `mcp`, and cites docs/PLATFORM.md section 9 ("The confirmation page", which documents `abf-platform web`) and section 4 (`abf-platform mcp`).
+- F4 step 7 says to open Ubuntu from the Start menu (or the usual WSL terminal); TESTING says "a few minutes' stop".
