@@ -285,8 +285,9 @@ t "site side ignores the developer's own deployment when testing"  2 \
   "no run area known" -- in_dev_home no_deployment bash "$S" site --user alice
 # Control: without the isolation the same fixture reaches the deployment and
 # fails differently (rc 1), so the case above can go red - it is not always green.
+# It names the deployment's own storage_root, not mkdir's wording (uutils mkdir, Ubuntu 26.04, words it differently from GNU).
 t "control: the fixture really does lure an unisolated call (rc 1)"  1 \
-  "cannot create directory" -- in_dev_home env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE bash "$S" site --user alice
+  "/proc/no-such-run-area" -- in_dev_home env -u LAB_RUNS_DIR -u LAB_SETTINGS_FILE bash "$S" site --user alice
 t "--run without --project is refused - a run belongs to one project" 2 \
   "needs --project" -- env LAB_RUNS_DIR="$TMP/x6" bash "$S" site --run some_run_20260908
 
