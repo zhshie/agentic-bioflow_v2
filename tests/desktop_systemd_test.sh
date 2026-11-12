@@ -32,6 +32,9 @@ CHG=CHANGELOG.md
 SCLI=platform/abf_station/cli.py
 PCLI=platform/abf_platform/cli.py
 BASE=$(git merge-base origin/v3 HEAD 2>/dev/null || true)
+# The "compared with origin/v3" cases judge this feature's own change, so they only mean something before it is merged.
+# Once the base already holds the feature (its unit template is there), there is nothing left to compare: they are skipped, not failed.
+if [ -n "$BASE" ] && git cat-file -e "$BASE:deploy/systemd/abf-station@.service.in" 2>/dev/null; then BASE=""; fi
 OLD_UNITS=("$D/systemd/abf-serve.service.in" "$D/systemd/abf-web.service.in" "$D/systemd/abf-mcp.service.in")
 # words that are tool names, built from pieces so this file never contains them as a call (TC-051)
 SC="system""ctl"; WSLX="ws""l"; SCH="sch""tasks"
