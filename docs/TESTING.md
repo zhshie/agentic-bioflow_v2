@@ -1244,6 +1244,34 @@ No code needed. You need the platform's web page open in a browser and one agent
 
 Pass: you saw the bar in step 3 and 4, did not see it in step 5, and it went away in step 6. Answer 好 or 不好 for the colours and the wording; a 不好 opens a new fix, it does not undo this feature. Screenshots from a throwaway platform with an online agent reporting a closed link are in `specs/mcp-site-keepalive-disconnect-ux/screenshots/`.
 
+## desktop-systemd: the maintainer checks on the desktop that runs the platform
+
+Automatic test: `tests/desktop_systemd_test.sh` (the shape of the files and the docs only). It cannot show that the platform really comes back; these steps do. First follow docs/OPERATIONS.md, "Desktop platform in WSL" (it makes a few minutes' stop and asks you to type the OTP again), then do them in this order. Write what you saw in `specs/desktop-systemd/ledger.md`.
+
+**TC-011, after a reboot.** Restart Windows, log in, open nothing, wait two minutes, open the platform's web address. You must see the page, log in and see your runs.
+
+**TC-012, ten minutes later.** Still without opening a terminal, open the web address again, then in Windows PowerShell run `wsl -l -v`: your Linux must say `Running`.
+
+**TC-026, one command shows what runs.** In Ubuntu run `systemctl --user status 'abf-*'`. Four services (serve, web, mcp, station) must each say `active (running)`.
+
+**TC-018, kill one.** Write down the four process numbers: `systemctl --user show -p MainPID abf-serve abf-web abf-mcp abf-station@<name>` (four lines `MainPID=<number>`, none of them 0). Then `kill <the MainPID of abf-web>`. After about ten seconds run the same `show` line again and compare before and after: only the `abf-web` number must be different (and not 0), the other three must be the same numbers as before, and the web page works.
+
+**TC-029, two starts are one copy.** Run `systemctl --user start abf-web` twice (no output, no error), then `systemctl --user status 'abf-*'`: still one process for each service, each `active (running)`.
+
+**TC-030, a hand start while the service runs.** In Ubuntu run `abf-platform web --host 127.0.0.1 --port 8789 --public-url ${ABF_PUBLIC_URL}` (take `ABF_PUBLIC_URL` from `~/.config/abf-platform/env`). It must stop at once with an error that the address is already in use (the exact words come from the program), and the running web page must stay up. If it starts and keeps running instead, press Ctrl+C and report it.
+
+**TC-019, a bad token file.** Run `chmod 644` on the agent's token file and `systemctl --user restart abf-station@<name>`. It must stop in `failed` (not retry every few seconds), and `journalctl --user -u 'abf-station@<name>'` shows one line `abf-station will not start: ...`. Run `chmod 600` on the file again and restart it. TC-020: with the National Center connection open (you typed the OTP), do one read-only job from the website that reads the site; it must succeed.
+
+**TC-035, no token in the settings.** Run `grep -r '<the first characters of your token>' ~/.config/systemd/user ~/.config/abf-platform` (use only the first eight characters, never the whole token): it must print nothing. Only the path of the token file is allowed to appear.
+
+**TC-013, TC-039.** Each command below, and what you must see:
+- `wsl --version` in Windows PowerShell: you must see a WSL version line and no error; if it is an error, or `systemd=true` was refused at step 2 of the guide, run `wsl --update` (a recent WSL from the Microsoft Store) and try again.
+- `ps -p 1 -o comm=` in Ubuntu: you must see `systemd`.
+- `systemctl --user status`: you must see a state line (`running`) and no `Failed to connect to bus`.
+- `loginctl enable-linger $USER`: you must see no output. If it asks for a password or says access denied, use `sudo loginctl enable-linger $USER`; say in the ledger which of the two it was.
+- The Windows script with `-Apply` twice (as in step 6 of the guide), then `Get-ScheduledTask -TaskName abf-wsl-keepalive` in Windows PowerShell: you must see one task, state `Ready` or `Running`. The task starts a PowerShell window hidden, and a window may flash at logon; if one stays on the screen, minimise it (do not close it) and report it.
+- The script with `-Remove`: it says it removed the task, and the same `Get-ScheduledTask` line then shows an error that no task was found.
+
 ## mcp-publish-figure (slice 1): the reviewer checks by hand
 
 Needs a running platform, one user with one finished run, and an MCP client logged in as that user.
