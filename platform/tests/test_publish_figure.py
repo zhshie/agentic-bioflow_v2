@@ -597,3 +597,49 @@ def test_f7_the_screen_shows_twelve_characters_of_each_sha256(w):
         assert hashlib.sha256(data).hexdigest()[:12] in got["summary"]
     figs = [{"name": "a.png", "type": "png", "size": 1, "sha256": hashlib.sha256(PNG).hexdigest(), "caption": "", "code": "", "params": ""}]
     assert hashlib.sha256(PNG).hexdigest()[:12] in actions.screen_for_page({"run_name": "r1", "figures": figs}, [], "en")
+
+
+def test_index_updates_do_not_lose_each_other(w, monkeypatch):
+    # ruling G1 (lead, 2026-11-13): pack, delete and the confirmed write each read index.json and replace it whole; they hold one lock of the
+    # gallery folder from the read to the replace. Real threads: a delete and a confirmed write are started in the middle of a pack.
+    import threading
+    from abf_platform import store
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("a.png", "b.png"))
+    rid = call(w, ann, run, [fig("new.png")])["request_id"]
+    bundle = json.loads(w.sql("SELECT bundle_json FROM confirmations WHERE id = ?", (rid,))[0]["bundle_json"])
+    real_read, packer, errors = figures.read_index, [], []
+
+    def read_then_let_the_others_try(folder):
+        got = real_read(folder)
+        if threading.current_thread() is packer[0]:
+            for t in others:
+                t.start()
+            for t in others:
+                t.join(1.5)         # without the lock both finish here, between the read and the write of the pack
+        return got
+
+    def guard(fn):
+        def run_it():
+            try:
+                fn()
+            except BaseException as e:          # noqa: BLE001 - reported below, never lost in a thread
+                errors.append(repr(e))
+        return run_it
+
+    others = [threading.Thread(target=guard(lambda: figures.delete_figure(w.ip.index, w.ip.state_db, run, "a.png", caller=ann))),
+              threading.Thread(target=guard(lambda: figures.write_confirmed(w.ip.state_db, ann.user_id, bundle, rid, time.time())))]
+    monkeypatch.setattr(figures, "read_index", read_then_let_the_others_try)
+    main = threading.Thread(target=guard(lambda: pack(w, ann, run, ["a.png"])))
+    packer.append(main)
+    main.start()
+    main.join(20)
+    for t in others:
+        t.join(20)
+    assert not errors, errors
+    folder = gallery(w, ann, run)
+    listed = sorted(real_read(str(folder))[0])
+    on_disk = sorted(p.name for p in folder.iterdir() if p.suffix in (".png",))
+    assert listed == on_disk == ["b.png", "new.png"], (listed, on_disk)
