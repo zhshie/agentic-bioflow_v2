@@ -447,7 +447,7 @@ def test_steps_order_unchanged_and_no_new_route(rig, fk):
     titles = ["分析名稱", "運算環境", "管線", "樣本表", "參數", "確認"]
     for n in range(1, 7):
         assert titles[n - 1] in plain_text(steps_of(r.text)[n]["html"]), n
-    assert [m for m in (getattr(x, "path", "") for x in c.app.routes) if re.search(r"preview|sheet", m, re.I)] == []
+    assert [m for m in (getattr(x, "path", "") for x in c.app.routes) if re.search(r"preview|sheet", m, re.I) and m != "/run/preview"] == []  # /run/preview is the result-file viewer (web-result-viewer), not a sheet preview
 
 
 def test_unseen_pipeline_columns_from_its_own_schema(rig, fk):

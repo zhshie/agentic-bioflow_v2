@@ -1431,7 +1431,7 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in app.routes) == ROUTES_V3
     wapp = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", platform_path=tmp_path / "platform.db")
     got = sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in wapp.routes)
-    assert len(got) == 31 and digest(repr(got)) == "1f81facf6cad2a0c50f37b70a3d86b6364cc4d3bbc86526c1d04437e52a4b798"      # web-run-tasks-log adds GET /run/log (30 before; resume-edit-web had added GET /act/{verb}/edit)
+    assert len(got) == 34 and digest(repr(got)) == "63dabb2accd8a810ff764ded6d9dd35983e318b0d4f20852b81f551ed7069757"      # resume-edit-web adds GET /act/{verb}/edit; web-run-tasks-log adds GET /run/log (30 -> 31); web-result-viewer adds GET /run/preview, /run/image, /run/report (31 -> 34)
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
     assert len(names) == 60 and digest(repr(names)) == "49b160116a812f893f51786365283176959c1e2b48396f3db60e26d721757cfb"      # web-run-tasks-log adds task_log_view (59 -> 60); pipe-reg-store adds four registration actions (54 -> 58, 012b-2 adds preview_samplesheet); cost-page-by-environment adds run_usage (58 -> 59); mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before

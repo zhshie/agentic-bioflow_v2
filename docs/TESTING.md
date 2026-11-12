@@ -1150,6 +1150,27 @@ Take 12 screenshots (1440 and 390 px wide, zh and en each time), and attach them
 
 At 390 px also check `document.documentElement.scrollWidth === document.documentElement.clientWidth` and that the axe scan reports nothing serious or critical.
 
+## 結果檢視：圖片預覽與沙盒 iframe 報告 (web-result-viewer): the reviewer checks by hand
+
+自動測試（`platform/tests/test_web_result_viewer.py`，不需瀏覽器，CI 一定會跑、不跳過任何一條）涵蓋回應標頭、iframe 屬性，以及攻擊樣本 `ATTACK` 經三條路由送出時的標頭與內容型別。真瀏覽器的部分不在 pytest 內（CI 沒有瀏覽器，且不准跳過測試），改由下面第 0 步的腳本執行。下面是要人看與要人跑的部分。
+
+0. **【實機驗】報告內的程式碰不到網站（TC-053 至 TC-057）**：在 WSL 或 Linux，從 repo 根目錄執行 `cd platform && python ../scripts/dev/check_result_viewer_sandbox.py`（用平台的 Python；Playwright 裝在別的 Python 時加 `ABF_PLAYWRIGHT_PYTHON=<那個 python>`）。腳本起一個用完即丟的平台，以登入狀態用 Chromium 開啟攻擊樣本報告的預覽頁，再印出報告內程式得到的結果與網站收到的請求。應看到五行 `ok`，最後一行 `check_result_viewer_sandbox: PASS`，結束碼 0：
+   - TC-053：報告讀 `document.cookie` 得到錯誤或空字串，任何位置都沒有登入 cookie 的值；
+   - TC-054、TC-055：`fetch('/settings')` 與 `fetch('/run/file?…')` 都是錯誤，網站沒有收到這兩種請求；
+   - TC-056：讀 `window.parent.document` 丟出錯誤；
+   - TC-057：表單 `submit()` 後網站沒有收到任何非 GET 請求，外層預覽頁網址不變、仍只有一個 iframe。
+
+   結束碼 77（訊息以 `UNVERIFIED` 開頭）表示沒有 Playwright 或沒有瀏覽器，什麼都沒驗，**不算通過**；結束碼 1 表示某一條失敗。結果（輸出全文與執行日期）貼進 `specs/web-result-viewer/ledger.md`，在 PR 內文列為「待實機驗」直到有人跑過。
+
+1. **真 MultiQC（TC-095）**：登入後在某個成功 run 的輸出頁，按 `multiqc/multiqc_report.html` 旁的「預覽」。圖表應顯示。若因 CSP 載不出，只能放寬 `/run/report` 的政策，且 `sandbox`（不含 allow-same-origin）、`connect-src 'none'`、`form-action 'none'`、`frame-ancestors 'self'` 四項不得動；放寬的字與原因寫進 `specs/web-result-viewer/ledger.md`（沒放寬就寫「未放寬」，TC-069）。
+2. **summary_report（TC-096）**：同上，開一份真的 ampliseq `summary_report.html`。
+3. **報告內連結（TC-097）**：在預覽頁點報告內的外部連結，應沒有作用，頁面不會被導走。
+4. **截圖（TC-091 至 TC-094）**：1440 與 390 寬、中文與英文各一張，共 4 組：完成頁的清單、PNG 預覽頁、too_large 預覽頁、MultiQC 預覽頁；檔名貼進 ledger。
+5. **無障礙與手機（TC-098、TC-099）**：390 寬不橫向捲動、Tab 焦點可見；`scripts/dev/ui_check.py` 掃描無 serious／critical，跑不起來標 UNVERIFIED 並寫缺什麼。
+6. **R Studio 那一半（TC-039）**：不在本任務；確認 `web_downstream.py` 沒有出現 `/run/preview`。
+7. **提交順序（TC-085）**：`git log --oneline` 看步驟 A 在前；`git show <A>` 找不到 `/run/report` 與 `<iframe`。
+8. **不得改動（TC-082）**：`git diff v3...HEAD -- platform/abf_platform/jobs.py platform/abf_platform/actions/__init__.py platform/abf_station/` 應為空；`RUN_FILE_MAX_BYTES = 26214400` 未變。
+
 ## 任務日誌（失敗任務） (web-run-tasks-log): the reviewer checks by hand
 
 Automatic tests: `platform/tests/test_web_run_log.py` (new), with the changed `test_web_running.py`, `test_web_results_outputs.py`, `test_web_board.py` and `test_web_parity.py`.

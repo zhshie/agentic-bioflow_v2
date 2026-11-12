@@ -99,6 +99,13 @@ def _size(n, board):
     return "%.1f KB" % (n / 1024) if n < 1048576 else board._mb(n)
 
 
+def _preview(lang, run, path):
+    """` <a>Preview</a>` after the Download link of a file that has a preview by name (web-result-viewer), else nothing."""
+    from . import web_preview      # a circular import (web_preview needs web_board), so here
+    link = web_preview.preview_link(lang, run["id"], path)
+    return " " + link if link else ""
+
+
 def _downloads(t, lang, run, outputs, board):
     """Links to the existing `/run/file` for the top-level files (at most 20 items, the MultiQC report first); nothing when not ready."""
     out = outputs or {}
@@ -107,15 +114,17 @@ def _downloads(t, lang, run, outputs, board):
     files = out.get("files") or []
     items = []
     if any(f.get("name") == "multiqc" and f.get("type") == "dir" for f in files):
-        items.append('<li><a href="%s">%s</a></li>' % (board._url(lang, run["id"], path="/run/file", sub="multiqc/multiqc_report.html"), _e(t["multiqc"])))
+        items.append('<li><a href="%s">%s</a>%s</li>' % (board._url(lang, run["id"], path="/run/file", sub="multiqc/multiqc_report.html"), _e(t["multiqc"]),
+                                                         _preview(lang, run, "multiqc/multiqc_report.html")))
     for f in files:
         if f.get("type") != "file":
             continue
         if f.get("too_large"):
             items.append('<li>%s <span class="muted">%s</span></li>' % (_e(f.get("name")), _e(t["dl_big"])))
         elif f.get("download"):
-            items.append('<li><a href="%s">%s</a> <span class="muted">%s</span></li>'
-                         % (board._url(lang, run["id"], path="/run/file", sub=f["download"]), _e(f.get("name")), _e(_size(f.get("size"), board))))
+            items.append('<li><a href="%s">%s</a> <span class="muted">%s</span>%s</li>'
+                         % (board._url(lang, run["id"], path="/run/file", sub=f["download"]), _e(f.get("name")), _e(_size(f.get("size"), board)),
+                            _preview(lang, run, f["download"])))
     if not items:
         return ""
     more = ""

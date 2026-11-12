@@ -764,7 +764,9 @@ def _crumbs(t, lang, run_id, sub):
 
 def _download_cell(t, lang, run_id, f):
     if f.get("download"):
-        return '<a href="%s">%s</a>' % (_url(lang, run_id, path="/run/file", sub=f["download"]), esc(t["o_download"]))
+        from . import web_preview      # web-result-viewer: the Preview link follows the Download link (a circular import, so here)
+        link = '<a href="%s">%s</a>' % (_url(lang, run_id, path="/run/file", sub=f["download"]), esc(t["o_download"]))
+        return link + " " + web_preview.preview_link(lang, run_id, f["download"]) if web_preview.kind_of(f["download"]) else link
     if f.get("too_large"):
         return esc(t["o_too_big"])
     return "—"
@@ -1398,7 +1400,7 @@ def _mb(size):
     return "%d.%d MB" % (tenths // 10, tenths % 10)
 
 
-def render_file_page(answer, run_id, lang="zh"):
+def render_file_page(answer, run_id, lang="zh", route="/run/file"):
     """(http status, whole page) for a download that is not the file itself: waiting, or the one sentence of what went
     wrong with the way on. Every state has a symbol and words; the sentence stands first, the links under it."""
     lang = pick_lang(lang)
@@ -1407,7 +1409,7 @@ def render_file_page(answer, run_id, lang="zh"):
     back = '<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs"), esc(t["f_back"]))
     if answer.get("state") == "loading":
         body = '<p class="ostat state-running"><span class="sym">◌</span> %s</p><p>%s</p>' % (esc(t["f_loading"]), back)
-        return 200, document(t["f_title"], body, refresh=True, lang=lang, refresh_url=_url(lang, run_id, path="/run/file", sub=path))
+        return 200, document(t["f_title"], body, refresh=True, lang=lang, refresh_url=_url(lang, run_id, path=route, sub=path))
     code = answer.get("code") or "failed"
     if code == "too_large":
         sentence = t["f_toolarge"] % (_mb(answer.get("size") or 0), answer.get("site_path") or "")
@@ -1420,7 +1422,7 @@ def render_file_page(answer, run_id, lang="zh"):
     if code == "not_a_file":
         links = ['<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs", sub=path), esc(t["f_open"])), back]
     if code in ("agent_offline", "no_answer", "site_unreachable", "changed", "bad_answer", "failed", "refused"):
-        links.insert(0, '<a href="%s">%s</a>' % (_url(lang, run_id, path="/run/file", sub=path, retry=True), esc(t["f_retry"])))
+        links.insert(0, '<a href="%s">%s</a>' % (_url(lang, run_id, path=route, sub=path, retry=True), esc(t["f_retry"])))
     body = '<p class="ostat state-failed"><span class="sym">✕</span> %s</p>%s<p>%s</p>' % (esc(sentence), extra, " ".join(links))
     return {"bad_path": 400, "not_found": 404}.get(code, 200), document(t["f_title"], body, lang=lang)
 
