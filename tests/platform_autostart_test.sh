@@ -80,7 +80,7 @@ sentinel_list() { # a list whose only process would write a sentinel file if it 
 }
 
 # fragments, so the file never holds a token-shaped string
-TOKV="abf""_$(printf 'q%.0s' $(seq 1 30))"
+TOKV="abf""_$(printf 'q%.0s' $(seq 1 43))"   # changed by ruling H3: a real token is abf_ + 43 url-safe characters
 BEARV="Bear""er $(printf 'z%.0s' $(seq 1 24))"
 PEMV="-----BEG""IN PRIV""ATE KEY-----"
 CANARY="CANARY_$RANDOM$RANDOM$RANDOM"
@@ -179,6 +179,10 @@ static_cases() {
     [ "$(printf '%s\n' "$nonc" | grep -cE 'abf-station run --platform http://127\.0\.0\.1:8787 --token-file <[^>]+> --deployment <[^>]+> --plugin-root <[^>]+>$')" -eq 3 ] || shape_ok=0
     printf '%s\n' "$names" | grep -qvE '^[a-z0-9-]+$' && shape_ok=0
     if [ "$cnt" -eq 6 ] && [ -z "$dupes" ] && [ "$shape_ok" -eq 1 ]; then ok "TC-061 six lines: serve, web, mcp and three stations, unique names, token only as --token-file"; else bad "TC-061 example lines" "count=$cnt dupes=$dupes shape=$shape_ok"; fi
+    # H9: -Apply first checks that the script exists and can run inside the distro, and stops if not
+    local ap; ap=$(printf '%s\n' "$ps" | awk '/^function Invoke-Apply/{f=1} /^function Invoke-Remove/{f=0} f')
+    local lt lr; lt=$(printf '%s\n' "$ap" | grep -n -- '--exec test -x' | head -n1 | cut -d: -f1); lr=$(printf '%s\n' "$ap" | grep -n 'Register-ScheduledTask' | head -n1 | cut -d: -f1)
+    if [ -n "$lt" ] && [ -n "$lr" ] && [ "$lt" -lt "$lr" ] && printf '%s\n' "$ap" | sed -n "${lt},$((lt+3))p" | grep -q 'Stop-Here'; then ok "H9 -Apply checks (test -x inside the distro) that -Script exists and is executable before it registers, and stops with a message if not"; else bad "H9 -Apply does not check -Script" "test@$lt register@$lr"; fi
     # TC-113: no real list in the repo
     if ! git ls-files 2>/dev/null | grep -qE '(^|/)processes$' && [ ! -e "$ROOT/$W/processes" ]; then ok "TC-113 only processes.example is in the repo, no real list named processes"; else bad "TC-113 a real list is in the repo"; fi
     if ! grep -nE 'psrun .*-(Apply|Remove)' "$HERE/platform_autostart_test.sh" | grep -v 'grep' >/dev/null; then ok "TC-113 this test never runs the installer with -Apply or -Remove"; else bad "TC-113 installer run with -Apply/-Remove"; fi
@@ -327,8 +331,9 @@ case_t040() { new_case t040; mkfake a; mkfake b; mkfake c; wl "a $C/bin/a" "b $C
     runsup --list "$l2"
     if [ "$RC" -eq 0 ] && [ ! -e "$C/pids/d" ]; then ok "TC-051 a second copy with a different list is stopped by the same lock"; else bad "TC-051 different list" "rc=$RC"; fi
     # TC-121: the state files hold nothing but names, pids, times, counts and exit codes
+    # changed by ruling H10: a state file also carries the consecutive-failure count (key "fails")
     local keys; keys=$(cat "$ST"/proc/* | cut -d= -f1 | sort -u | tr '\n' ' ')
-    if [ "$keys" = "last_rc pid restarts running started " ]; then ok "TC-121 the state files hold only pid, times, counts, running flag and exit code"; else bad "TC-121 state file keys" "$keys"; fi
+    if [ "$keys" = "fails last_rc pid restarts running started " ]; then ok "TC-121 the state files hold only pid, times, counts, running flag and exit code"; else bad "TC-121 state file keys" "$keys"; fi
     stop_sup; sweep "$C"; }
 
 case_t042() { new_case t042; mkexit z 0 1; mkfake b; SE+=(ABF_SUPERVISE_BASE=6 ABF_SUPERVISE_MAX=6); wl "z $C/bin/z" "b $C/bin/b"; start_sup --list "$LIST"
@@ -353,7 +358,7 @@ case_t053() { new_case t053; mkfake a; mkfake b; wl "a $C/bin/a" "b $C/bin/b"; s
     stop_sup; sweep "$C"
     new_case t054; mkfake a; mkfake b; wl "a $C/bin/a" "b $C/bin/b"
     set -m; "${SE[@]}" bash "$SUP" --list "$LIST" >"$C/o1" 2>&1 </dev/null & local p1=$!; "${SE[@]}" bash "$SUP" --list "$LIST" >"$C/o2" 2>&1 </dev/null & local p2=$!; set +m
-    wait_for 10 all_up a b; sleep 1
+    wait_for 10 all_up a b; wait_for 8 bash -c "grep -qh 已經有一份 '$C/o1' '$C/o2'"; sleep 0.3   # changed by ruling H7: the loser waits up to 2 s for the lock before it gives up
     local gl=0; gone "$p1" && gl=$((gl+1)); gone "$p2" && gl=$((gl+1))
     if [ "$gl" -eq 1 ] && [ "$(starts a)" -eq 1 ] && [ "$(starts b)" -eq 1 ] && grep -qh '已經有一份' "$C/o1" "$C/o2"; then ok "TC-054 two started at once: exactly one runs the processes, the other says so"; else bad "TC-054 race" "gone=$gl a=$(starts a) b=$(starts b)"; fi
     skill -TERM "$p1"; skill -TERM "$p2"; wait "$p1" "$p2" 2>/dev/null; sweep "$C"; }
@@ -489,6 +494,229 @@ case_t125() { new_case t125; mkfake a; wl "a $C/bin/a"
     mkdir -p "$C/ro"; chmod 500 "$C/ro"; SE+=("ABF_SUPERVISE_STATE=$C/ro/state"); runsup --list "$LIST"; save_msg TC-125 "$OUT"; chmod 700 "$C/ro"
     if [ "$RC" -eq 2 ] && printf '%s\n' "$OUT" | grep -qF "$C/ro/state" && printf '%s\n' "$OUT" | grep -q '寫不進' && [ ! -e "$C/pids/a" ]; then ok "TC-125 a state folder that cannot be written: says which, exit 2, no process runs without a record"; else bad "TC-125" "rc=$RC $OUT"; fi; sweep "$C"; }
 
+
+# =================================================================== fix round (rulings H1-H10, TC-062)
+# Each case is labelled with its ruling (H1...H10) or its contract id (TC-062).
+none_left() { [ "$(count_procs "$C")" -eq 0 ]; }
+live_count() { local p n=0; for p in $(cat "$C/pids/$1" 2>/dev/null); do alive "$p" && n=$((n+1)); done; echo "$n"; }
+ppid_of() { awk '/^PPid:/{print $2}' "/proc/$1/status" 2>/dev/null; }
+urlsafe() { # <length> <offset>: deterministic url-safe characters (every one of A-Za-z0-9-_ turns up)
+    local a='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_' s="" i
+    for ((i=0; i<$1; i++)); do s+=${a:$(( (i*7+$2) % 64 )):1}; done; printf '%s' "$s"
+}
+reap() { alive "$1" && skill -KILL "$1" 2>/dev/null; wait "$1" 2>/dev/null; }   # never wait for ever on a supervisor that did not stop
+lock_free() { ( flock -n 9 ) 9>>"$ST/supervise.lock" 2>/dev/null; }
+with_env() { SEK=("${SE[@]}"); SE+=("$@"); }   # add variables for the next runsup; undo with SE=("${SEK[@]}")
+
+case_t062() { new_case t062; cp "$EX" "$C/ex"; chmod 600 "$C/ex"; runsup --list "$C/ex" --check
+    local nf; nf=$(printf '%s\n' "$OUT" | grep -cE '第 [0-9]+ 行.*找不到執行檔')
+    if [ "$RC" -eq 2 ] && [ "$nf" -eq 6 ] && ! printf '%s\n' "$OUT" | grep -qE '像是權杖|不合法|缺要執行|重複|權限|沒有可看守|不可執行|找不到或讀不到'; then ok "TC-062 --check on the example (0600): no format or token complaint, only the six placeholder programs 找不到執行檔, each by line"; else bad "TC-062 example under --check" "rc=$RC nf=$nf $OUT"; fi; sweep "$C"; }
+
+# ---- H1: after a kill -9 of the supervisor no runner keeps restarting, and no second set can start
+case_h1a() { new_case h1a; mkfake a; mkfake b; wl "a $C/bin/a" "b $C/bin/b"; start_sup --list "$LIST"; wait_for 10 all_up a b
+    local pa; pa=$(curpid a)
+    skill -KILL "$SUP_PID"; wait "$SUP_PID" 2>/dev/null; skill -KILL "$pa"
+    if wait_for 25 none_left; then ok "H1 after kill -9 of the supervisor the runners and their processes end by themselves (none of this case's processes left)"; else bad "H1 kill -9 leaves runners or processes" "left=$(count_procs "$C")"; fi
+    sleep 0.5
+    if [ "$(starts a)" -eq 1 ] && [ "$(starts b)" -eq 1 ]; then ok "H1 and nothing was restarted after the supervisor died (a was killed on purpose)"; else bad "H1 restart after the supervisor died" "a=$(starts a) b=$(starts b)"; fi
+    if lock_free; then ok "H1 the lock is free once the last runner is gone"; else bad "H1 lock still held"; fi
+    sweep "$C"; }
+case_h1b() { new_case h1b; mkfake a; mkfake b; wl "a $C/bin/a" "b $C/bin/b"; start_sup --list "$LIST"; wait_for 10 all_up a b
+    skill -KILL "$SUP_PID"; wait "$SUP_PID" 2>/dev/null
+    start_sup --list "$LIST"; local s2=$SUP_PID maxa=0 maxb=0 t x
+    for t in $(seq 1 70); do sleep 0.1; x=$(live_count a); [ "$x" -gt "$maxa" ] && maxa=$x; x=$(live_count b); [ "$x" -gt "$maxb" ] && maxb=$x; done
+    if [ "$maxa" -le 1 ] && [ "$maxb" -le 1 ]; then ok "H1 a second supervisor started right after the kill -9 never runs a second set (at most 1 live a and 1 live b at any time)"; else bad "H1 two sets at once" "max a=$maxa b=$maxb"; fi
+    if alive "$s2"; then skill -TERM "$s2"; wait_for 25 sup_down; fi; reap "$s2"
+    if wait_for 25 none_left; then ok "H1 and stopping the second supervisor leaves nothing behind"; else bad "H1 leftovers after the second stop" "left=$(count_procs "$C")"; fi
+    sweep "$C"; }
+
+# ---- H2: a closed stdout does not kill the supervisor
+case_h2() { new_case h2; mkfake a; wl "a $C/bin/a"; set -m
+    { "${SE[@]}" bash "$SUP" --list "$LIST" 2>"$C/sup.err"; echo $? > "$C/rc"; } | true & set +m
+    wait_for 10 up a; sleep 1.5
+    local sp; sp=$(cat "$ST/supervise.pid" 2>/dev/null)
+    if [ ! -e "$C/rc" ] && [ -n "$sp" ] && alive "$sp" && up a; then ok "H2 '| true' (stdout closed at once): the supervisor lives on and keeps its process (no exit 141)"; else bad "H2 SIGPIPE" "rc=$(cat "$C/rc" 2>/dev/null) sp=$sp"; fi
+    [ -n "$sp" ] && skill -TERM "$sp"; wait_for 25 none_left; sweep "$C"; }
+
+# ---- H3: the token check follows the real shape; refusals never echo the line
+h3_try() { # <extra text on the list line> <words that must not be echoed...>; sets H3_ALL, H3_MSG
+    local extra=$1; shift
+    printf 'sen %s/bin/sen %s\n' "$C" "$extra" > "$LIST"; chmod 600 "$LIST"
+    rm -rf "$ST"; rm -f "$C/sentinel"
+    runsup --list "$LIST"; local o1=$OUT r1=$RC; runsup --list "$LIST" --check
+    local w good=1
+    [ "$r1" -eq 2 ] && [ "$RC" -eq 2 ] && printf '%s\n' "$o1" | grep -qE '第 1 行' && [ ! -e "$C/sentinel" ] && [ ! -d "$ST" ] || good=0
+    for w in "$@"; do printf '%s\n%s\n' "$o1" "$OUT" | grep -qF -- "$w" && good=0; done
+    [ "$good" -eq 1 ] || { H3_ALL=0; H3_MSG="$H3_MSG [$r1/$RC ${extra:0:14}]"; }
+}
+case_h3() { new_case h3; sentinel_list; H3_ALL=1; H3_MSG=""; local k t
+    for k in 1 2 3 4 5 6; do t="abf""_$(urlsafe 43 $k)"; h3_try "--opt $t" "$t" "${t:12}"; done
+    for k in pat oat ort; do t="abf""_${k}_$(urlsafe 43 9)"; h3_try "--opt $t" "$t" "${t:14}"; done
+    t="abf""_pat_$(urlsafe 43 3)"; h3_try "--opt ABF_PAT=$t" "$t" "${t:14}"
+    t="gh""p_$(urlsafe 36 5 | tr -d '_-')"; h3_try "--token=$t" "$t" "${t:6}"
+    h3_try "--token s3cr3tvalue99" "s3cr3tvalue99"
+    h3_try "PASSWORD=hunter2hunter2" "hunter2hunter2"
+    h3_try "--secret=sh0rtvalue" "sh0rtvalue"
+    h3_try "--pat zzvaluezz" "zzvaluezz"
+    t="pa""ss1234zz"; h3_try "--url https://us""er:${t}@example.invalid/p" "$t"
+    t="abcd1234efgh"; h3_try "-H Authorization: Bear""er $t" "$t"
+    if [ "$H3_ALL" -eq 1 ]; then ok "H3 real-shaped tokens (abf_ + 43 url-safe incl. - and _, abf_pat_/oat_/ort_, ABF_PAT=, --token=ghp_.., --password/--secret/--pat value, user:pass@ URL, Bearer value): refused by start and --check, by line, value never echoed"; else bad "H3 token shapes" "$H3_MSG"; fi
+    sweep "$C"; }
+case_h3ok() { new_case h3ok; mkfake a; mkfake b
+    printf '# Bear''er \n# Bear''er tokens are not welcome here\n# the token is read from --token-file\na %s/bin/a --token-file /x/y --password-file /z --secret-file=/q --path /x --patch y\nb %s/bin/b /home/u/abf_labdeploymentproduction2026\n' "$C" "$C" > "$LIST"; chmod 600 "$LIST"
+    runsup --list "$LIST" --check
+    if [ "$RC" -eq 0 ]; then ok "H3 no false positive: --token-file/--password-file/--secret-file, --path, a path with abf_<28 letters>, a comment with a bare 'Bearer'"; else bad "H3 false positive" "$OUT"; fi
+    start_sup --list "$LIST"; if wait_for 10 all_up a b; then ok "H3 and that list starts"; else bad "H3 start"; fi; stop_sup; sweep "$C"; }
+case_h3msg() { new_case h3msg; sentinel_list; printf '#!/bin/sh\n' > "$C/bin/NOEXECWORDx"; chmod 644 "$C/bin/NOEXECWORDx"
+    local all=1 msg="" l
+    for l in "UPPERnameSECRETWORDx $C/bin/sen|SECRETWORDx" "sen /nonexistent/MISSINGWORDx/prog|MISSINGWORDx" "sen $C/bin/NOEXECWORDx|NOEXECWORDx" "sen MISSINGPROGWORDx|MISSINGPROGWORDx"; do
+        printf '%s\n' "${l%%|*}" > "$LIST"; chmod 600 "$LIST"; runsup --list "$LIST" --check
+        [ "$RC" -eq 2 ] && printf '%s\n' "$OUT" | grep -qE '第 1 行' && ! printf '%s\n' "$OUT" | grep -qF "${l##*|}" || { all=0; msg="$msg [${l##*|}: $OUT]"; }
+    done
+    if [ "$all" -eq 1 ]; then ok "H3 an invalid name, a missing or non-executable program: the message gives the line and the reason, never the line's own words"; else bad "H3 messages echo the line" "$msg"; fi; sweep "$C"; }
+
+# ---- H4: leading VAR=value, one program per line
+case_h4() { new_case h4; mkfake a; sentinel_list
+    printf '#!/bin/sh\necho $$ >> "%s/pids/envp"\nprintf "%%s|%%s\\n" "${FOO:-}" "${BAR:-}" > "%s/envp.out"\nexec sleep 600\n' "$C" "$C" > "$C/bin/envp"; chmod +x "$C/bin/envp"
+    wl "e FOO=1 BAR='x y' $C/bin/envp"; runsup --list "$LIST" --check; local rc1=$RC
+    start_sup --list "$LIST"; wait_for 10 up envp; sleep 0.3
+    if [ "$rc1" -eq 0 ] && [ "$(cat "$C/envp.out" 2>/dev/null)" = "1|x y" ] && ! slog | grep -q ' 結束碼 127'; then ok "H4 'FOO=1 BAR=\"x y\" <program>' passes --check and really starts with those variables set (no exec: FOO=1: not found loop)"; else bad "H4 leading assignments" "rc=$rc1 env=$(cat "$C/envp.out" 2>/dev/null) $(slog | tail -n3)"; fi
+    stop_sup
+    local all=1 msg="" l c o
+    for l in "cd /tmp && $C/bin/a" "$C/bin/a ; $C/bin/a" "$C/bin/a | cat" "$C/bin/a & $C/bin/a"; do
+        printf 'x %s\n' "$l" > "$LIST"; chmod 600 "$LIST"; rm -rf "$ST"; runsup --list "$LIST" --check; c=$RC; o=$OUT; runsup --list "$LIST"
+        [ "$c" -eq 2 ] && [ "$RC" -eq 2 ] && printf '%s\n' "$o" | grep -qE '第 1 行' && printf '%s\n' "$o" | grep -q '一行只能是一個程式與它的參數' && [ ! -d "$ST" ] || { all=0; msg="$msg [$l: $c/$RC $o]"; }
+    done
+    if [ "$all" -eq 1 ]; then ok "H4 '&&', ';', '|', '&' in a line: refused by --check and by start with 一行只能是一個程式與它的參數"; else bad "H4 several programs on a line" "$msg"; fi
+    all=1; msg=""
+    for l in "cd /tmp" "export FOO=1" "FOO=1" "FOO=1 /nonexistent/zzz"; do
+        printf 'x %s\n' "$l" > "$LIST"; chmod 600 "$LIST"; runsup --list "$LIST" --check
+        [ "$RC" -eq 2 ] && printf '%s\n' "$OUT" | grep -qE '第 1 行' || { all=0; msg="$msg [$l: $RC $OUT]"; }
+    done
+    printf 'x cd /tmp\n' > "$LIST"; runsup --list "$LIST" --check; printf '%s\n' "$OUT" | grep -q '內建' || { all=0; msg="$msg [no 內建 for cd]"; }
+    printf 'x FOO=1 /nonexistent/zzz\n' > "$LIST"; runsup --list "$LIST" --check; printf '%s\n' "$OUT" | grep -q '找不到執行檔' || { all=0; msg="$msg [no 找不到 for assignment + missing program]"; }
+    if [ "$all" -eq 1 ]; then ok "H4 a shell builtin, assignments only, or assignments + a missing program: --check refuses (the program that would really run is the one checked)"; else bad "H4 --check of the real program" "$msg"; fi
+    printf "x %s/bin/a 'a;b' \"c|d\" 'e&f'\n" "$C" > "$LIST"; runsup --list "$LIST" --check
+    if [ "$RC" -eq 0 ]; then ok "H4 ';' '|' '&' inside quotes are arguments, not a second program"; else bad "H4 quoted metacharacters" "$OUT"; fi
+    sweep "$C"; }
+
+# ---- H5: the two races at stop time (deterministic: a fake stat / mv on PATH sends the TERM at the exact moment)
+case_h5a() { new_case h5a; mkdir -p "$C/fakebin"; local rs; rs=$(command -v stat)
+    printf '#!/bin/sh\necho $$ >> "%s/pids/q"\nn=$(wc -l < "%s/pids/q")\n[ "$n" -ge 2 ] && exec sleep 600\nexit 1\n' "$C" "$C" > "$C/bin/q"; chmod +x "$C/bin/q"
+    cat > "$C/fakebin/stat" <<EOF
+#!/bin/sh
+case "\$*" in *"/log/q.log"*) if [ ! -e "$C/fired" ]; then : > "$C/fired"; kill -TERM "\$(cat "$C/suppid")"; sleep 0.8; fi ;; esac
+exec $rs "\$@"
+EOF
+    chmod +x "$C/fakebin/stat"; SE+=("PATH=$C/fakebin:$PATH" ABF_SUPERVISE_BASE=0.3 ABF_SUPERVISE_TICK=100)
+    wl "q $C/bin/q"; start_sup --list "$LIST"; echo "$SUP_PID" > "$C/suppid"
+    if wait_for 15 sup_down; then ok "H5 a TERM between the end of the backoff and the start of the process still stops the supervisor (no hang)"; else bad "H5 stop hangs when TERM lands before the start" "fired=$([ -e "$C/fired" ] && echo yes || echo no) starts=$(starts q)"; fi
+    reap "$SUP_PID"; wait_for 25 none_left || bad "H5 a leftover after the stop" "left=$(count_procs "$C")"; sweep "$C"; }
+case_h5b() { new_case h5b; mkdir -p "$C/fakebin"; local rm; rm=$(command -v mv); mkexit q 0 1
+    cat > "$C/fakebin/mv" <<EOF
+#!/bin/sh
+case "\$*" in *"/proc/q") echo x >> "$C/mvcalls"; if [ "\$(wc -l < "$C/mvcalls")" -eq 2 ]; then kill -TERM "\$(cat "$C/suppid")"; sleep 0.8; fi ;; esac
+exec $rm "\$@"
+EOF
+    chmod +x "$C/fakebin/mv"; SE+=("PATH=$C/fakebin:$PATH" ABF_SUPERVISE_BASE=30 ABF_SUPERVISE_MAX=30)
+    wl "q $C/bin/q"; start_sup --list "$LIST"; echo "$SUP_PID" > "$C/suppid"
+    if wait_for 14 sup_down; then ok "H5 a TERM between the exit of the process and the start of the wait ends the supervisor at once, not after the full 30 s interval"; else bad "H5 stop waits out the interval" "fired=$(wc -l < "$C/mvcalls" 2>/dev/null)"; fi
+    reap "$SUP_PID"; sweep "$C"; }
+
+# ---- H6: SIGHUP = unplanned stop (non-zero), --stop
+case_h6() { new_case h6; mkfake a; mkfake b; wl "a $C/bin/a" "b $C/bin/b"; start_sup --list "$LIST"; wait_for 10 all_up a b
+    local pa=$(curpid a) pb=$(curpid b) rc
+    skill -HUP "$SUP_PID"; wait_for 15 sup_down; reap "$SUP_PID"; rc=$?
+    if [ "$rc" -ne 0 ] && gone "$pa" && gone "$pb"; then ok "H6 SIGHUP: every process is stopped and the supervisor exits non-zero (rc $rc) so the task's failure retry brings it back"; else bad "H6 SIGHUP" "rc=$rc"; fi
+    wait_for 25 none_left || bad "H6 leftovers after SIGHUP"
+    start_sup --list "$LIST"; wait_for 10 all_up a b
+    runsup --stop; local rs=$RC os=$OUT
+    if [ "$rs" -eq 0 ] && printf '%s\n' "$os" | grep -q '已停止' && sup_down && wait_for 25 none_left; then ok "H6 --stop: sends SIGTERM to the running supervisor, waits until it is gone, exit 0, nothing left"; else bad "H6 --stop" "rc=$rs $os"; fi
+    runsup --stop
+    if [ "$RC" -eq 0 ] && printf '%s\n' "$OUT" | grep -q '沒在跑'; then ok "H6 --stop with nothing running: says so, exit 0"; else bad "H6 --stop idle" "rc=$RC $OUT"; fi
+    new_case h6b; runsup --stop
+    if [ "$RC" -eq 0 ] && [ ! -e "$ST" ]; then ok "H6 --stop on a fresh machine creates no folder"; else bad "H6 --stop fresh" "rc=$RC"; fi; sweep "$C"; }
+
+# ---- H7: a --status probe that holds the lock for a moment does not make a starting supervisor give up
+case_h7() { new_case h7; mkfake a; wl "a $C/bin/a"; mkdir -p "$ST"; chmod 700 "$ST"; : > "$ST/supervise.lock"; chmod 600 "$ST/supervise.lock"
+    held() { ! flock -n "$ST/supervise.lock" true; }
+    env "ABFT_CASE=$C" flock "$ST/supervise.lock" sleep 1.2 & wait_for 5 held
+    start_sup --list "$LIST"
+    if wait_for 12 up a && ! grep -q '已經有一份' "$C/sup.out"; then ok "H7 a lock held for 1.2 s by someone else: the supervisor waits and then starts (no false 'already running')"; else bad "H7 short lock" "$(cat "$C/sup.out")"; fi
+    stop_sup; sweep "$C"
+    new_case h7b; mkfake a; wl "a $C/bin/a"; mkdir -p "$ST"; chmod 700 "$ST"; : > "$ST/supervise.lock"; chmod 600 "$ST/supervise.lock"
+    env "ABFT_CASE=$C" flock "$ST/supervise.lock" sleep 9 & wait_for 5 held
+    local t0=$SECONDS; runsup --list "$LIST"
+    if [ "$RC" -eq 0 ] && printf '%s\n' "$OUT" | grep -q '已經有一份' && [ $((SECONDS - t0)) -le 8 ] && [ ! -e "$C/pids/a" ]; then ok "H7 a lock that stays held: after the short wait it says one is already running, exit 0, starts nothing"; else bad "H7 held lock" "rc=$RC $OUT"; fi; sweep "$C"; }
+
+# ---- H8: the child's environment is the one a hand start has
+case_h8() { new_case h8; mkdir -p "$C/profbin"; printf '#!/bin/sh\nexit 0\n' > "$C/profbin/profprog"; chmod +x "$C/profbin/profprog"
+    printf 'export ABFT_PROFILE=yes\nPATH="%s/profbin:$PATH"\n' "$C" > "$C/home/.profile"
+    printf '#!/bin/sh\necho $$ >> "%s/pids/env"\npwd -P > "%s/env.pwd"\numask > "%s/env.umask"\nprintf "%%s\\n" "${ABFT_PROFILE:-none}" > "%s/env.prof"\ncommand -v profprog > "%s/env.path"\nexec sleep 600\n' "$C" "$C" "$C" "$C" "$C" > "$C/bin/env"; chmod +x "$C/bin/env"
+    wl "env $C/bin/env"; ( umask 022; cd "$C/tmp" && start_sup --list "$LIST"; echo "$SUP_PID" > "$C/suppid" ); SUP_PID=$(cat "$C/suppid")
+    wait_for 10 up env; sleep 0.5
+    local want; want=$(cd "$C/home" && pwd -P)
+    if [ "$(cat "$C/env.pwd" 2>/dev/null)" = "$want" ]; then ok "H8 the process starts in the home folder"; else bad "H8 working directory" "$(cat "$C/env.pwd" 2>/dev/null)"; fi
+    if [ "$(cat "$C/env.umask" 2>/dev/null)" = "0022" ] && [ "$(stat -c %a "$ST/log/env.log")" = 600 ] && [ "$(stat -c %a "$ST/supervise.log")" = 600 ]; then ok "H8 the process has the umask the supervisor inherited (022); the supervisor's own files stay 0600"; else bad "H8 umask" "$(cat "$C/env.umask" 2>/dev/null)"; fi
+    if [ "$(cat "$C/env.prof" 2>/dev/null)" = yes ] && [ "$(cat "$C/env.path" 2>/dev/null)" = "$C/profbin/profprog" ]; then ok "H8 it runs through a login shell: ~/.profile variables and PATH are in effect"; else bad "H8 login shell" "prof=$(cat "$C/env.prof" 2>/dev/null) path=$(cat "$C/env.path" 2>/dev/null)"; fi
+    stop_sup; sweep "$C"; }
+
+# ---- H9: the rest
+case_h9bom() { new_case h9bom; mkfake a; printf '\xef\xbb\xbfa %s/bin/a\n' "$C" > "$LIST"; chmod 600 "$LIST"; runsup --list "$LIST" --check
+    if [ "$RC" -eq 0 ]; then ok "H9 a UTF-8 BOM on line 1 of the list is read"; else bad "H9 BOM" "$OUT"; fi; sweep "$C"; }
+mnt_base() { local d; for d in /mnt/c/Users/Public /mnt/c/Windows/Temp /mnt/c/Temp; do [ -d "$d" ] && [ -w "$d" ] && { printf '%s\n' "$d"; return 0; }; done; return 1; }
+case_h9mnt() { new_case h9mnt; local b m; b=$(mnt_base) || { skip "H9 list or state under /mnt/" "no writable /mnt/c on this machine"; return; }
+    m=$(mktemp -d "$b/abfpa_h9.XXXXXX") || { skip "H9 /mnt" "cannot make a folder under $b"; return; }
+    mkfake a; sentinel_list; printf 'sen %s/bin/sen\n' "$C" > "$m/list"; chmod 600 "$m/list"
+    runsup --list "$m/list" --check; local o1=$OUT r1=$RC
+    wl "sen $C/bin/sen"; with_env "ABF_SUPERVISE_STATE=$m/state"; runsup --list "$LIST"; SE=("${SEK[@]}"); local o2=$OUT r2=$RC
+    local nd=1; [ -d "$m/state" ] && nd=0; local ns=1; [ -e "$C/sentinel" ] && ns=0
+    rm -rf "$m"
+    if [ "$r1" -eq 2 ] && printf '%s\n' "$o1" | grep -q 'Linux' && [ "$r2" -eq 2 ] && printf '%s\n' "$o2" | grep -q 'Linux' && [ "$nd" -eq 1 ] && [ "$ns" -eq 1 ]; then ok "H9 a list or a state folder under /mnt/ (permissions unreadable): refused, says to use the Linux file system, nothing started"; else bad "H9 /mnt" "list: $r1 $o1 / state: $r2 $o2"; fi; sweep "$C"; }
+case_h9runner() { new_case h9runner; mkfake a; mkfake b; wl "a $C/bin/a" "b $C/bin/b"; start_sup --list "$LIST"; wait_for 10 all_up a b
+    local pa=$(curpid a) pb=$(curpid b) ra; ra=$(ppid_of "$pa")
+    if [ -n "$ra" ] && [ "$ra" != "$SUP_PID" ] && skill -KILL "$ra"; then :; else bad "H9 setup: the runner of a was not found" "ra=$ra"; fi
+    if wait_for 12 starts_ge a 2 && up a; then ok "H9 a runner that dies is taken over: a is running again under a new runner"; else bad "H9 dead runner not replaced" "$(slog | tail -n4)"; fi
+    if slog | grep -qE ' a .*看守子殼'; then ok "H9 the dead runner is recorded in supervise.log"; else bad "H9 dead runner not recorded" "$(slog | tail -n4)"; fi
+    sleep 0.5
+    if [ "$(live_count a)" -eq 1 ] && [ "$(curpid b)" = "$pb" ] && [ "$(starts b)" -eq 1 ]; then ok "H9 exactly one a is alive after the take-over, b was not touched"; else bad "H9 duplicates after take-over" "a=$(live_count a) b=$(starts b)"; fi
+    local pn; pn=$(curpid a); skill -KILL "$pn"
+    if wait_for 8 starts_ge a 3 && up a; then ok "H9 and the new runner restarts a as before"; else bad "H9 new runner does not restart"; fi
+    stop_sup; sweep "$C"; }
+case_h9clock() { new_case h9clock
+    eval "$(sed -n '/^fmt_us()/,/^}/p' "$SUP")"
+    local a b c; a=$(fmt_us -3600500000); b=$(fmt_us 400000); c=$(fmt_us 2000000)
+    if [ "$a" = 0 ] && [ "$b" = 0.4 ] && [ "$c" = 2 ]; then ok "H9 a negative duration (clock stepped back) prints as 0, not -3600.-5; normal ones unchanged"; else bad "H9 fmt_us" "[$a] [$b] [$c]"; fi
+    if [ "$(grep -vE '^[[:space:]]*#' "$SUP" | grep -c 'EPOCHREALTIME')" -le 1 ] && grep -q '/proc/uptime' "$SUP"; then ok "H9 durations (lifetime, the SIGKILL wait) are measured on /proc/uptime, not on the wall clock"; else bad "H9 monotonic clock"; fi; }
+case_h9knobs() { new_case h9knobs; mkfake a; wl "a $C/bin/a"; local all=1 msg="" k v
+    for k in BASE MAX TICK STABLE WAIT; do for v in abc -1 1x; do
+        with_env "ABF_SUPERVISE_$k=$v"; runsup --list "$LIST"; SE=("${SEK[@]}")
+        [ "$RC" -eq 2 ] && printf '%s\n' "$OUT" | grep -q "ABF_SUPERVISE_$k" && [ ! -d "$ST" ] && [ ! -e "$C/pids/a" ] || { all=0; msg="$msg [$k=$v: $RC]"; }
+    done; done
+    for k in BASE MAX TICK; do
+        with_env "ABF_SUPERVISE_$k=0"; runsup --list "$LIST"; SE=("${SEK[@]}")
+        [ "$RC" -eq 2 ] && printf '%s\n' "$OUT" | grep -q "ABF_SUPERVISE_$k" && [ ! -d "$ST" ] && [ ! -e "$C/pids/a" ] || { all=0; msg="$msg [$k=0: $RC]"; }
+    done
+    if [ "$all" -eq 1 ]; then ok "H9 a non-numeric interval knob, or a 0 for BASE / MAX / TICK, is refused with the knob named and nothing started (no tight loop)"; else bad "H9 knob validation" "$msg"; fi; sweep "$C"; }
+case_h9cp() { new_case h9cp
+    if [ "$(id -u)" -eq 0 ]; then skip "H9 failed rotation copy" "running as root, a folder cannot be made unwritable"; return; fi
+    printf '#!/bin/sh\necho $$ >> "%s/pids/spew"\nwhile :; do echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; sleep 0.05; done\n' "$C" > "$C/bin/spew"; chmod +x "$C/bin/spew"
+    wl "spew $C/bin/spew"; SE+=(ABF_SUPERVISE_LOGMAX=3000); start_sup --list "$LIST"; wait_for 10 up spew
+    chmod 500 "$ST/log"
+    if wait_for 20 bash -c "grep -q '換檔失敗' '$ST/supervise.log'"; then ok "H9 a failed copy during rotation is recorded in supervise.log"; else bad "H9 failed rotation not recorded" "$(slog | tail -n3)"; fi
+    local maxsz=0 t sz; for t in $(seq 1 30); do sleep 0.1; sz=$(stat -c %s "$ST/log/spew.log" 2>/dev/null || echo 0); [ "$sz" -gt "$maxsz" ] && maxsz=$sz; done
+    chmod 700 "$ST/log"
+    if [ "$maxsz" -le 6000 ]; then ok "H9 and the log is emptied anyway, so it cannot grow without end (max $maxsz bytes)"; else bad "H9 log grows without end" "max=$maxsz"; fi
+    stop_sup; sweep "$C"; }
+
+# ---- H10: a crash loop is visible
+case_h10() { new_case h10; mkexit q 0 1; mkfake ok; SE+=(ABF_SUPERVISE_BASE=0.05 ABF_SUPERVISE_MAX=0.1 ABF_SUPERVISE_STABLE=5); wl "q $C/bin/q" "ok $C/bin/ok"; start_sup --list "$LIST"
+    if wait_for 25 bash -c "grep -q '連續失敗 5 次' '$ST/supervise.log'"; then ok "H10 the 5th failure in a row writes a warning line to supervise.log"; else bad "H10 no warning line" "$(slog | tail -n4)"; fi
+    if slog | grep '連續失敗 5 次' | head -n1 | grep -q ' q ' && slog | grep '連續失敗 5 次' | head -n1 | grep -q '警告'; then ok "H10 the warning names the process and says 警告"; else bad "H10 the warning line is not clear"; fi
+    runsup --status
+    if printf '%s\n' "$OUT" | grep -E '^q: ' | grep -qE '連續失敗 [0-9]+ 次' && ! printf '%s\n' "$OUT" | grep -E '^ok: ' | grep -q '連續失敗'; then ok "H10 --status marks the looping process 連續失敗 N 次 and only that one"; else bad "H10 --status" "$OUT"; fi
+    stop_sup; sweep "$C"; }
+
 # =================================================================== documents and repo-level cases
 doc_cases() {
     local sec; sec=$(awk '/^##+ .*桌機（WSL）上自動啟動/{f=1;h=$1;next} f&&/^##+ /{ if (length($1)<=length(h)) exit } f' "$OPS" 2>/dev/null)
@@ -508,10 +736,15 @@ doc_cases() {
     if [ -z "$sw" ]; then ok "TC-098 it tells how to stop (SIGTERM / Ctrl-C, not kill -9); every switch and file it names exists"; else bad "TC-098" "$sw"; fi
     if awk '/^## 3\.0\.0-dev/{f=1;next} /^## /{f=0} f' CHANGELOG.md | grep -E '^- ' | grep -q 'platform-autostart.*deploy/wsl/'; then ok "TC-099 CHANGELOG 3.0.0-dev has a line for platform-autostart and deploy/wsl/"; else bad "TC-099 changelog line"; fi
     if printf '%s\n' "$sec" | grep -q 'deploy/systemd/' && ! printf '%s\n' "$sec" | grep -qiE 'sudo|/etc/wsl\.conf|systemctl|systemd=true'; then ok "TC-110 the doc section points systemd hosts to deploy/systemd/ and names no sudo, wsl.conf or systemctl"; else bad "TC-110 doc section"; fi
+    # the fix round's rulings are written into the section (H4, H6, H8, H9, H10)
+    local dm="" k
+    for k in '--stop' '關' '視窗' '.profile' '家目錄' 'umask' 'FOO=' 'ExecutionPolicy Bypass' 'Linux 檔案系統' '連續失敗' 'SIGHUP'; do printf '%s\n' "$sec" | grep -qF -- "$k" || dm="$dm [$k]"; done
+    if [ -z "$dm" ]; then ok "H4/H6/H8/H9/H10 the section says: --stop (not closing the window, SIGHUP), the login shell with ~/.profile, home folder and umask, VAR=value on a list line, the Linux file system, ExecutionPolicy Bypass, 連續失敗"; else bad "docs of the fix round" "missing:$dm"; fi
     # manual cases are written down in docs/TESTING.md
     local t; t=$(awk '/^## .*platform-autostart/{f=1;next} /^## /{f=0} f' docs/TESTING.md)
     local mm=""; for w in TC-013 TC-014 TC-015 TC-034 TC-047 TC-055 TC-077 TC-114; do printf '%s\n' "$t" | grep -q "$w" || mm="$mm $w"; done
     if [ -z "$mm" ]; then ok "docs/TESTING.md has a platform-autostart section with the eight manual cases"; else bad "TESTING.md manual cases" "missing:$mm"; fi
+    if printf '%s\n' "$t" | grep -q -- '--stop' && printf '%s\n' "$t" | grep -q '視窗'; then ok "H6/H8 docs/TESTING.md: the manual steps stop with --stop and say not to close the window"; else bad "TESTING.md --stop"; fi
 }
 
 git_cases() {
