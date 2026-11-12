@@ -329,6 +329,72 @@ def test_refusal_is_immediate_without_ssh(w, monkeypatch):
     assert calls == [] and time.time() - t < 5
 
 
+# ---- US2, every way in: one gate in jobs.enqueue_confirmed (TC-038, TC-039) ---------------------------------------------------
+
+def _state_counts(w):
+    return (len(w.sql("SELECT * FROM jobs WHERE kind = 'launch_nextflow'")),
+            len(w.sql("SELECT * FROM confirmations WHERE state = 'void'")), len(w.sql("SELECT * FROM confirmations WHERE state = 'pending'")))
+
+
+def _closed_and_nothing_sent(w, out, before):
+    """The refusal names the agent and the next step; the one new confirmation is void (not pending, not approved); nothing new was queued."""
+    text = json.dumps(out, ensure_ascii=False)
+    assert out["sent"] is False and "job_id" not in out, out
+    assert AGENT in text and "WSL" in text and "重新登入" in text, text
+    assert _state_counts(w) == (before[0], before[1] + 1, before[2]), (before, _state_counts(w))
+
+
+def test_launch_pipeline_refused_when_closed(w):
+    # TC-039 (launch_pipeline)
+    from test_mcp_launch_pipeline import lp, make
+    from owner_harness import Duo
+    d = Duo(w)
+    set_link(w, AGENT, "closed")
+    pid = make(d)
+    before = _state_counts(w)
+    out = tool_json(lp(d, d.a, pid, answer=form_answer()))
+    _closed_and_nothing_sent(w, out, before)
+
+
+def _failed_first_run(tmp_path, monkeypatch, link):
+    """A first launch that failed (so resume and relaunch have something to ask about), then the agent's link set."""
+    from resume_harness import Rig
+    rig = Rig(tmp_path, monkeypatch)
+    rig.first("x")
+    set_link(rig.w, AGENT, link)
+    return rig
+
+
+@pytest.mark.parametrize("name", ["resume", "relaunch"])
+def test_resume_and_relaunch_refused_when_closed(tmp_path, monkeypatch, name):
+    # TC-039 (resume, relaunch)
+    rig = _failed_first_run(tmp_path, monkeypatch, "closed")
+    w = rig.w
+    before = _state_counts(w)
+    out = tool_json(w.call(name, {"run_name": "x"}, answer=form_answer()))
+    _closed_and_nothing_sent(w, out, before)
+
+
+@pytest.mark.parametrize("name", ["resume", "relaunch"])
+def test_resume_and_relaunch_go_through_when_open(tmp_path, monkeypatch, name):
+    # TC-039 control: the same call with the link open is queued, so the refusal above is the gate and nothing else
+    rig = _failed_first_run(tmp_path, monkeypatch, "open")
+    out = tool_json(rig.w.call(name, {"run_name": "x"}, answer=form_answer()))
+    assert out["sent"] is True and out["job_id"], out
+
+
+def test_terminal_launch_refused_when_closed(tmp_path, monkeypatch):
+    # TC-038: abf-platform launch, the person types y
+    from launch_harness import LaunchData
+    from station_harness import Inproc
+    from test_launch_cli import ask
+    data = LaunchData(Inproc(tmp_path / "ip", monkeypatch), facts={"site_link": "closed", "site_link_at": "2026-11-11T10:00:00Z"})
+    rc, screen = ask(data, tmp_path, "y\n")
+    assert rc != 0 and data.agent in screen and "WSL" in screen and "重新登入" in screen, screen
+    assert (data.count("jobs"), data.count("launches")) == (0, 0)
+    assert data.run_tokens() == 0
+
+
 # ---- US3 --------------------------------------------------------------------------------------------------------------
 
 def test_running_run_and_cancel_unaffected_when_closed(w):
