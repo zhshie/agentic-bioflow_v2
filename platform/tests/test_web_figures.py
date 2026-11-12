@@ -735,3 +735,20 @@ def test_damaged_index_refuses_pack_and_delete_with_one_sentence(w):
     assert len(set(seen)) == 1, seen
     r = c.post("/run/figures/pack", data={"csrf": tp, "run": rid, "fig": [], "lang": "en"})
     assert r.status_code == 400 and "cannot be read right now" in r.text
+
+
+def test_figure_csp_and_svg_opened_as_a_document(w):
+    # ruling G3: the figure policy forbids forms, a base address and framing; an SVG that the browser opens as a document is always an attachment
+    ann, c, rid = setup(w)
+    r = figure_get(c, rid, "a.png")
+    csp = r.headers["content-security-policy"]
+    assert "form-action 'none'" in csp and "base-uri 'none'" in csp and "frame-ancestors 'none'" in csp
+    assert "sandbox" in csp and "default-src 'none'" in csp
+    path = "/run/figure?run=%s&name=b.svg" % rid
+    doc = c.get(path, headers={"Sec-Fetch-Dest": "document"})
+    assert doc.status_code == 200 and doc.headers["content-disposition"] == 'attachment; filename="b.svg"' and doc.content == SVG
+    assert "form-action 'none'" in doc.headers["content-security-policy"]
+    assert "content-disposition" not in c.get(path, headers={"Sec-Fetch-Dest": "image"}).headers      # the <img> of the page still shows it
+    assert "content-disposition" not in c.get(path).headers                                           # no header at all: as before
+    png = c.get("/run/figure?run=%s&name=a.png" % rid, headers={"Sec-Fetch-Dest": "document"})
+    assert "content-disposition" not in png.headers
