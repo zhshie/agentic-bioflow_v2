@@ -106,17 +106,17 @@ shown once.
 
 **1. 前提。** WSL 裡已能自己執行那六個指令，且每個指令用完整路徑（登入工作的 PATH 很短）。每個 station 的權杖放在它的 `--token-file` 檔案裡，不放進清單。WSL 裡有 `flock`（Ubuntu 內建於 util-linux）。Windows 端有 PowerShell，用一般使用者開，不用系統管理員。
 
-**2. 寫清單檔。** 複製 `deploy/wsl/processes.example` 到 `~/.config/abf-platform/processes`，把 `<...>` 換成你的路徑與公開網址，然後 `chmod 600` 它（要放別的位置，執行時用 `--list <檔>` 指定）。每行是「名字 空白 完整指令」；名字只用小寫英文字母、數字與減號，不可重複；`#` 開頭與空行略過。清單決定這個帳號會執行什麼，所以群組或其他人可讀寫就會被拒絕；清單裡任何一行（含註解）像權杖或金鑰就會被拒絕。
+**2. 寫清單檔。** 複製 `deploy/wsl/processes.example` 到 `~/.config/abf-platform/processes`，把 `<...>` 換成你的路徑與公開網址，然後 `chmod 600` 它（要放別的位置，執行時用 `--list <檔>` 指定）。每行是「名字 空白 完整指令」；名字只用小寫英文字母、數字與減號，不可重複；`#` 開頭與空行略過。清單決定這個帳號會執行什麼，所以群組或其他人可讀寫就會被拒絕；清單裡任何一行（含註解）像權杖、密碼或金鑰（`abf_` 開頭的長字串、`token=值`、`--password 值`、網址裡的 `使用者:密碼@`、`Bearer` 加值、私鑰標頭）就會被拒絕，訊息只說第幾行，不回印內容，請改用 `--token-file`。清單與狀態資料夾要放在 Linux 檔案系統（例如家目錄底下），放在 `/mnt/` 底下（Windows 的磁碟，權限讀不準）會被拒絕。一行只能是一個程式與它的參數：不能用 `&&`、`;`、`|` 接指令，也不能以 `cd`、`export` 這類 shell 內建指令開頭；要設環境變數，直接寫在程式前面，例如 `web FOO=1 /完整路徑/程式 參數`。每個指令是經登入殼在你的家目錄執行的，所以 `~/.profile` 設的 PATH 與變數會生效，umask 也是看守腳本啟動時繼承的那個值，和你自己在終端裡起它時一樣；只有看守腳本自己的檔案固定是 0600／0700。
 
 **3. 用 `--check` 檢查。** `deploy/wsl/abf-supervise.sh --check` 只檢查清單的格式、權限與每個指令的執行檔，不啟動任何東西；有問題會結束碼 2，逐行說哪裡錯。看到「清單沒問題」再往下。
 
-**4. 手動試跑。** 先把自己起的那幾個行程關掉再跑，不然會有兩份（見最後的「兩件做不到的事」）。直接執行 `deploy/wsl/abf-supervise.sh`，另開一個終端用 `deploy/wsl/abf-supervise.sh --status` 看六個都「在跑」，打開網站確認，再用 Ctrl-C 結束它。第二份會說「已經有一份在跑」並結束，不會重複啟動。
+**4. 手動試跑。** 先把自己起的那幾個行程關掉再跑，不然會有兩份（見最後的「兩件做不到的事」）。直接執行 `deploy/wsl/abf-supervise.sh`，另開一個終端用 `deploy/wsl/abf-supervise.sh --status` 看六個都「在跑」，打開網站確認，再用 Ctrl-C 結束它；不要直接關掉它所在的視窗（那會送 SIGHUP，它會照常收乾淨所有行程，但以非零結束碼結束）。第二份會說「已經有一份在跑」並結束，不會重複啟動；它最多等 2 秒再下結論，因為 `--status` 查看的瞬間也會短暫占著鎖。
 
-**5. 註冊登入工作（`-Apply`）。** 在一般的 PowerShell 執行 `.\install-autostart.ps1 -Distro <distro> -User <user> -Script <script>`：它只印出將要做什麼（工作名稱 `abf-platform-autostart`、動作 `wsl.exe -d <distro> -u <user> --exec <script>`、觸發條件「登入時」），並說明「沒有更動」。確認沒問題再加 `-Apply` 才真的註冊；重複 `-Apply` 結果相同。工作以一般權限執行，失敗時每分鐘重試；若說「權限不足」，它會中止，不會自己提升權限，請回報給維護者。
+**5. 註冊登入工作（`-Apply`）。** 在一般的 PowerShell 執行 `.\install-autostart.ps1 -Distro <distro> -User <user> -Script <script>`：它只印出將要做什麼（工作名稱 `abf-platform-autostart`、動作 `wsl.exe -d <distro> -u <user> --exec <script>`、觸發條件「登入時」），並說明「沒有更動」。確認沒問題再加 `-Apply` 才真的註冊；重複 `-Apply` 結果相同。`-Apply` 會先確認 `-Script` 指的檔案在該發行版裡存在且可執行，不然說明白就中止，不註冊。工作以一般權限執行，失敗時每分鐘重試；若說「權限不足」，它會中止，不會自己提升權限，請回報給維護者。若 PowerShell 的執行原則擋下這個 `.ps1`，只對這一支放行、不改系統設定：`powershell -ExecutionPolicy Bypass -File .\install-autostart.ps1 -Distro <distro> -User <user> -Script <script>`（註冊與移除同樣這樣下）。
 
-**6. 怎麼看狀態與記錄。** `deploy/wsl/abf-supervise.sh --status` 印每個名字「在跑／沒在跑」、行程編號、上次啟動時間與重啟次數；看守腳本沒在跑時說明白，結束碼 1。記錄在 `~/.local/state/abf-platform/`：`supervise.log` 是看守腳本自己的事件（每行有時間），`log/<名字>.log` 是各行程的輸出；超過 10 MB 會換成 `.1` 舊檔，只留一份。資料夾 0700、檔案 0600。一個行程結束就會自己重啟：第一次等 2 秒，連續快速失敗就加倍，最多 60 秒，存活滿 30 秒後歸零。
+**6. 怎麼看狀態與記錄。** `deploy/wsl/abf-supervise.sh --status` 印每個名字「在跑／沒在跑」、行程編號、上次啟動時間與重啟次數；看守腳本沒在跑時說明白，結束碼 1。記錄在 `~/.local/state/abf-platform/`：`supervise.log` 是看守腳本自己的事件（每行有時間），`log/<名字>.log` 是各行程的輸出；超過 10 MB 會換成 `.1` 舊檔，只留一份。資料夾 0700、檔案 0600。一個行程結束就會自己重啟：第一次等 2 秒，連續快速失敗就加倍，最多 60 秒，存活滿 30 秒後歸零。某個行程連續失敗滿 5 次，`supervise.log` 會有一行「警告」，`--status` 也會在那個行程後面寫「連續失敗 N 次」：這代表它在當機迴圈，請看它的 `log/<名字>.log`。
 
-**7. 怎麼停。** 對看守腳本送 SIGTERM（`kill <看守腳本的行程編號>`，編號在 `~/.local/state/abf-platform/supervise.pid`）或在前景按 Ctrl-C：它把訊號轉給所有行程，最多等 10 秒，還在的再強制結束，之後不再重啟。不要對看守腳本用 `kill -9`：它來不及轉訊號，行程會留成孤兒，再啟動就會多出一組。要長時間停掉自動啟動，先停看守腳本，再照下一步移除登入工作，否則下次登入又會起來。
+**7. 怎麼停。** 用 `deploy/wsl/abf-supervise.sh --stop`：它對正在跑的看守腳本送 SIGTERM，等它把行程收乾淨才回來（沒在跑時說一聲、結束碼 0）。也可以自己 `kill <看守腳本的行程編號>`（SIGTERM，編號在 `~/.local/state/abf-platform/supervise.pid`），或在前景按 Ctrl-C：它把訊號轉給所有行程，最多等 10 秒，還在的再強制結束，之後不再重啟。不要用關視窗的方式停：那是 SIGHUP，看守腳本當成「非預期停止」，照常收乾淨所有行程，但以結束碼 129 結束，讓登入工作的失敗重試把它帶回來。也不要對看守腳本用 `kill -9`：它來不及轉訊號；它留下的看守子殼會發現本體不見了，自己把行程停掉並結束（幾秒內），但這幾秒內平台是斷的，再啟動也要等它們結束。要長時間停掉自動啟動，先 `--stop`，再照下一步移除登入工作，否則下次登入又會起來。
 
 **8. 怎麼移除（`-Remove`）。** 在一般的 PowerShell 執行 `.\install-autostart.ps1 -Remove`，只移除 `abf-platform-autostart` 這一個工作；本來就沒有時會說「本來就沒有這個工作」。清單檔與記錄不會被動。
 

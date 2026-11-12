@@ -1220,15 +1220,15 @@ Automatic tests: `platform/tests/test_studio_remote.py`, `test_studio_cli.py`, `
 
 自動測試是 `tests/platform_autostart_test.sh`（假行程、暫存資料夾，不碰你的桌機）。下面八條只有你在自己的桌機上、約好時間才做；這個 PR 不會去碰你的桌機。`<script>` 指 `deploy/wsl/abf-supervise.sh` 在 WSL 裡的完整路徑，`<distro>` 與 `<user>` 是你的 WSL 發行版與使用者名稱。每條的「看到什麼」就是通過的標準。
 
-**開始前（合併後、約好時間）。** 照 `docs/OPERATIONS.md`「桌機（WSL）上自動啟動」寫好清單檔（六行：serve、web、mcp、三個 station），跑 `<script> --check`，看到「清單沒問題」。再把手動起的六個行程停掉（平台會中斷約一分鐘），然後手動跑一次 `<script>`，確認 `<script> --status` 六個都「在跑」，再用 Ctrl-C 停掉它。
+**開始前（合併後、約好時間）。** 照 `docs/OPERATIONS.md`「桌機（WSL）上自動啟動」寫好清單檔（六行：serve、web、mcp、三個 station），跑 `<script> --check`，看到「清單沒問題」。再把手動起的六個行程停掉（平台會中斷約一分鐘），然後手動跑一次 `<script>`，確認 `<script> --status` 六個都「在跑」，再用 Ctrl-C 或 `<script> --stop` 停掉它（不要直接關掉它的視窗：那會被當成非預期停止，以非零結束碼結束）。看守腳本是經登入殼在家目錄啟動各行程的：若你的行程原本靠 `~/.profile` 的 PATH 或變數，這裡也要照樣能起來；起不來就看 `~/.local/state/abf-platform/log/<名字>.log`。
 
 1. **TC-114（合併前，桌機沒被動過）。** 在 PR 合併、還沒約時間之前：在一般 PowerShell 執行 `Get-ScheduledTask -TaskName abf-platform-autostart -ErrorAction SilentlyContinue`；在 WSL 執行 `<script> --status`。看到什麼：PowerShell 什麼都沒印（沒有這個工作）；`--status` 說「看守腳本沒在跑」；你手動起的六個行程照舊在跑、行程編號沒變。
-2. **TC-014（註冊與移除）。** 在一般（不是系統管理員）的 PowerShell，到存放 `install-autostart.ps1` 的資料夾。先執行 `.\install-autostart.ps1 -Distro <distro> -User <user> -Script <script>`：看到「沒有更動」與將要做的事。再加 `-Apply`：看到「已註冊」；開「工作排程器」或執行 `Get-ScheduledTask -TaskName abf-platform-autostart`，有一個 `abf-platform-autostart`。再執行一次 `-Apply`：仍然只有一個。最後 `.\install-autostart.ps1 -Remove`：工作消失。全程不應該跳出「要不要允許這個應用程式變更」之類的系統管理員提示；若跳出或說「權限不足」，停下來，把畫面給維護者。做完這條，如果要繼續下面幾條，再 `-Apply` 一次。
+2. **TC-014（註冊與移除）。** 在一般（不是系統管理員）的 PowerShell，到存放 `install-autostart.ps1` 的資料夾。先執行 `.\install-autostart.ps1 -Distro <distro> -User <user> -Script <script>`：看到「沒有更動」與將要做的事。再加 `-Apply`：看到「已註冊」；開「工作排程器」或執行 `Get-ScheduledTask -TaskName abf-platform-autostart`，有一個 `abf-platform-autostart`。再執行一次 `-Apply`：仍然只有一個。最後 `.\install-autostart.ps1 -Remove`：工作消失。全程不應該跳出「要不要允許這個應用程式變更」之類的系統管理員提示；若跳出或說「權限不足」，停下來，把畫面給維護者。若 PowerShell 說執行原則不讓你跑這個檔案，就改成 `powershell -ExecutionPolicy Bypass -File .\install-autostart.ps1 ...`（只對這一支放行）。若 `-Apply` 說在發行版裡找不到 `-Script` 或它不能執行，這是預期的檢查，改正路徑或 `chmod +x` 再來。做完這條，如果要繼續下面幾條，再 `-Apply` 一次。
 3. **TC-013（重開機後什麼都不做）。** 確認已 `-Apply`、手動起的六個行程已停掉。重開電腦，登入 Windows，什麼都不做，等一兩分鐘，打開網站。看到什麼：網站能開、平台是好的；在 WSL 打 `<script> --status`，六個名字都「在跑」。（國網的共用 SSH 連線要本人重新連線，網站會提示，這不算失敗。）
 4. **TC-015（沒有人開 WSL 視窗也一直在）。** 登入後不要開任何 WSL 視窗，十分鐘後在 PowerShell 執行 `wsl.exe -d <distro> --exec <script> --status`。看到什麼：說看守腳本在跑，六個行程都「在跑」；螢幕上沒有一直開著的黑色視窗。若有黑色視窗一直開著，把這件事回報給維護者（要改成不顯示視窗的做法）。
 5. **TC-034（砍掉一個行程，幾秒後自己回來）。** 先 `<script> --status` 記下六個行程編號。在 WSL 對 web 的行程編號執行 `kill -9 <web 的行程編號>`（只砍它）。幾秒後再 `<script> --status`：web 有新的行程編號、「重啟次數」變成 1，其餘五個行程編號和「重啟次數 0」都沒變；網站正常。
 6. **TC-047（一個指令看得懂現況）。** 打 `<script> --status`。看到什麼：第一行說看守腳本在跑；每個名字一行，寫著「在跑」、行程編號、上次啟動時間、重啟次數。你能不問人就看懂每一欄，也不需要再打別的指令。
 7. **TC-055（不會同時跑兩份）。** 在登入工作已讓看守腳本在跑的情況下，在終端手動再執行一次 `<script>`。看到什麼：它說「已經有一份看守腳本在跑」然後結束；`<script> --status` 仍是六個行程，沒有第二組；網站沒有中斷。
-8. **TC-077（裡面沒有你的權杖）。** 對清單檔與狀態資料夾找權杖形狀的字串，只看有沒有、不要把結果貼出來：在 WSL 執行 `grep -rlE 'abf_[A-Za-z0-9]{20,}|Bearer |-----BEGIN' ~/.config/abf-platform/processes ~/.local/state/abf-platform`。看到什麼：什麼都沒印出來（沒有任何檔案命中）。你的權杖只在原本放它的 `--token-file` 檔案裡。
+8. **TC-077（裡面沒有你的權杖）。** 對清單檔與狀態資料夾找權杖形狀的字串，只看有沒有、不要把結果貼出來：在 WSL 執行 `grep -rlE 'abf_[A-Za-z0-9_-]{40,}|Bearer +[^ ]{8,}|-----BEGIN' ~/.config/abf-platform/processes ~/.local/state/abf-platform`。看到什麼：什麼都沒印出來（沒有任何檔案命中）。你的權杖只在原本放它的 `--token-file` 檔案裡。
 
 做完請把八條各自「通過／沒通過」與日期寫回 `specs/platform-autostart/ledger.md` 的最後一節。

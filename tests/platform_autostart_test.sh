@@ -756,7 +756,8 @@ git_cases() {
     local out; out=$(printf '%s\n' "$names" | grep -vE '^(deploy/wsl/|docs/OPERATIONS\.md$|docs/TESTING\.md$|CHANGELOG\.md$|specs/platform-autostart/|tests/platform_autostart_test\.sh$|tests/hosted_deploy_test\.sh$)' || true)
     if [ -z "$out" ]; then ok "TC-112 only the planned files changed (nothing in platform/, hooks/, .github/, the constitution, plugin.json)"; else bad "TC-112 unplanned files" "$out"; fi
     local d; d=$(git diff -U0 origin/v3...HEAD -- tests/hosted_deploy_test.sh | grep -E '^[-+][^-+]')
-    if [ "$(printf '%s\n' "$d" | grep -c '^-')" -eq 1 ] && [ "$(printf '%s\n' "$d" | grep -c '^+')" -eq 1 ] && printf '%s\n' "$d" | grep '^+' | grep -q 'wsl/abf-supervise.sh'; then ok "TC-123 hosted_deploy_test.sh differs only by the TC-069 list line"; else bad "TC-123 hosted_deploy diff" "$d"; fi
+    # changed by the acceptance note: the TC-069 label now says the real number of files, so two lines differ (the list and its label)
+    if [ "$(printf '%s\n' "$d" | grep -c '^-')" -eq 2 ] && [ "$(printf '%s\n' "$d" | grep -c '^+')" -eq 2 ] && printf '%s\n' "$d" | grep '^+' | grep -q 'wsl/abf-supervise.sh' && printf '%s\n' "$d" | grep '^+' | grep -q 'exactly the ten planned files'; then ok "TC-123 hosted_deploy_test.sh differs only by the TC-069 list line and its label"; else bad "TC-123 hosted_deploy diff" "$d"; fi
 }
 
 nested_cases() { # TC-122 / 124 / 126: the neighbours that must stay green (the full suite runs them again)

@@ -12,6 +12,8 @@
 #
 # 工作名稱 abf-platform-autostart; 觸發: 目前這位使用者登入時; 動作: wsl.exe -d <distro> -u <user> --exec <腳本>;
 # 一般權限; 失敗時每分鐘重試, 不限時間長度。它不需要系統管理員權限, 權限不夠時會說明白並停手。
+# -Apply 會先確認 -Script 在該發行版裡存在且可執行, 不然停手說明, 不註冊。
+# 若 PowerShell 的執行原則擋下這個檔案, 只對這一支放行 (不改系統設定): powershell -ExecutionPolicy Bypass -File .\install-autostart.ps1 ...
 [CmdletBinding()]
 param(
     [string]$Distro = 'Ubuntu',
@@ -65,6 +67,10 @@ function Show-Plan {
 
 function Invoke-Apply {
     Resolve-Inputs
+    # the script has to be there and be runnable inside the distro, or the logon task would fail every minute
+    $code = 1
+    try { & wsl.exe -d $Distro -u $User --exec test -x $Script 2>$null; $code = $LASTEXITCODE } catch { $code = 1 }
+    if ($code -ne 0) { Stop-Here "在 WSL 發行版 ${Distro} 裡找不到 ${Script}，或它不能執行; 這次沒有註冊任何工作。請確認 -Script 的路徑 (可用 wsl.exe -d $Distro --exec ls -l ${Script} 看)，並先在 WSL 裡 chmod +x 它，再重新執行 -Apply。" 2 }
     $action = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument (Get-ActionArgument)
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $Me
     $principal = New-ScheduledTaskPrincipal -UserId $Me -LogonType Interactive -RunLevel Limited
