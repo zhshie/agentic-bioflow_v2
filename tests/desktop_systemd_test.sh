@@ -165,7 +165,7 @@ if [ -n "$la" ] && [ -n "$lr" ] && [ "$lr" -gt "$la" ] && [ "$(printf '%s\n' "$p
 if has "$ps1" 'Unregister-ScheduledTask' && hasre "$ps1" 'ErrorAction +SilentlyContinue|Get-ScheduledTask' && hasre "$ps1" 'Unregister-ScheduledTask[^\n]*-Confirm:\$false' && hasre "$ps1" '-Force'; then ok "TC-038 -Apply replaces (-Force), -Remove removes quietly when it is not there"; else bad "TC-038 idempotent Apply and quiet Remove"; fi
 if ! hasre "$ps1" 'RunAs|RequireAdministrator|Start-Process[^\n]*-Verb' && hasre "$ps1" '[Aa]dministrator|not allowed|[Aa]ccess is denied|UnauthorizedAccess' ; then ok "TC-040 no elevation; says what to do when permission is missing"; else bad "TC-040 no self-elevation, message on missing permission"; fi
 if [ -f "$PS1" ]; then
-  if LC_ALL=C grep -qP '[^\x00-\x7F]' "$PS1" 2>/dev/null; then
+  if LC_ALL=C grep -q '[^[:print:][:space:]]' "$PS1" 2>/dev/null; then
     if [ "$(head -c3 "$PS1" | od -An -tx1 | tr -d ' ')" = "efbbbf" ]; then ok "TC-041 non-ASCII, and it starts with a UTF-8 BOM"; else bad "TC-041 non-ASCII without a BOM"; fi
   else ok "TC-041 pure ASCII"; fi
 else bad "TC-041 $PS1 exists"; fi
