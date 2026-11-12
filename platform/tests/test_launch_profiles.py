@@ -441,9 +441,9 @@ def test_tc058_the_description_is_short_and_says_what_to_do(w):
 def test_tc059_the_tools_are_the_same(w):
     # TC-059
     tools, _ = w.mcp([])
-    assert sorted(t.name for t in tools) == ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation",
+    assert sorted(t.name for t in tools) == ["cancel", "delete_figure", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation",
                                               "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs", "list_site_files",
-                                              "list_used_pipelines", "my_usage", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
+                                              "list_used_pipelines", "my_usage", "pack_figures", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
 
 
 def test_tc070_launch_pipeline_exists_and_takes_no_profiles(w):

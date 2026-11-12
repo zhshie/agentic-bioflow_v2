@@ -266,7 +266,7 @@ def test_classify_check_still_rejects_an_unlisted_tool(w):
 def test_tool_count_and_no_extra_tools(w):
     # TC-021, TC-026
     t = tools_of(w)
-    assert len(t) == 23 and sum(1 for x in t.values() if x.annotations.read_only_hint) == 15      # ruling R2: get_run is no longer read-only
+    assert len(t) == 25 and sum(1 for x in t.values() if x.annotations.read_only_hint) == 15      # ruling R2: get_run is no longer read-only
     for n in ("create_pipeline", "update_pipeline", "export_pipeline", "validate_pipeline"):
         assert n not in t
     doc = (PKG / "mcp_server.py").read_text(encoding="utf-8")
@@ -355,6 +355,12 @@ PUBLISH_FIGURE_STORE_LINES = {
     'return Path(platform_path or default_platform_path(None, env)).parent / "figures"',
     """return row is None or "'clean_work'" in row[0]""",
     """return row is None or ("'clean_work'" in row[0] and "'publish_figure'" in row[0])""",
+    # mcp-gallery-actions (slice 3): the new confirmation kind gallery_change, in the same places publish_figure was added (comment, CHECK, migration test)
+    "# A platform.db made before clean_work, publish_figure or gallery_change gets this table rebuilt by _migrate_confirmation_kinds.",
+    "# cancel confirmation cannot stand for it), publish_figure (the person's yes to adding figures to a run's private gallery; it queues no job) and",
+    "# gallery_change (the person's yes to packing or deleting figures of that gallery; it queues no job).",
+    "kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work', 'publish_figure', 'gallery_change')),",
+    """return row is None or ("'clean_work'" in row[0] and "'publish_figure'" in row[0] and "'gallery_change'" in row[0])""",
 }
 
 

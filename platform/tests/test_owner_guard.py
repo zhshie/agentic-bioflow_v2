@@ -125,7 +125,7 @@ def test_the_scan_list_leaves_the_terminal_and_the_cost_code_out():
 # tool name -> the action that serves it (same name unless listed): the write tools only ask, through request_*
 TOOL_ACTION = {"launch": "request_launch", "cancel": "request_cancel", "forget": "request_forget",
                "resume": "request_resume", "relaunch": "request_relaunch", "launch_pipeline": "request_pipeline_launch",
-               "publish_figure": "request_publish_figure"}
+               "delete_figure", "pack_figures", "publish_figure": "request_publish_figure"}
 
 # actions with a `caller` that no tool is named after, each with the reason
 NO_TOOL = {
@@ -201,7 +201,7 @@ def test_every_mcp_tool_has_an_action_and_every_caller_action_has_a_tool(tmp_pat
     # TC-058, TC-076
     tools = tool_names(tmp_path)
     assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                     "list_site_files", "list_used_pipelines", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch_pipeline", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"}
+                     "list_site_files", "list_used_pipelines", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch_pipeline", "delete_figure", "pack_figures", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"}
     # canvas-mcp-read: the five canvas reads have their actions in the submodules actions.catalogue and actions.pipelines (not in the
     # package), so those are looked up there by name; every tool, the five included, still goes through parity_problems
     import abf_platform.actions.catalogue as cat_actions

@@ -152,9 +152,9 @@ def structure(con):
 def test_fresh_confirmations_take_clean_work_and_still_refuse_resume_relaunch_retry_and_empty(tmp_path):
     # TC-001, TC-002
     con = open_new(tmp_path / "platform.db")
-    for i, kind in enumerate(("launch", "cancel", "clean_work", "publish_figure")):
+    for i, kind in enumerate(("launch", "cancel", "clean_work", "publish_figure", "gallery_change")):
         con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES (?, 'x', ?, 1)", ("k%d" % i, kind))
-    assert declared_kinds(check_of(con, "confirmations")) == ["launch", "cancel", "clean_work", "publish_figure"]
+    assert declared_kinds(check_of(con, "confirmations")) == ["launch", "cancel", "clean_work", "publish_figure", "gallery_change"]
     before = con.execute("SELECT COUNT(*) FROM confirmations").fetchone()[0]
     for kind in ("resume", "relaunch", "retry", ""):
         with pytest.raises(sqlite3.IntegrityError):
@@ -546,3 +546,108 @@ def test_store_source_has_no_subprocess_and_no_forbidden_word():
         assert word not in text, word
     assert "rm -rf" not in text and "rmtree" not in text
     assert "_migrate_confirmation_kinds" in text and "_add_cleanup_column" in text
+
+
+# ---- mcp-gallery-actions (slice 3): the kind gallery_change; TC IDs are from specs/mcp-gallery-actions/test-case.md (file D of its overview) ----
+
+def _publish_era(path):
+    """A platform.db as slice 1 left it: the confirmations table lets publish_figure in but not gallery_change, with one confirmed publish_figure row."""
+    from abf_platform import store
+    ddl = (store._CONFIRMATIONS_TABLE % {"name": "confirmations"}).replace(", 'gallery_change'", "")
+    assert "'gallery_change'" not in ddl and "'publish_figure'" in ddl
+    jobs = store._JOBS_TABLE % {"name": "jobs"}
+    make_old(path, confirmations=ddl, jobs=jobs, conf_rows=False, job_rows=False, launch_rows=False)
+    raw = sqlite3.connect(str(path))
+    raw.execute("INSERT INTO confirmations (id, sha256, kind, created_at, caller_user_id, state, channel, confirmed_at, expires_at, bundle_json, screen_text) "
+                "VALUES ('pf1', 's9', 'publish_figure', 20.0, 7, 'confirmed', 'PAGE', 21.0, 99.0, '{\"run_name\": \"r1\", \"figures\": [{\"name\": \"a.png\"}]}', 'shown')")
+    raw.commit()
+    raw.close()
+    return path
+
+
+def _schema_rows(path):
+    con = sqlite3.connect(str(path))
+    try:
+        return {r[1]: r[0:3] + (r[3],) for r in con.execute("SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY name")}
+    finally:
+        con.close()
+
+
+def test_a_slice_one_database_is_rebuilt_to_take_gallery_change_and_its_row_is_untouched(tmp_path):
+    # TC-075, TC-082, TC-083
+    from abf_platform import store
+    db = _publish_era(tmp_path / "platform.db")
+    raw = sqlite3.connect(str(db))
+    assert store._confirmations_current(raw) is False
+    raw.close()
+    before_rows = rows_of(db, "confirmations")
+    before = _schema_rows(db)
+    con = open_new(db)
+    assert declared_kinds(check_of(con, "confirmations")) == ["launch", "cancel", "clean_work", "publish_figure", "gallery_change"]
+    assert store._confirmations_current(con) is True
+    assert con.execute("PRAGMA foreign_key_check").fetchall() == [] and con.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    con.close()
+    assert rows_of(db, "confirmations") == before_rows and '"a.png"' in before_rows[0][11]
+    after = _schema_rows(db)
+    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    assert changed == {"confirmations"}
+    assert after["confirmations"][3] == before["confirmations"][3].replace("'publish_figure')", "'publish_figure', 'gallery_change')")
+    assert after["jobs"] == before["jobs"]
+    from abf_platform import confirm
+    assert "gallery_change" not in confirm.JOB_KIND and "gallery_change" not in confirm.JOB_KIND.values()
+
+
+@pytest.mark.parametrize("make", ["oldest", "slice_one"])
+def test_the_new_kind_is_taken_and_a_second_open_changes_nothing(tmp_path, make):
+    # TC-073, TC-074, TC-076, TC-077
+    db = make_old(tmp_path / "platform.db") if make == "oldest" else _publish_era(tmp_path / "platform.db")
+    old_rows = rows_of(db, "confirmations")
+    con = open_new(db)
+    for i, kind in enumerate(("gallery_change", "publish_figure", "clean_work")):
+        con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES (?, 'x', ?, 1)", ("g%d" % i, kind))
+    for kind in ("resume", ""):
+        with pytest.raises(sqlite3.IntegrityError):
+            con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('bad', 'x', ?, 1)", (kind,))
+    con.rollback()
+    con.close()
+    assert rows_of(db, "confirmations")[:len(old_rows)] == old_rows
+    first = {t: rows_of(db, t) for t in ("confirmations", "jobs", "launches")}
+    shape = _schema_rows(db)
+    open_new(db).close()
+    assert _schema_rows(db) == shape and {t: rows_of(db, t) for t in ("confirmations", "jobs", "launches")} == first
+
+
+def test_the_migration_failure_and_dangling_link_paths_still_roll_back_with_the_new_kind(tmp_path, monkeypatch):
+    # TC-078, TC-079
+    from abf_platform import store
+    db = _publish_era(tmp_path / "platform.db")
+    before = rows_of(db, "confirmations")
+    shape = _schema_rows(db)
+    monkeypatch.setattr(store, "_migration_step", _boom_on_copied)
+    with pytest.raises(RuntimeError):
+        store.connect_state(db)
+    assert rows_of(db, "confirmations") == before and _schema_rows(db) == shape
+    monkeypatch.undo()
+    raw = sqlite3.connect(str(db))
+    raw.execute("PRAGMA foreign_keys = OFF")
+    raw.execute("INSERT INTO jobs (agent, compute_env, kind, args_json, state, created_at, deadline_at, confirmation_id) VALUES ('a', 'x', 'launch_nextflow', '{}', 'done', 1, 2, 'nope')")
+    raw.commit()
+    raw.close()
+    with pytest.raises(sqlite3.IntegrityError):
+        store.connect_state(db)
+    assert rows_of(db, "confirmations") == before and _schema_rows(db)["confirmations"] == shape["confirmations"]
+
+
+def test_every_place_that_reads_or_writes_the_kind_is_in_the_ledger():
+    # TC-087, TC-111
+    ledger = (Path(__file__).resolve().parents[2] / "specs" / "mcp-gallery-actions" / "ledger.md").read_text(encoding="utf-8")
+    hits = set()
+    for path in sorted(PKG.rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        for n, line in enumerate(text.splitlines(), 1):
+            if re.search(r"kind\s*(=|IN|<>|==|!=)\s*['\"(]|\[\"kind\"\]|row\[\"kind\"\]|c\.kind", line) and "confirmations" in text:
+                hits.add(path.relative_to(PKG).as_posix())
+    for rel in hits:
+        assert rel in ledger, rel + " reads or writes confirmations.kind and is not in the ledger's list"
+    for needle in ("git diff --stat", "foreign_key_check", "sqlite_master", "gallery_change"):
+        assert needle in ledger

@@ -17,7 +17,7 @@ EXPECTED_TOOLS = sorted([
     "list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines",
     "my_usage", "run_outputs", "read_run_file", "read_task_log", "find_module", "describe_module", "list_pipelines",
     "get_pipeline", "get_validation",
-    "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "publish_figure",
+    "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "delete_figure", "pack_figures", "publish_figure",
 ])
 
 

@@ -370,9 +370,9 @@ def test_tcm_45_page_and_form_stay(w):
 
 # What the base (merge-base with origin/v3, ea704065) has, written out so that any added route, tool, column, table or schema
 # change makes the test below fail. If a later change to the platform legitimately alters one of these, edit the list with it.
-BASE_TOOLS = ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation",
+BASE_TOOLS = ["cancel", "delete_figure", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation",
               "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs", "list_site_files",
-              "list_used_pipelines", "my_usage", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
+              "list_used_pipelines", "my_usage", "pack_figures", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
 BASE_CONFIRMATION_COLUMNS = ["id", "sha256", "kind", "created_at", "used_at", "caller_user_id", "state", "channel", "confirmed_at",
                              "expires_at", "ce_name", "bundle_json", "screen_text", "void_reason", "forgotten_at", "forgotten_by"]
 BASE_TABLES = ["agents", "compute_envs", "confirmations", "jobs", "launches", "meta"]
