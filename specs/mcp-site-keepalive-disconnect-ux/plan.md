@@ -239,3 +239,7 @@ shell：`tests/keepalive_log_test.sh`（K2、K3）：
 ## 裁決（lead，11-11 深夜，接全套紅燈兩題）
 1. **不得把 keepalive_log.sh 加進 DAEMON_ALLOW**（該閘門守憲法 I.2『不得有監控常駐程式』，放寬屬 A 級，未獲授權）。改作法：keepalive_log.sh 改成**單次執行**——每呼叫一次只檢查一次連線、追加一行 log，並從 log 最後一筆算 open→closed 的存活分鐘；不得有 while／loop／nohup／sleep 常駐。docs 與 PITFALLS 的使用說明改成『由人手動或既有排程呼叫一次』，不宣稱常駐。TC K2／K3 對應改成單次呼叫的行為（連呼叫兩次、第二次偵測到 closed 時寫 event 行）；先前的 loop 版測試內容改寫，不是刪除。
 2. **TC-009 中文連結列文字改用『分析』，不得含 run**（wording sweep 禁用字，不開例外）；verifier 重寫該 TC 的字串，頁面同一句。推送同一分支。
+
+
+## 裁決（lead，11-12）
+TC-009／034／068／069／073 的合約文字改成與 11-11 深夜裁決一致（單次執行的 keepalive_log.sh、無 loop／nohup／sleep、中文用『分析』）；由 worker 改合約後重驗，通過就推同一分支。
