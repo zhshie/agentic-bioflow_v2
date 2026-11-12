@@ -112,39 +112,48 @@ Linux). The aim: you log in to Windows, do nothing, and a minute or two later th
 there; if one of its processes dies, it comes back in a few seconds. It uses the same systemd
 user units as "Hosting one lab" above, plus one unit for the site agent (`deploy/systemd/abf-station@.service.in`)
 and one small Windows script (`deploy/wsl/keep-wsl-running.ps1`). Run the commands in the Ubuntu
-window unless a step says Windows. Steps 2 and 5 may need the administrator password of the Linux side (sudo), and only you
+window unless a step says Windows. Steps 2 and 9 may need the administrator password of the Linux side (sudo), and only you
 should do them. After each command, what you should see is written next to it; if you see something else, stop there
 and do not go on to the next step.
+
+The order matters. Steps 2 to 6 only prepare files and change nothing that is running: the platform keeps working while you do them.
+Step 7 restarts WSL, which stops the platform; step 8 starts it again. Everything you need for step 8 is ready before step 7, so the
+platform is down for as short a time as possible.
 
 1. **What you need.** WSL 2 with Ubuntu 22.04 or newer (Windows PowerShell: `wsl -l -v` shows
    VERSION 2), a recent WSL (`wsl --update` in Windows PowerShell if step 2 is not accepted), and the platform
    already installed in a virtual environment as in "Hosting one lab", step 2.
-2. **Turn systemd on.** WSL starts without systemd unless you ask for it. Open the file with
+2. **Turn systemd on (the file only).** WSL starts without systemd unless you ask for it. Open the file with
    `sudo nano /etc/wsl.conf` and make sure it holds these two lines (add them at the end if the file is empty or is not there yet):
    ```
    [boot]
    systemd=true
    ```
-   Save (Ctrl+O, Enter, Ctrl+X). Then, in Windows PowerShell, run `wsl --shutdown` and open Ubuntu again.
-   **This stops everything inside WSL**: every process you started there, the platform if it is running, and the
-   shared SSH connection to the National Center (國網). After the restart you must connect again yourself and type the OTP
-   (see "Opening the National Center connection again" below); nothing does that for you. The platform is away for about a minute.
-   Check that it worked: `ps -p 1 -o comm=` must print `systemd` (before this step it prints `init`).
+   Save (Ctrl+O, Enter, Ctrl+X). It takes effect at the restart in step 7, not before.
 3. **Write the settings file.** Go to the repository folder and copy `deploy/env.example` to `~/.config/abf-platform/env`, yours only:
    ```sh
    cd <repository-folder>
    mkdir -p ~/.config/systemd/user ~/.config/abf-platform && cp deploy/env.example ~/.config/abf-platform/env && chmod 600 ~/.config/abf-platform/env
    ```
-   Replace every `<...>` (`nano ~/.config/abf-platform/env`); `ABF_PUBLIC_URL` is the https address people use.
-   **systemd does not read `~/.bashrc`.** When you started the platform by hand, whatever you had `export`ed in `~/.bashrc`
-   reached the processes; the services never see any of it. The three services (`abf-platform serve`, `web`, `mcp`)
-   read only these from the environment, one `NAME=value` per line, no `export`:
-   `ABF_PUBLIC_URL` (the web page and MCP), and the data locations `ABF_PLATFORM_DB`, `ABF_PLATFORM_TOKENS`,
-   `ABF_PLATFORM_STATE`, `ABF_PLATFORM_UPLOADS`, `ABF_PLATFORM_FIGURES` (and `XDG_DATA_HOME`, which moves the default data folder).
-   Go through every `export` line in `~/.bashrc` and compare: if one of the data locations is exported there, copy it into the
-   env file, or the services will open a new, empty database in the default folder instead of yours. If none is exported,
-   leave them out: the default folder is used, as before.
-4. **Install the units and start them.**
+   Open it (`nano ~/.config/abf-platform/env`), read the paragraph marked 重要 right below this step, and then set `ABF_PUBLIC_URL`, the https address people use.
+   You should see no error from the commands; the file is yours only (`ls -l ~/.config/abf-platform/env` starts with `-rw-------`).
+
+**重要 — read before you save the file.** The copied file contains two lines that must not stay: delete the `ABF_PLATFORM_DB=...` line and delete the `ABF_SITE_ADDRESS=...` line (the address Caddy listens on; the three services do not use it).
+`ABF_PLATFORM_DB` says where the platform keeps its data: its tokens, its state, the uploads and the figures. If the line is left out, the platform
+uses the default folder it always used. Put the line back only if your `~/.bashrc` already exports `ABF_PLATFORM_DB`, and then with exactly the same value as there.
+You must never invent a new data folder, and do not fill in the `<...>` of that line: a new folder means an empty platform, and then every token, every run, every upload and every figure looks gone.
+(They are not gone; they are in the old folder, but the platform is not looking there.) After step 8 you check that your existing runs are on the web page; if they are not, you stop and come back here.
+
+**systemd does not read `~/.bashrc`.** When you started the platform by hand, whatever you had `export`ed in `~/.bashrc`
+reached the processes; the services never see any of it. The three services (`abf-platform serve`, `web`, `mcp`)
+read only these from the environment, one `NAME=value` per line, no `export`:
+`ABF_PUBLIC_URL` (the web page and MCP), and the data locations `ABF_PLATFORM_DB`, `ABF_PLATFORM_TOKENS`,
+`ABF_PLATFORM_STATE`, `ABF_PLATFORM_UPLOADS`, `ABF_PLATFORM_FIGURES` (and `XDG_DATA_HOME`, which moves the default data folder).
+Go through every `export` line in `~/.bashrc` and compare: if one of the data locations is exported there, copy it into the
+env file with the same value, or the services will open a new, empty database in the default folder instead of yours. If none is exported,
+leave them out: the default folder is used, as before.
+
+4. **The agent's token and one env file for each agent.**
    - The agent's token: make it with `abf-platform agent-token new <name> --user <user>`; it is shown once, so copy it
      into a file at that moment: a file inside WSL's own home folder (not under `/mnt/c`, a Windows drive, where permission
      bits mean nothing), then `chmod 600` on it. The token never goes into a unit or into any example file. If an agent
@@ -162,7 +171,7 @@ and do not go on to the next step.
      chmod 600 ~/.config/abf-platform/station-lab1.env ~/.config/abf-platform/station-gcb.env
      ```
      Fill each file in (`nano`): its own token file, its own deployment folder, the plugin folder (the same for both).
-     Later, in the `enable --now` line below, write `abf-station@lab1 abf-station@gcb` instead of one `abf-station@<name>`
+     In step 8, write `abf-station@lab1 abf-station@gcb` instead of one `abf-station@<name>`
      (a service that is enabled later is simply one more `systemctl --user enable --now abf-station@<second-name>`).
    - **What an agent's env file must hold.** The unit gives the agent the three paths in `station-<name>.env` and nothing else
      from your terminal. What the agent really needs from the environment:
@@ -174,24 +183,43 @@ and do not go on to the next step.
      connection itself needs none of these: the agent finds the shared connection through the deployment folder.
      Same rule as in step 3: go through every `export` in `~/.bashrc`, and for each one that the agent used, write it as `NAME=value` into
      that agent's `station-<name>.env` (the example file `deploy/station.env.example` shows where). A path to a key file is allowed; a key's contents never are.
-   - Copy the four templates and drop the `.in`, replace `<venv>` as in "Hosting one lab", then start. For the agent unit the file keeps the `@` in its name (`abf-station@.service`). Start in the repository folder, and make the two folders first (a fresh Ubuntu has neither):
-     ```sh
-     cd <repository-folder>
-     mkdir -p ~/.config/systemd/user ~/.config/abf-platform
-     for u in serve web mcp; do cp deploy/systemd/abf-$u.service.in ~/.config/systemd/user/abf-$u.service; done
-     cp deploy/systemd/abf-station@.service.in ~/.config/systemd/user/abf-station@.service
-     sed -i "s|<venv>|abf-venv|" ~/.config/systemd/user/abf-*.service
-     systemctl --user daemon-reload
-     ```
-     Before you run the next line, do the check in "Switching from starting by hand" below: two copies fight for the same port.
-     ```sh
-     systemctl --user enable --now abf-serve abf-web abf-mcp abf-station@<name>
-     ```
-     You should see lines like `Created symlink ...` and no error. If it says `Failed to connect to bus`, systemd is not on for you: go back to step 2.
-5. **Keep it running with nobody at a terminal.** Run `loginctl enable-linger $USER` once. If it asks for a password, run
+5. **Put the unit files in place.** Copy the four templates and drop the `.in`; for the agent unit the file keeps the `@` in its name (`abf-station@.service`).
+   First find the name of your venv folder (the virtual environment of "Hosting one lab", a folder directly under your home folder). Find it with
+   `ls -d ~/*/bin/abf-platform`: it prints a line such as `/home/<you>/<venv-folder>/bin/abf-platform`, and the venv folder is the name between your home folder and `/bin`
+   (if the platform is running by hand, `pgrep -af 'abf-(platform|station) (serve|web|mcp|run)'` shows the same path at the start of the line). Write that name in place of `<your-venv-folder>`:
+   ```sh
+   cd <repository-folder>
+   for u in serve web mcp; do cp deploy/systemd/abf-$u.service.in ~/.config/systemd/user/abf-$u.service; done
+   cp deploy/systemd/abf-station@.service.in ~/.config/systemd/user/abf-station@.service
+   sed -i "s|<venv>|<your-venv-folder>|" ~/.config/systemd/user/abf-*.service
+   ```
+   Check: `grep -c '<venv>' ~/.config/systemd/user/abf-*.service` prints a `:0` count for each of the four files. Nothing is started yet.
+6. **Save how the platform runs now.** While your hand-started processes are still running, write down their full command lines and the settings they were given
+   (the file is readable by you only; do not paste it anywhere, it may name key files):
+   ```sh
+   ( umask 077; pgrep -af 'abf-(platform|station) (serve|web|mcp|run)' > ~/abf-before-switch.txt; for p in $(pgrep -f 'abf-(platform|station) (serve|web|mcp|run)'); do echo "== $p" >> ~/abf-before-switch.txt; tr '\0' '\n' < /proc/$p/environ | grep -E '^(ABF_|PATH=|JAVA_HOME=|XDG_)' >> ~/abf-before-switch.txt; done ); cat ~/abf-before-switch.txt
+   ```
+   Compare it with what the services will do: they use the ports 8787 (serve), 8788 (mcp) and 8789 (web), and `--public-url ${ABF_PUBLIC_URL}`.
+   If you started them with another port or another flag, change the unit files in `~/.config/systemd/user/` now, before step 7. Also check that every `ABF_`, `PATH`, `JAVA_HOME` and `XDG_` value
+   in the file is in the env file of step 3 or of step 4. If the file is empty, nothing was running by hand: go on.
+7. **Restart WSL. The platform is down from here.** In Windows PowerShell run `wsl --shutdown`, wait a few seconds, and open Ubuntu again.
+   **This stops everything inside WSL**: every process you started there, the platform if it is running, and the
+   shared SSH connection to the National Center (國網). After the restart you must connect again yourself and type the OTP
+   (see "Opening the National Center connection again" below); nothing does that for you. The platform is stopped from this step until step 8 has finished: a few minutes, depending on how fast you type the commands.
+   Check that it worked: `ps -p 1 -o comm=` must print `systemd` (before this step it prints `init`). If it prints `init`, go back to step 2; if the step 2 line is not accepted, run `wsl --update` in Windows PowerShell.
+8. **Check nothing is left, then enable and start.** First do the check in "Switching from starting by hand" below: two copies fight for the same port. Then:
+   ```sh
+   systemctl --user daemon-reload
+   systemctl --user enable --now abf-serve abf-web abf-mcp abf-station@<name>
+   ```
+   You should see lines like `Created symlink ...` and no error. If it says `Failed to connect to bus`, systemd is not on for you: go back to step 2 and step 7.
+   Then `systemctl --user is-active abf-serve abf-web abf-mcp abf-station@<name>` must print `active` four times (the agent waits for the site connection, which is opened below).
+   **Checkpoint.** Open the platform's web page: your existing runs must be listed there, the ones you had before; otherwise stop here (an empty page, or no runs): do not go on and do not make anything new; go back to step 3
+   and the paragraph marked 重要 (the data location is almost always the cause; nothing was deleted). Open the National Center connection again (below) after the checkpoint.
+9. **Keep it running with nobody at a terminal.** Run `loginctl enable-linger $USER` once. If it asks for a password, run
    `sudo loginctl enable-linger $USER`. This lets your services run without a terminal window open. It does
-   not keep WSL itself open: that is the job of the Windows task in step 6. The two do different jobs and you need both.
-6. **Make Windows keep WSL open.** From the repository folder in Ubuntu, show what the script would do (it changes nothing):
+   not keep WSL itself open: that is the job of the Windows task in step 10. The two do different jobs and you need both.
+10. **Make Windows keep WSL open.** From the repository folder in Ubuntu, show what the script would do (it changes nothing):
    ```sh
    cd <repository-folder>
    powershell.exe -ExecutionPolicy Bypass -File "$(wslpath -w deploy/wsl/keep-wsl-running.ps1)"
@@ -205,25 +233,26 @@ and do not go on to the next step.
    If your computer's policy forbids `-ExecutionPolicy Bypass` (the command stops with a message about running scripts),
    copy `deploy/wsl/keep-wsl-running.ps1` to a Windows folder and right-click it, then choose "Run with PowerShell"
    (that runs the print-only mode; to apply, ask the person who looks after the computer, or report it).
-7. **Look at what is running.** One command lists all four services: `systemctl --user status 'abf-*'`. Each should say
+11. **Look at what is running.** One command lists all four services: `systemctl --user status 'abf-*'`. Each should say
    `active (running)` in green. When one does not, read its last lines: `journalctl --user -u abf-web -n 50`.
    An agent that refuses to start (a wrong path, a token file that is not safe) stops in `failed` and does not retry
    every few seconds; the reason is one line `abf-station will not start: ...` in `journalctl --user -u 'abf-station@<name>'`, because under systemd there is no terminal to show it.
    - Stop: `systemctl --user stop abf-serve abf-web abf-mcp abf-station@<name>`
    - Restart: `systemctl --user restart abf-serve abf-web abf-mcp abf-station@<name>`
    - Remove: `systemctl --user disable --now abf-serve abf-web abf-mcp abf-station@<name>`, then delete the files in
-     `~/.config/systemd/user/` and run `systemctl --user daemon-reload`. To remove the Windows task, run the script from step 6 with `-Remove`.
+     `~/.config/systemd/user/` and run `systemctl --user daemon-reload`. To remove the Windows task, run the script from step 10 with `-Remove`.
 
 **Switching from starting by hand.** Your hand-started platform is a set of detached processes (`abf-platform serve`, `web`, `mcp`,
-and one `abf-station run` for each agent): closing the terminal does nothing to them. Step 2's `wsl --shutdown` already stopped
-them all, so after it there should be none left. Before step 4's last command, check, in the Ubuntu window:
+and one `abf-station run` for each agent): closing the terminal does nothing to them. Step 7's `wsl --shutdown` already stopped
+them all, so after it there should be none left. Before you run step 8's `enable --now`, check, in the Ubuntu window:
 ```sh
-pgrep -af 'abf-platform|abf-station'
+pgrep -af 'abf-(platform|station) (serve|web|mcp|run)'
 ```
-It prints nothing when none is left: go on. If it prints lines, something is still running (started again by hand, or by a
-login script): stop what you started by hand with `pkill -f 'abf-platform|abf-station'`, run the `pgrep` line again and make sure it
-prints nothing. Otherwise the hand-started processes hold the ports, the services cannot start, and you may end up with two copies.
-Expect the platform to be unreachable for about a minute.
+It prints nothing when none is left: go on. If it prints lines, something you started by hand is still running (started again, or by a
+login script). Each line starts with a process number. Only for the process numbers that are listed, and only for those, run `kill <process number>`
+(several numbers may follow one `kill`), then run the `pgrep` line again and make sure it prints nothing. Do not stop things by a name pattern: that also catches an editor
+open on the env file, a `tail` of a log, and the services themselves. Otherwise the hand-started processes hold the ports, the services cannot start, and you may end up with two copies.
+Expect the platform to be unreachable for a few minutes, from step 7 until step 8 is done.
 
 **Going back to starting by hand.** In the Ubuntu window: stop and remove the four services,
 `systemctl --user disable --now abf-serve abf-web abf-mcp abf-station@<name>` (every agent you enabled), then remove the unit files with
@@ -231,12 +260,18 @@ Expect the platform to be unreachable for about a minute.
 and `systemctl --user daemon-reload`. Take the two lines `[boot]` and `systemd=true` out of `/etc/wsl.conf` (`sudo nano /etc/wsl.conf`),
 then in Windows PowerShell run `wsl --shutdown` and open Ubuntu again. Start the platform the way you did before: `abf-platform serve` as in
 `docs/PLATFORM.md` section 1, the agent as in section 6 of the same file, `web` and `mcp` as you did. Also remove the Windows task, otherwise
-WSL still opens at every logon: run the script from step 6 with `-Remove`.
+WSL still opens at every logon: run the script from step 10 with `-Remove`.
 
 **Opening the National Center connection again.** After `wsl --shutdown` or a reboot the shared SSH connection to the site is gone, and the agent
-waits. Open it yourself, in the Ubuntu window: `scripts/preflight.sh` prints the line to paste when the connection is missing; paste exactly that line
-and you type the OTP yourself (only you have the one-time code; nothing in this setup can). When `scripts/preflight.sh` shows the site as OK,
-the agent picks the connection up without a restart.
+waits. Open it yourself, in three steps, in the same terminal window where you normally work with the site (the place of the deployment's settings reaches your commands through your `~/.bashrc`;
+a window that does not read it would look in the wrong place):
+1. `cd <plugin-folder>` (the plugin folder, the same one as `ABF_STATION_PLUGIN_ROOT` in the agent's env file).
+2. `scripts/on_site.sh --check-reach`. When the connection is missing it prints one line, the `ssh ...` command to open it: paste exactly that line, and type the OTP yourself
+   (only you have the one-time code; nothing in this setup can). If the connection is already open it prints no such line.
+3. `scripts/on_site.sh --check-master; echo $?` must print `0` (open); `1` means not open: do step 2 again.
+
+The agent looks at the connection again about every 25 seconds by itself, so it picks the connection up without a restart. Within a minute, look at the site connection of that agent on the web page: it should turn to open
+(you check this by eye; nothing here checks it for you).
 
 **What this does not do.** The connection to the National Center does not come back by itself: after a reboot or `wsl --shutdown`,
 you connect again and type the OTP; the agent waits for it. Tailscale Funnel is not handled here: it is set up as in
