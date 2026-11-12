@@ -384,3 +384,191 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
                 except OSError:
                     pass
         raise
+
+
+# ---- the gallery page: read, pack and delete (mcp-publish-figure-gallery, slice 2) ---------------------------------------------------
+# Web only, owner only. Nothing here is an MCP tool: the person's own press of a button on the finished page (login cookie, CSRF token and same
+# origin checked by the route) is the confirmation. Only <figures_root>/<user>/<run id>/ is ever written; no job is queued, no site is reached.
+
+MIME = {"png": "image/png", "svg": "image/svg+xml", "jpg": "image/jpeg"}
+NAME_LIMIT = 80
+
+
+def _refused(reason, message, found=True, **more):
+    return dict(more, ok=False, found=found, reason=reason, message=message)
+
+
+def _own_folder(index_path, platform_path, run_id, caller):
+    """(folder, plat) of the caller's own run, or (None, plat) when it is not theirs or not there: one answer for both."""
+    from . import platform_path_for
+    plat = platform_path_for(index_path, platform_path)
+    if caller is None or _owned_run(index_path, platform_path, run_id, caller) is None:
+        return None, plat
+    try:
+        return run_folder(plat, caller.user_id, run_id), plat
+    except FigureRefused:
+        return None, plat
+
+
+def _write_index(folder, figures):
+    """index.json replaced whole through a temporary name (readers see the old file or the new one); OSError when the disk says no, and then
+    the old file stays and no temporary file is left."""
+    data = json.dumps({"version": 1, "figures": figures}, indent=1, sort_keys=True).encode("utf-8")
+    temp, final = _stage(folder, "index.json", data, "idx")
+    try:
+        os.replace(temp, final)
+    except BaseException:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
+    _chmod(final, 0o600)
+
+
+def _text_of(folder, entry, key):
+    """The stored text of a figure's code or parameters, or None when it has none (or the file is gone)."""
+    name = entry.get(key)
+    if not isinstance(name, str) or not name or "/" in name or "\\" in name or name.startswith("."):
+        return None
+    try:
+        with open(os.path.join(folder, name), "rb") as f:
+            return f.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+
+
+def pending_request(platform_path, user_id, run_id, clock=time.time):
+    """The id of the caller's own publish_figure request for this run that still waits for a yes, else None. Reads only."""
+    con = store.open_readonly(platform_path)
+    if con is None:
+        return None
+    try:
+        rows = con.execute("SELECT id, bundle_json FROM confirmations WHERE kind = 'publish_figure' AND state = 'pending' AND caller_user_id IS ? "
+                           "AND expires_at > ? AND bundle_json IS NOT NULL AND forgotten_at IS NULL ORDER BY created_at DESC",
+                           (user_id, clock())).fetchall()
+    except Exception:
+        return None
+    finally:
+        con.close()
+    for r in rows:
+        try:
+            if json.loads(r["bundle_json"]).get("run_id") == run_id:
+                return r["id"]
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return None
+
+
+def gallery_view(index_path, platform_path, run_id, *, caller, clock=time.time):
+    """Read only: what the finished page shows of the gallery of the caller's own run:
+    {found, figures: [{name, size, type, caption, created, packed, code, params}] newest first, error?, pending: request id or None}."""
+    folder, plat = _own_folder(index_path, platform_path, run_id, caller)
+    if folder is None:
+        return {"found": False, "message": NOT_YOURS}
+    figures, problem = read_index(folder)
+    rows = []
+    for name, v in figures.items():
+        rows.append({"name": name, "size": v.get("size"), "type": v.get("type"), "caption": v.get("caption") or "", "created": v.get("created") or "",
+                     "packed": v.get("packed") is True, "code": _text_of(folder, v, "code_file"), "params": _text_of(folder, v, "params_file")})
+    rows.sort(key=lambda r: r["name"])
+    rows.sort(key=lambda r: r["created"], reverse=True)
+    out = {"found": True, "figures": rows, "pending": pending_request(plat, caller.user_id, run_id, clock)}
+    if problem:
+        out["error"] = problem
+    return out
+
+
+def read_figure(index_path, platform_path, run_id, name, *, caller):
+    """The bytes of one figure of the caller's own run: {found: True, name, type, mime, data}. Only a name that index.json holds is read (the
+    name is compared with the index, never joined into a path by what the caller wrote); a run that is not the caller's, a name that is not
+    there and a file that is gone all give {found: False}."""
+    folder, _ = _own_folder(index_path, platform_path, run_id, caller)
+    if folder is None or not isinstance(name, str):
+        return {"found": False, "message": NOT_YOURS}
+    figures, _problem = read_index(folder)
+    if name not in figures:
+        return {"found": False, "message": NOT_YOURS}
+    try:
+        kind = check_name(name)
+        path = os.path.join(folder, name)
+        if os.path.realpath(path) != os.path.join(os.path.realpath(folder), name):
+            raise FigureRefused("path")
+        with open(path, "rb") as f:
+            data = f.read()
+    except (FigureRefused, OSError):
+        return {"found": False, "message": NOT_YOURS}
+    return {"found": True, "name": name, "type": kind, "mime": MIME[kind], "data": data}
+
+
+def _clean_names(names):
+    """(distinct names in the order given, None, None), or (None, reason, the offending name) when the list is not one."""
+    if isinstance(names, (str, bytes)) or not isinstance(names, (list, tuple, set, frozenset)):
+        return None, "bad_name", ""
+    out = []
+    for n in names:
+        if not isinstance(n, str) or not n or len(n) > NAME_LIMIT or any(ord(c) < 32 or ord(c) == 127 for c in n):
+            return None, "bad_name", n[:NAME_LIMIT] if isinstance(n, str) else ""
+        if n not in out:
+            out.append(n)
+    if len(out) > MAX_PER_RUN:
+        return None, "too_many", ""
+    return out, None, None
+
+
+def pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time.time):
+    """Put exactly the named figures into the delivery package: they get packed=true and packed_at, every other figure of the run is set back to
+    packed=false (the package is the selection of this press; none at all is allowed and empties it). All or nothing: a name that is not in
+    the gallery, too many names or an unreadable index refuse the whole call and index.json is not touched. {ok, found, count, names} or
+    {ok: False, found, reason, message}; reason is not_found, bad_name, too_many, unknown_name or write_failed."""
+    folder, _ = _own_folder(index_path, platform_path, run_id, caller)
+    if folder is None:
+        return _refused("not_found", NOT_YOURS, found=False)
+    chosen, reason, bad = _clean_names(names)
+    if chosen is None:
+        if reason == "too_many":
+            return _refused(reason, "一次最多選 %d 張圖，沒有變更任何內容 (at most %d figures at a time; nothing was changed)" % (MAX_PER_RUN, MAX_PER_RUN))
+        return _refused(reason, "圖名不合規定，沒有變更任何內容 (a figure name is not valid; nothing was changed)", name=bad)
+    figures, problem = read_index(folder)
+    for n in chosen:
+        if n not in figures:
+            return _refused("unknown_name", "圖庫裡沒有「%s」，沒有變更任何內容 (the gallery has no figure \"%s\"; nothing was changed)" % (n, n), name=n)
+    if problem:
+        return _refused("write_failed", problem)
+    if not figures:
+        return {"ok": True, "found": True, "count": 0, "names": []}
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
+    updated = {k: dict(v, packed=k in chosen, packed_at=stamp if k in chosen else None) for k, v in figures.items()}
+    try:
+        _write_index(folder, updated)
+    except OSError:
+        return _refused("write_failed", "未能打包，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not pack; the gallery is unchanged. Try again later or tell the administrator)")
+    return {"ok": True, "found": True, "count": len(chosen), "names": chosen}
+
+
+def delete_figure(index_path, platform_path, run_id, name, *, caller):
+    """Remove one figure of the caller's own run: its image, its code and its parameters, and its entry in index.json (so it leaves the package
+    too). {ok, found, name} or {ok: False, found, reason, message}. The index is written first, so a file that cannot be removed afterwards is
+    only a leftover that nothing lists. Only files inside the run's own gallery folder are ever removed."""
+    folder, _ = _own_folder(index_path, platform_path, run_id, caller)
+    if folder is None:
+        return _refused("not_found", NOT_YOURS, found=False)
+    chosen, reason, bad = _clean_names([name])
+    if chosen is None:
+        return _refused("bad_name", "圖名不合規定，沒有刪除任何內容 (a figure name is not valid; nothing was deleted)", name=bad)
+    figures, problem = read_index(folder)
+    if name not in figures:
+        return _refused("unknown_name", "圖庫裡沒有「%s」，沒有刪除任何內容 (the gallery has no figure \"%s\"; nothing was deleted)" % (name, name), name=name)
+    if problem:
+        return _refused("write_failed", problem)
+    rest = {k: v for k, v in figures.items() if k != name}
+    try:
+        _write_index(folder, rest)
+    except OSError:
+        return _refused("write_failed", "未能刪除，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not delete; the gallery is unchanged. Try again later or tell the administrator)")
+    for leaf in (name, name + ".code.txt", name + ".params.txt"):
+        try:
+            os.unlink(os.path.join(folder, leaf))
+        except OSError:
+            pass
+    return {"ok": True, "found": True, "name": name}
