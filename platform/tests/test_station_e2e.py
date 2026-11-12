@@ -555,7 +555,8 @@ def test_tc082_a_windows_shell_is_refused_by_naming_the_missing_capability(tmp_p
     tf.write_text(CANARY_TOKEN + "\n")
     tf.chmod(0o600)
     args = ["--platform", "http://127.0.0.1:9", "--token-file", str(tf), "--deployment", str(site.root)]
-    code = ("import sys; sys.platform = 'win32'; from abf_station import cli; sys.exit(cli.main(['run'] + %r))" % (args,))
+    # python 3.14's shutil does `import _winapi` at import time when sys.platform is win32; a stub keeps this test about the shell check
+    code = ("import sys, types; sys.modules.setdefault('_winapi', types.ModuleType('_winapi')); sys.platform = 'win32'; from abf_station import cli; sys.exit(cli.main(['run'] + %r))" % (args,))
     p1 = subprocess.run([sys.executable, "-c", code], env=site.agent_env(), cwd=str(site.cwd), capture_output=True,
                         text=True, timeout=30)
     fake_bin = tmp_path / "fake-uname"
