@@ -119,7 +119,7 @@ def _text_problem(value, label, limit, unit):
         raise FigureRefused("%s 含有不成對的代理字元，不是正確的文字 (%s contains a lone surrogate, which is not valid text)" % (label, label))
     if label == "caption" and any(unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp") for ch in value):
         raise FigureRefused("caption 不可含換行、控制字元或不可見的格式字元（說明只能是單行文字）(the caption must be one line of text: no line break, control or invisible format character)")
-    if label != "caption" and any((unicodedata.category(ch) == "Cc" and ch not in "\n\t") or unicodedata.category(ch) in ("Cf", "Zl", "Zp") for ch in value):
+    if label != "caption" and any((unicodedata.category(ch) == "Cc" and ch not in "\n\t") or unicodedata.category(ch) in ("Cf", "Zl", "Zp") for ch in value.replace("\r\n", "\n")):       # a Windows file ends its lines with CR LF; a CR on its own moves the cursor and is refused
         raise FigureRefused("%s 含有控制字元或不可見的格式字元（只有換行與 Tab 可以）(%s contains a control or invisible format character; only a line break and a tab are allowed)" % (label, label))
     size = len(value) if unit == "chars" else len(encoded)
     if size > limit:

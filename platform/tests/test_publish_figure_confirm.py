@@ -773,6 +773,14 @@ def test_n1_caption_refuses_format_characters(w, bad):
     assert got["state"] == "refused" and "caption" in got["reason"] and w.confirmations() == []
 
 
+def test_n1_a_windows_line_ending_stays_legal_but_a_lone_cr_does_not(w):
+    # N1 (found by test_studio_publish: a code file saved on Windows ends its lines with CR LF)
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    assert call(w, ann, run, [fig("a.png", code="a\r\nb\r\n", params="k=1\r\n")])["state"] == "pending"
+    assert call(w, ann, run, [fig("a.png", code="a\r\nb\rc")])["state"] == "refused"
+
+
 def test_n1_newline_and_tab_stay_legal_in_code_and_params(w):
     # N1: only the other control characters go
     ann = w.user("ann")

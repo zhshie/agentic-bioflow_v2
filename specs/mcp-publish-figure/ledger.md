@@ -49,3 +49,4 @@
 - 「由裁決 N1 改動」的既有期待：無（既有畫面文字斷言都沒變）。
 - 其他既有測試改動：`test_page_headers_and_css_are_unchanged` 的路由比對在第 2 片併入 v3 後就過時（`origin/v3` 已含三條 `/run/figure*` 路由，基線上即紅，與本輪無關）；改為「origin/v3 已有的不再重複加」，比對本身不變。
 - `docs/PLATFORM.md` publish_figure 段落補上以上可見行為。
+- N1 與裁決文字的一處差異（請 lead 知悉）：`code`／`params` 裡的 `\r\n`（Windows 存檔的換行）仍然放行，單獨的 `\r` 才拒絕。原因：既有測試 `test_studio_publish.py`（TC-056、TC-065，`plot(x)\r\n圖\n`）要求 CR LF 的程式碼檔能送出，照字面拒 `\r` 會讓 Windows 使用者的程式碼檔全被擋。新測試 `test_n1_a_windows_line_ending_stays_legal_but_a_lone_cr_does_not`。
