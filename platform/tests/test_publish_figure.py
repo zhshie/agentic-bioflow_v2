@@ -21,7 +21,7 @@ def b64(data=PNG):
 
 
 def fig(name="a.png", data=PNG, **extra):
-    d = {"name": name, "content_base64": b64(data), "code": "print(1)\n", "params": "k=1"}
+    d = {"filename": name, "content_base64": b64(data), "code": "print(1)\n", "params": "k=1"}
     d.update(extra)
     return d
 
@@ -47,6 +47,7 @@ def gallery(w, caller, run_id):
 def press(w, name, rid):
     c = logged_in(w, name)
     token = csrf_of(c.get("/c/" + rid).text)
+    c.token = token
     return c, c.post("/c/" + rid, data={"csrf": token})
 
 
@@ -63,7 +64,7 @@ def test_proposal_writes_nothing_until_pressed(w):
     assert (folder / "a.png").read_bytes() == PNG and (folder / "a.png.code.txt").read_text() == "print(1)\n"
     idx = json.loads((folder / "index.json").read_text())
     assert idx["figures"]["a.png"]["size"] == len(PNG) and idx["figures"]["a.png"]["type"] == "png"
-    again = c.post("/c/" + got["request_id"], data={"csrf": csrf_of(c.get("/c/" + got["request_id"]).text)})
+    again = c.post("/c/" + got["request_id"], data={"csrf": c.token})
     assert "已存入圖庫 1 張" in again.text and len(json.loads((folder / "index.json").read_text())["figures"]) == 1
 
 
@@ -136,7 +137,7 @@ def test_write_failure_voids_and_leaves_no_half_gallery(w, monkeypatch):
     folder = gallery(w, ann, run)
     assert not (folder / "index.json").exists()
     assert not folder.exists() or not [p for p in folder.glob("*") if p.name.startswith(".tmp-")]
-    assert w.confirmations()[0]["state"] == "voided"
+    assert w.confirmations()[0]["state"] == "void"
 
 
 def test_page_shows_everything_and_send_button(w):

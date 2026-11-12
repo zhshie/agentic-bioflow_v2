@@ -36,6 +36,7 @@ _READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempo
 # get_run: asks no one's yes, but a lost run makes it queue one read of the site and write that job to platform.db (ruling R2), so not read-only
 _QUERY = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 _WRITES = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
+_PUBLISH = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)   # publish_figure: same name replaces, so the same call twice leaves the same gallery
 _STOPS = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False)
 
 
@@ -286,6 +287,23 @@ def _add_write_tools(server, platform_path, index_path):
         return await actions.request_relaunch(platform_path, run_name=run_name, caller=_caller(ctx), person=actions.person_at(ctx),
                                               remote=_remote(ctx), index_path=index_path, request_id=request_id,
                                               user_confirmed=user_confirmed)
+
+    @server.tool(name="publish_figure", annotations=_PUBLISH,
+                 description="Propose figures for the private gallery of one of your own runs (run_id). The figures come from the discussion "
+                             "between the user and you; any program may have drawn them. Each item of figures has filename (letters, digits, "
+                             ". _ -, ending png, svg, jpg or jpeg), content_base64, and optionally code, params (plain text) and caption "
+                             "(at most 200 characters). 1 to 10 figures per call, 5 MB together, 30 per run; the same name replaces the "
+                             "figure. Nothing is written until the person says yes, in their own form or on the page this returns; you cannot "
+                             "say it for them and must not set user_confirmed yourself: after they answered in this chat, call again with the "
+                             "same arguments plus request_id and user_confirmed=true. The figures go to a private gallery, not into the "
+                             "delivery package. Only png, svg and jpg are accepted; an SVG with scripts or external links is refused. "
+                             "The content is treated as untrusted and is never run.")
+    async def publish_figure_tool(ctx: Context, run_id: str, figures: list[dict],
+                                  request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
+                                  user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
+        return await actions.request_publish_figure(platform_path, run_id=run_id, figures=figures, caller=_caller(ctx),
+                                                    person=actions.person_at(ctx), remote=_remote(ctx), index_path=index_path,
+                                                    request_id=request_id, user_confirmed=user_confirmed)
 
 
 def _whole_file(name):
