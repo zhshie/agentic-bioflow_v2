@@ -170,8 +170,9 @@ def test_fs06_package_rows_follow_outputs(w):
     rows = dict(pack_rows(page))
     assert rows["結果表格"].startswith("— 尚未讀取輸出") and rows["MultiQC 報告"].startswith("— 尚未讀取輸出")
     assert 'href="/?run=%s&amp;stage=results&amp;tab=outputs"' % rid in section(page, "交付包")
-    for k in ("報告", "圖", "方法段落（含版本）", "樣本表"):
+    for k in ("報告", "方法段落（含版本）", "樣本表"):      # the row 圖 is no longer "later": it reads the gallery (mcp-publish-figure-gallery TC-021)
         assert rows[k] == "之後開放", k
+    assert rows["圖"] == "— 無"          # no gallery yet; the other two states are in test_web_figures.py (test_package_row_three_states)
     c.get("/?run=%s&stage=results&tab=outputs" % rid)         # queued, not answered yet
     rows = dict(pack_rows(c.get(url(rid)).text))
     assert rows["結果表格"].startswith("— 尚未讀取輸出") and "✓" not in rows["結果表格"] and "沒有" not in rows["MultiQC 報告"]
@@ -251,6 +252,7 @@ def test_fs10_english(w, monkeypatch):
                                                                 "Samplesheet"]
     sec = section(t, "Delivery package")
     assert "Download delivery package" in sec and "Coming later" in sec and "<a" in sec and 'href="/download' not in t
+    assert dict(pack_rows(t, "Delivery package"))["Figures"] == "— None"      # mcp-publish-figure-gallery TC-021: no gallery yet
     forget(w, "ann-done")
     assert no_cjk(c.get(url(rid, "&lang=en")).text)
     read_outputs(w, rid, c, ENTRIES)

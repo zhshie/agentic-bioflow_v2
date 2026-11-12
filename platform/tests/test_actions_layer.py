@@ -740,3 +740,18 @@ def test_srp_k01_the_page_write_actions_refuse_without_a_human_channel(tmp_path,
 def test_srp_k01_the_page_write_actions_are_not_tools(tmp_path):
     names = {t.name for t in _tools(_server(str(tmp_path / "index.db")))}
     assert not names & set(PAGE_WRITE_NAMES) and "check_site_pipeline_change" not in names
+
+
+# ---- mcp-publish-figure-gallery (TC-057, TC-059, TC-078): the gallery's page-only actions. They are not in PAGE_WRITE_NAMES above, because that list is
+# also run through the refuse-without-a-channel test (a human channel is what those actions take); these two are the person's own button press on the
+# finished page (cookie, CSRF, same origin), so they only join the "no tool" half.
+
+GALLERY_PAGE_ACTIONS = ["pack_figures", "delete_figure", "read_figure"]
+
+
+def test_gallery_page_actions_exist_in_the_action_layer_and_are_not_tools(tmp_path):
+    from abf_platform.actions import figures
+    names = {t.name for t in _tools(_server(str(tmp_path / "index.db")))}
+    assert all(callable(getattr(figures, n)) for n in GALLERY_PAGE_ACTIONS)
+    assert not names & set(GALLERY_PAGE_ACTIONS) and not names & {"pack_figure", "delete_figures", "unpack_figures"}
+    assert len(names) == 23

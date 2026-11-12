@@ -1205,3 +1205,13 @@ Needs a running platform, one user with one finished run, and an MCP client logg
 4. Log in as another user and open the first address: the page must refuse. Call `publish_figure` as that user with the first user's `run_id`: the answer is the same as for a run that does not exist.
 5. Send an SVG containing `<script>`: refused whole, no page address. Send 11 figures: refused, and no request is made.
 6. Open the page in English (`?lang=en`) and at 390 px width: no line is cut off, and each state shows a symbol, words and a colour.
+
+## mcp-publish-figure-gallery (slice 2): the maintainer and the reviewer check by hand
+
+Needs a running platform, a user with a finished run, an MCP client logged in as that user, and a second user.
+
+1. With slice 1, send two figures (one png, one svg, each with `code` and `params`) and press 送出 on each confirmation page. Open the finished page of the run (`/?run=<id>&stage=finished`). Before the press the page showed no picture; now it shows two previews, each with the label 使用者與 LLM 產生, the file name, size, the caption, 未打包 with a symbol, and 檢視程式碼與參數 that opens the code and parameters as text. The row 圖 of 交付包 says `2 張在圖庫，尚未打包`. Paste each step's output into the ledger.
+2. Tick one figure and press 打包所選的圖: the page returns to the finished page, the row 圖 says `已打包 1 張` with the file name, the ticked figure shows 已打包 and the other 未打包. No box is pre-ticked after the press. Press 打包所選的圖 with nothing ticked: the row goes back to `2 張在圖庫，尚未打包`.
+3. Press the delete button of one figure (the line before it says the delete also removes it from the package): it disappears from the page and from the folder `<figures>/<user id>/<run id>/` with its `.code.txt` and `.params.txt`. Delete the last one: the page shows the empty-gallery line and the row 圖 says 無.
+4. Log in as the second user and open `/run/figure?run=<first user's run id>&name=<a file name>` directly: a one-line 404, no picture. Open the first user's finished page address: the page is the board's 404, not the gallery.
+5. Open the finished page in English (`?lang=en`) and at 390 px width: no horizontal scroll, every state has a symbol and words, the delete button names its figure. TC-075 and TC-076: look at the screenshots of the empty, unpacked and packed pages and read the four sentences (the empty-gallery line, 打包所選的圖, the line beside it about the ticked figures, the line before a delete); write down the maintainer's own words in the ledger.

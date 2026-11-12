@@ -196,7 +196,10 @@ def test_gallery_text_is_escaped(w):
     ann, c, rid = setup(w, items=[fig("a.png", PNG, caption=evil, code=evil, params=evil)])
     for extra in ("", "&lang=en"):
         page = c.get(url(rid, extra)).text
-        assert "<script" not in page and "onerror=alert" not in page and 'src=x' not in page.replace("&quot;", "")
+        live = tags(page)       # what a browser would build: no script element, no event attribute, no image of the user's making
+        assert "script" not in [tag for tag, _ in live.tags] and not [k for _, a in live.tags for k in a if k.startswith("on")]
+        assert all(a["src"].startswith("/run/figure?") for tag, a in live.tags if tag == "img")
+        assert "<script" not in page.replace("&lt;script", "") and "<img src=x" not in page
         assert "&lt;script&gt;alert(1)&lt;/script&gt;" in gallery_part(page)
     page = c.get(url(rid)).text
     assert htmllib.unescape(re.search(r"<pre>(.*?)</pre>", page, re.S).group(1)).strip() == evil
@@ -384,14 +387,11 @@ def test_figure_route_needs_login(w):
     anon = w.web()
     r = anon.get("/run/figure?run=%s&name=a.png" % rid)
     assert r.status_code in (302, 303) and r.content != PNG and "/login" in r.headers["location"]
-    bob = w.user("bob")
-    pat = store.create_token(w.ip.tokens, kind="pat", user_id=bob.user_id)
-    r = anon.get("/run/figure?run=%s&name=a.png" % rid, headers={"Authorization": "Bearer " + pat})
-    assert r.status_code in (302, 303, 401, 403) and r.content != PNG
-    pat = store.create_token(w.ip.tokens, kind="pat", user_id=ann.user_id)
-    r = anon.get("/run/figure?run=%s&name=a.png" % rid, headers={"Authorization": "Bearer " + pat})
-    assert r.status_code in (302, 303, 401, 403) and r.content != PNG      # a token is not a login for this route
-    _, cb, rid_b = world(w, "bob-done", who="bob")
+    bob, cb, rid_b = world(w, "bob-done", who="bob")
+    for owner in (bob, ann):
+        pat = store.create_token(w.ip.tokens, kind="pat", user_id=owner.user_id)
+        r = anon.get("/run/figure?run=%s&name=a.png" % rid, headers={"Authorization": "Bearer " + pat})
+        assert r.status_code in (302, 303, 401, 403) and r.content != PNG      # a token is not a login for this route, not even the owner's
     mine = figure_get(cb, rid, "a.png")                                     # bob asks for ann's figure
     nothing = figure_get(cb, rid_b, "a.png")                                 # bob asks for a figure that is not in his own run
     nope = figure_get(cb, "no-such-run", "a.png")
@@ -473,6 +473,8 @@ def test_finished_csp_gets_img_src_but_other_pages_do_not(w):
     assert csp == base.replace("style-src", "img-src 'self'; style-src", 1) and "form-action 'self'" in csp
     assert "script-src" not in csp and "data:" not in csp and "https:" not in csp
     assert figure_get(c, rid, "a.png").headers["content-security-policy"] != csp
+    _, c2, rid2 = setup(w, items=[], name="empty-done", who="eve")      # a finished page that holds no picture keeps the base policy (nothing there loads an image)
+    assert c2.get(url(rid2)).headers["content-security-policy"] == base
 
 
 def test_other_headers_of_the_finished_page_are_unchanged(w):
@@ -480,9 +482,8 @@ def test_other_headers_of_the_finished_page_are_unchanged(w):
     from abf_platform import web
     ann, c, rid = setup(w)
     h = c.get(url(rid)).headers
-    for k in ("cache-control", "x-frame-options", "referrer-policy", "x-content-type-options"):
-        assert h[k] == web._HEADERS[k.title().replace("X-Frame-Options", "X-Frame-Options")] if False else True
-    assert h["cache-control"] == "no-store" and h["x-frame-options"] == "DENY"
+    for k in ("Cache-Control", "X-Frame-Options", "Referrer-Policy", "X-Content-Type-Options"):
+        assert h[k] == web._HEADERS[k], k
 
 
 # ---- US5: pack and delete are the person's own buttons, nobody else's -----------------------------------------------------------------
@@ -510,8 +511,10 @@ def test_pack_and_delete_post_scope(w):
         "none": None, "empty": "", "junk": "x" * 32,
         "other session": forged(cb, "figpack:" + rid), "other run": forged(c, "figpack:other-run"),
         "other purpose": forged(c, "logout"), "launch purpose": forged(c, "launch"),
-        "the delete token for the pack route": t_del,
     }
+    for path, tok, extra in (("/run/figures/pack", t_del, {"fig": ["a.png"]}), ("/run/figure/delete", t_pack, {"name": "a.png"})):
+        assert c.post(path, data=dict(extra, run=rid, csrf=tok)).status_code == 403      # the token of the other button is not this button's
+        untouched()
     logs = []
     for why, tok in bad_tokens.items():
         data = {"run": rid, "fig": ["a.png"]}
@@ -554,14 +557,13 @@ def test_pack_and_delete_post_scope(w):
     # TC-024, TC-035, TC-062: names that are not in the gallery refuse the whole press
     for names in (["a.png", "z.png"], ["../x.png"], ["index.json"], ["a.png.code.txt"], ["x" * 81], ["a\x01.png"], ["f%d.png" % i for i in range(31)]):
         r = c.post("/run/figures/pack", data={"csrf": t_pack, "run": rid, "fig": names})
-        assert r.status_code == 400 and "✗" in r.text and "a.png" not in r.text.replace("a.png.code.txt", "") or r.status_code == 400, names
-        assert r.status_code == 400, names
+        assert r.status_code == 400 and "✗" in r.text, names
         untouched()
     for name in ("z.png", "../a.png", "index.json", "a.png.code.txt", "", "/etc/passwd"):
         r = c.post("/run/figure/delete", data={"csrf": t_del, "run": rid, "name": name})
         assert r.status_code == 400, name
         untouched()
-    r = c.post("/run/figures/pack", data=[("csrf", t_pack), ("run", rid)] + [("fig", "n%d" % i) for i in range(150)])
+    r = c.post("/run/figures/pack", data={"csrf": t_pack, "run": rid, "fig": ["n%d" % i for i in range(150)]})
     assert r.status_code == 400
     untouched()
     # TC-058, TC-057: the good press changes the gallery only, writes no request and queues no job
@@ -595,7 +597,7 @@ def test_no_tool_packs_or_deletes_and_the_database_shape_is_unchanged(w):
     pack_post(c, rid, ["a.png"])
     delete_post(c, rid, "b.svg")
     assert [tuple(r) for r in w.sql("SELECT type, name, sql FROM sqlite_master ORDER BY name")] == shape
-    assert w.sql("SELECT * FROM jobs WHERE kind NOT IN ('preflight')") == [] or True
+    assert w.sql("SELECT * FROM jobs WHERE kind = 'publish_figure'") == []
     for name in ("pack_figures", "delete_figure", "read_figure"):
         assert not hasattr(actions, name), name                              # not exported as an action of the MCP layer
     idx = index_of(w, ann, rid)
@@ -607,8 +609,9 @@ def test_routes_only_call_the_action_layer(w):
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "abf_platform" / "web.py").read_text(encoding="utf-8")
     assert all(f in src for f in ("pack_figures(", "delete_figure(", "read_figure(", "gallery_view("))
-    for banned in ("index.json", "os.unlink", "os.replace", "shutil", "subprocess", "on_site"):
-        assert banned not in src.split("async def run_figure_get")[1].split("async def launch_diagram")[0] if "async def run_figure_get" in src else False, banned
+    mine = src.split("async def run_figure_get")[1].split("async def launch_diagram")[0]      # the handlers of this slice, up to the next route
+    for banned in ("index.json", "os.unlink", "os.replace", "shutil", "subprocess", "on_site", "open("):
+        assert banned not in mine, banned
 
 
 # ---- US6/US7: pages, states, wording, style ----------------------------------------------------------------------------------------
@@ -648,7 +651,8 @@ def test_status_marks_carry_a_symbol_and_words(w):
     empty = setup(w, items=[], name="e", who="eve")[1].get(url("id-e")).text
     assert re.search(r"—\W*(?:<[^>]+>\W*)*圖庫為空", gallery_part(empty))
     got = call(w, ann, rid, [fig("q.png", PNG)])
-    assert re.search(r"(?:…|!|—)\W*(?:<[^>]+>\W*)*", gallery_part(c.get(url(rid)).text)) and "/c/" in gallery_part(c.get(url(rid)).text)
+    notice = re.search(r'<p[^>]*role="status"[^>]*>(.*?)</p>', gallery_part(c.get(url(rid)).text), re.S).group(1)
+    assert re.match(r"\s*<span[^>]*>…</span>", notice) and 'href="/c/%s"' % got["request_id"] in notice
 
 
 def test_no_inline_style_or_script_in_gallery(w):
@@ -668,8 +672,7 @@ def test_no_inline_style_or_script_in_gallery(w):
 def test_style_untouched(w):
     # TC-065
     from abf_platform import web_board
-    digest = hashlib.sha256(web_board.STYLE.encode("utf-8")).hexdigest()
-    assert digest.startswith("719ce2ab") or web_board.CSS_SHA256.startswith("719ce2ab") if hasattr(web_board, "CSS_SHA256") else True
+    assert hashlib.sha256(web_board.STYLE.encode("utf-8")).hexdigest().startswith("719ce2ab")
     ann, c, rid = setup(w)
     page = c.get(url(rid)).text
     classes = set(re.findall(r'class="([^"]+)"', gallery_part(page)))
@@ -686,7 +689,6 @@ def test_strings_table_parity_and_wording(w):
     assert len(new) >= 20
     for k in new:
         assert not cjk(en[k]), k
-        assert cjk(zh[k]) or k in ("g_label_none",) or True
     assert "打包所選的圖" in zh["g_pack_btn"] and "使用者與 LLM 產生" in zh["g_label"]
     banned = ["這個", "這次", "一下", "還沒", "還不能", "你", "什麼都", "弄", "搞", "超"]
     for k in new:
