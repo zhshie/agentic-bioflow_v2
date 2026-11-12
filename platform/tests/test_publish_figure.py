@@ -168,7 +168,7 @@ def test_confirmations_kind_check_and_no_job(w):
     got = call(w, ann, run, [fig()])
     press(w, "ann", got["request_id"])
     assert w.sql("SELECT * FROM jobs WHERE kind = 'publish_figure'") == []
-    assert confirm.NO_JOB_KINDS == ("publish_figure",)
+    assert confirm.NO_JOB_KINDS == ("publish_figure", "gallery_change")
     assert w.sql("SELECT kind FROM confirmations")[0]["kind"] == "publish_figure"
 
 

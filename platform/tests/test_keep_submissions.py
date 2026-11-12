@@ -771,7 +771,7 @@ def test_tc083_no_new_confirmation_kind_and_approve_knows_nothing_of_forget():
     # TC-083
     from abf_platform import confirm, store
     assert set(confirm.JOB_KIND) == {"launch", "cancel", "clean_work"}
-    assert "CHECK (kind IN ('launch', 'cancel', 'clean_work', 'publish_figure'))" in store.STATE_SCHEMA    # mcp-publish-figure: the one kind added, it queues no job
+    assert "CHECK (kind IN ('launch', 'cancel', 'clean_work', 'publish_figure', 'gallery_change'))" in store.STATE_SCHEMA    # mcp-publish-figure: the one kind added, it queues no job
     assert "forget" not in inspect.getsource(confirm.approve)
 
 

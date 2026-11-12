@@ -111,7 +111,7 @@ def test_confirm_through_each_channel_writes_exactly_the_requested_figures(w, ch
     assert len(r) == 1 and r[0]["state"] == "confirmed" and r[0]["channel"] == channel
     assert w.sql("SELECT * FROM jobs WHERE kind NOT IN ('launch_nextflow', 'cancel_run') AND confirmation_id IS NOT NULL") == []
     from abf_platform import confirm
-    assert not [p for p in folder.iterdir() if p.name.startswith(".tmp-")] and confirm.NO_JOB_KINDS == ("publish_figure",)
+    assert not [p for p in folder.iterdir() if p.name.startswith(".tmp-")] and confirm.NO_JOB_KINDS == ("publish_figure", "gallery_change")
 
 
 def test_one_request_covers_the_whole_list(w):
@@ -332,7 +332,7 @@ def test_confirmations_check_migration(tmp_path):
     # an older table with only clean_work
     con = sqlite3.connect(str(db))
     con.execute("PRAGMA foreign_keys = OFF")
-    old_sql = t.check_of(con, "confirmations").replace(", 'publish_figure'", "")
+    old_sql = t.check_of(con, "confirmations").replace(", 'gallery_change'", "").replace(", 'publish_figure'", "")
     assert "publish_figure" not in old_sql
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c1', 'x', 'clean_work', 1)")
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c2', 'x', 'launch', 1)")
@@ -389,7 +389,7 @@ def test_existing_kinds_unchanged(w):
     # TC-078
     from abf_platform import confirm, jobs
     assert confirm.JOB_KIND == {"launch": "launch_nextflow", "cancel": "cancel_run", "clean_work": "clean_work"}
-    assert confirm.NO_JOB_KINDS == ("publish_figure",) and jobs.CONFIRMED
+    assert confirm.NO_JOB_KINDS == ("publish_figure", "gallery_change") and jobs.CONFIRMED
     ann = w.user("ann")
     o = w.launch(caller=ann, answer=form_answer())
     assert o["sent"] is True and o["job_id"]
@@ -681,7 +681,8 @@ def test_page_headers_and_css_are_unchanged(w):
         assert m_old and m_new, name + " is not found, so nothing was compared"
         assert m_old.group(0) == m_new.group(0), name
     routes = lambda t: sorted(re.findall(r"@app\.route\(\"([^\"]+)\"|Route\(\"([^\"]+)\"", t))
-    assert routes(src) and sorted(routes(old) + [("", "/run/figure"), ("", "/run/figure/delete"), ("", "/run/figures/pack")]) == routes(src)      # slice 2 (mcp-publish-figure-gallery) adds these three routes
+    gallery_routes = [("", "/run/figure"), ("", "/run/figure/delete"), ("", "/run/figures/pack")]      # slice 2 (mcp-publish-figure-gallery) adds these three routes
+    assert routes(src) and sorted([r for r in routes(old) if r not in gallery_routes] + gallery_routes) == routes(src)      # origin/v3 has them since slice 2 merged: they are counted once, and no other route may be added
     # the stylesheet (and so the sha256 the CSP names) lives in web_board.py: that file is not touched at all
     board = subprocess.run(["git", "diff", "--stat", "origin/v3", "--", "platform/abf_platform/web_board.py"], capture_output=True, cwd=str(Path(web.__file__).parent))
     assert board.returncode == 0 and board.stdout == b""

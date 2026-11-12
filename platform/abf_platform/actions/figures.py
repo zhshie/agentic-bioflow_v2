@@ -20,7 +20,6 @@ import json
 import os
 import re
 import secrets
-import threading
 import time
 import unicodedata
 
@@ -337,9 +336,6 @@ def _chmod(path, mode):
         pass
 
 
-_held = threading.local()        # the gallery folders whose lock this thread holds
-
-
 class GalleryBusy(OSError):
     """The gallery lock could not be taken. An OSError, so the confirmed write ends in slice 1's write-failed path."""
 
@@ -354,10 +350,6 @@ def gallery_lock(folder):
     each time, so it holds between processes and between the web server's workers alike; there is no lock file, because a gallery folder holds
     only its figures and index.json. A folder that is not there is not locked: there is no index to lose. A lock that cannot be taken raises GalleryBusy."""
     key = os.path.realpath(folder)
-    held = _held.__dict__.setdefault("keys", set())
-    if key in held:        # this very thread holds it already (a confirmed pack or delete: the check and the write are one hold, mcp-gallery-actions R4)
-        yield
-        return
     fd = None
     if fcntl is not None and os.path.isdir(key):
         try:
@@ -367,11 +359,9 @@ def gallery_lock(folder):
             if fd is not None:
                 os.close(fd)
             raise GalleryBusy(e.errno or 0, "the gallery lock could not be taken") from None
-    held.add(key)
     try:
         yield
     finally:
-        held.discard(key)
         if fd is not None:
             os.close(fd)        # closing releases the flock
 
@@ -648,12 +638,13 @@ def pack_figures(*a, **k):
         return _refused("busy", BUSY_MESSAGE)
 
 
-def _pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time.time, _folder=None):
+def _pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time.time, _folder=None, _locked=False):
     """Put exactly the named figures into the delivery package: they get packed=true and packed_at, every other figure of the run is set back to
     packed=false (the package is the selection of this press; none at all is allowed and empties it). All or nothing: a name that is not in
     the gallery, too many names or an unreadable index refuse the whole call and index.json is not touched. {ok, found, count, names} or
     {ok: False, found, reason, message}; reason is not_found, bad_name, too_many, unknown_name, unreadable (index.json is damaged; checked before the names) or write_failed.
-    `_folder` (the confirmed write of gallery_change, which has checked the owner itself) is the gallery folder to use instead of looking the run up."""
+    `_folder` (the confirmed write of gallery_change, which has checked the owner itself) is the gallery folder to use instead of looking the run up, and
+    `_locked` says that caller holds the gallery lock already (its check and this write are one hold), so it is not taken again."""
     folder = _folder if _folder is not None else _own_folder(index_path, platform_path, run_id, caller)[0]
     if folder is None:
         return _refused("not_found", NOT_YOURS, found=False)
@@ -662,7 +653,7 @@ def _pack_figures(index_path, platform_path, run_id, names, *, caller, clock=tim
         if reason == "too_many":
             return _refused(reason, "一次最多選 %d 張圖，沒有變更任何內容 (at most %d figures at a time; nothing was changed)" % (MAX_PER_RUN, MAX_PER_RUN))
         return _refused(reason, "圖名不合規定，沒有變更任何內容 (a figure name is not valid; nothing was changed)", name=bad)
-    with gallery_lock(folder):
+    with (contextlib.nullcontext() if _locked else gallery_lock(folder)):
         figures, problem = read_index(folder)
         if problem:     # the damage is said before any name is looked at (ruling G2)
             return _refused("unreadable", problem)
@@ -688,18 +679,18 @@ def delete_figure(*a, **k):
         return _refused("busy", BUSY_MESSAGE)
 
 
-def _delete_figure(index_path, platform_path, run_id, name, *, caller, _folder=None):
+def _delete_figure(index_path, platform_path, run_id, name, *, caller, _folder=None, _locked=False):
     """Remove one figure of the caller's own run: its image, its code and its parameters, and its entry in index.json (so it leaves the package
     too). {ok, found, name} or {ok: False, found, reason, message}. The index is written first, so a file that cannot be removed afterwards is
     only a leftover (the files go inside the lock) that nothing lists. Only files inside the run's own gallery folder are ever removed.
-    `_folder` is as for _pack_figures."""
+    `_folder` and `_locked` are as for _pack_figures."""
     folder = _folder if _folder is not None else _own_folder(index_path, platform_path, run_id, caller)[0]
     if folder is None:
         return _refused("not_found", NOT_YOURS, found=False)
     chosen, reason, bad = _clean_names([name])
     if chosen is None:
         return _refused("bad_name", "圖名不合規定，沒有刪除任何內容 (a figure name is not valid; nothing was deleted)", name=bad)
-    with gallery_lock(folder):
+    with (contextlib.nullcontext() if _locked else gallery_lock(folder)):
         figures, problem = read_index(folder)
         if problem:
             return _refused("unreadable", problem)
@@ -925,9 +916,9 @@ def write_gallery_change(platform_path, caller_user_id, bundle, rid, now):
             if not same:
                 raise jobs.JobRefused(CHANGED_MESSAGE)
             if action == "pack":
-                got = pack_figures(None, platform_path, run_id, bundle["names"], caller=None, clock=lambda: now, _folder=folder)
+                got = pack_figures(None, platform_path, run_id, bundle["names"], caller=None, clock=lambda: now, _folder=folder, _locked=True)
             else:
-                got = delete_figure(None, platform_path, run_id, bundle["name"], caller=None, _folder=folder)
+                got = delete_figure(None, platform_path, run_id, bundle["name"], caller=None, _folder=folder, _locked=True)
     except GalleryBusy:
         raise jobs.JobRefused(BUSY_MESSAGE)
     if not got.get("ok"):

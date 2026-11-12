@@ -63,7 +63,7 @@ def test_tc024_six_read_only_tools_and_the_two_that_ask_a_person(tmp_path):
                                              "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "pack_figures", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
     for t in tools:
         assert t.annotations is not None
-        assert not re.search(r"delete|clean|write|confirm|approve", t.name)
+        assert t.name == "delete_figure" or not re.search(r"delete|clean|write|confirm|approve", t.name)      # mcp-gallery-actions: delete_figure asks a person first (maintainer, 2026-11-12)
         assert not (set(t.input_schema.get("properties", {})) & {"command", "cmd", "script", "kind", "shell", "args"})
         if t.name in ("launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "delete_figure", "pack_figures", "publish_figure"):
             assert t.annotations.read_only_hint is False
