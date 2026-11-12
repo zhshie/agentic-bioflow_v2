@@ -57,3 +57,15 @@ lab-agent（使用者自己串接的 LLM）能經 MCP 提出「把這幾張圖�
 - 先寫會失敗的測試；動作層、確認通道三個通道、遷移、工具清單同步、畫面中英文、跨使用者、重放、競爭各有案例。
 - L 級證明寫進 ledger：`confirm.py`／`store.py` 改了哪幾行與原因、既有種類不受影響的證據（它們的既有測試）、遷移前後的實際輸出、`confirmations.kind` 每個讀寫位置的清單。
 - 全套 `bash tests/run_all.sh` 綠（以 PR 上的 CI 為準）。
+
+## 裁決（lead，2026-11-13，回應 verifier R1–R7、P1–P10）
+
+R1 範圍加入 `platform/abf_platform/actions/chat_tools.py` 與 `platform/tests/test_chat_tools.py`：兩個新工具加進 `CHAT_EXCLUDED`，只增這一項排除。
+R2 依維護者 2026-11-12 的話（「AI要能夠代使用者完成所有事，包括按按鈕」），點名放寬第 2 片的這幾處，且只放寬「`pack_figures`、`delete_figure` 不是工具」這一點：`test_actions_layer.py` 的 `test_gallery_page_actions_exist_in_the_action_layer_and_are_not_tools`（改為「是經確認通道的寫入工具」，工具數 25）、第 2 片 TC-057／TC-078 對應的斷言。`read_figure` 仍不是工具；`test_web_figures.py` 的 `not hasattr(actions, "pack_figures")` 不放寬，所以新的請求函式命名為 `request_pack_figures`、`request_delete_figure`。
+R3 writer 依確認種類挑選（三處：CHAT、ELICITED、PAGE），`publish_figure` 仍走原本的 writer。
+R4 核准時的「重新檢查＋寫入」在同一次持有圖庫鎖之內完成，並呼叫第 2 片的同一個核心函式。
+R5 申請時的快照含每張圖的識別（`created` 與存入它的 `request_id`），同名被取代也算圖庫已變動。
+R6／P4 三個通道在圖庫已變動時都說「圖庫已變動，請重新提出」。
+R7／P6 沒有任何影響的申請不建申請列，回「沒有需要變更」。
+P1 一個種類 `gallery_change`。P2 清空交付包多一行醒目說明，不多一道確認。P3 刪除包內的圖不拒絕，畫面明說。P5 整份「會發生什麼」與畫面不同就拒絕，含期間多了不相干的新圖。P7 `delete_figure` 標破壞性。P8、P9、P10 照建議。
+開工條件：第 1 片 F1–F8 與第 2 片 G1–G5 都已併入本分支之後才派 executor。
