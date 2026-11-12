@@ -24,7 +24,7 @@ test_every_entry_is_a_well_formed_fingerprint() {
 }
 test_no_wildcards() {
   [ -f "$IG" ] || return 1
-  ! entries | grep -q '[*?[]'
+  ! grep -Eq "[*?[]" < <(entries)
 }
 test_exact_count() { [ -f "$IG" ] && [ "$(entries | wc -l | tr -d ' ')" = "$EXPECTED_COUNT" ]; }
 test_no_duplicates() { [ -f "$IG" ] && [ -z "$(entries | sort | uniq -d)" ]; }
