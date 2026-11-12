@@ -79,3 +79,9 @@ WSL 沒有開 systemd、沒有 `/etc/wsl.conf`、沒有 cron。電腦重開機�
 - 可攜：只在 WSL／Linux 跑；用到 `flock`、`setsid` 前先檢查存在，缺了要說明白並結束，不靜默退化。
 - 不引入新相依。
 - 訊息給使用者看的部分用白話、一句說完發生什麼與下一步。
+
+## 裁決（lead，2026-11-12 夜，回應 verifier F1、P1–P13）
+
+- F1：`tests/hosted_deploy_test.sh` 的 TC-069（`deploy/` 剛好六個檔）清單加入 `deploy/wsl/` 三個檔，其餘斷言不動。新檔的權杖偵測樣式、範例路徑與測試裡的假權杖要避開該檔 TC-075 至 TC-077 與 `tests/credentials_stay_in_settings_test.sh` 掃的字面形狀（執行時用片段組出）。
+- P1：看守腳本不算憲法 I.2 禁止的「監控常駐程式」：它只看清單上自己啟動的行程（行程編號、結束碼、時間、次數），不讀任何 run 的狀態，不呼叫 `tw`、nextflow 或平台的 run 指令。這是 lead 對條文的解讀，列入給維護者的晨報請他留一句話；他若認為違反，本案停下、走修憲程序，不合併。
+- P2 至 P13：照 verifier 的建議答案。
