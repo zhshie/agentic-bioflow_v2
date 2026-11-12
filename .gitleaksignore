@@ -1,0 +1,40 @@
+# Closed list: 26 fingerprints. The examined report (2026-11-12) had 34 findings = 25 distinct
+# fingerprints, approved as false positives by the maintainer; one more (a made-up test token in
+# platform/tests/test_studio_remote.py, commit 1b6dcaae) was added after it. Rules in .gitleaks.toml are untouched.
+# tests/gitleaksignore_test.sh pins the count and the contents; adding a line is a reviewed act.
+
+# Report documents (docs/reports): example token/header strings quoted in prose; R4.md line is a truncated 13-character placeholder that matched no token on the production platform.
+064f30b85b6d1bc3eb5e20343f39fcc27b664c14:docs/reports/cloud-burn-2026-11/AR06.md:generic-api-key:74
+157bb67c99b28aecc6a86845a77bea5c919126c1:docs/reports/audit-2026-11.md:generic-api-key:73
+8d28474801ffe463e343123b7d15b141e301f4c4:docs/reports/cloud-burn-2026-11/AR03.md:generic-api-key:60
+f126070487d7d3873bbd8a0d34efcfdc80b98655:docs/reports/cloud-burn-2026-11/R4.md:curl-auth-header:112
+
+# Test fixtures in Python and JS (platform/tests, extensions): fake credentials built to exercise redaction and parsing.
+2804b18f76be32e25233b5939234dfb9f0330242:platform/tests/test_station_e2e.py:generic-api-key:900
+5f764b5532da099ae0ce0780363734f36fa5c427:platform/tests/test_aws_ce.py:generic-api-key:28
+5f764b5532da099ae0ce0780363734f36fa5c427:platform/tests/test_aws_ce.py:generic-api-key:403
+7a1ac44098c1e10f4354130ae0475d51023d8e03:extensions/positron-bridge/test/bridge-core.test.js:generic-api-key:49
+986d30077e4cbb071e2e030b6fb81b8c1b247624:platform/tests/test_station_envs.py:private-key:233
+
+# Plan document (specs): an example value in a design discussion.
+7d6b550ea737b524b9ac704fffc20cd178adafb2:specs/aws-ce-type/plan.md:generic-api-key:90
+
+# Shell tests (tests/): canary strings that the credential-refusal tests feed to the hooks.
+165816f8fdfa55df5b51f3649a1736e5294fd5e7:tests/confirm_walkthrough_test.sh:generic-api-key:495
+165816f8fdfa55df5b51f3649a1736e5294fd5e7:tests/confirm_walkthrough_test.sh:generic-api-key:498
+165816f8fdfa55df5b51f3649a1736e5294fd5e7:tests/confirm_walkthrough_test.sh:generic-api-key:499
+165816f8fdfa55df5b51f3649a1736e5294fd5e7:tests/confirm_walkthrough_test.sh:generic-api-key:500
+165816f8fdfa55df5b51f3649a1736e5294fd5e7:tests/confirm_walkthrough_test.sh:generic-api-key:504
+165816f8fdfa55df5b51f3649a1736e5294fd5e7:tests/confirm_walkthrough_test.sh:generic-api-key:505
+165816f8fdfa55df5b51f3649a1736e5294fd5e7:tests/confirm_walkthrough_test.sh:generic-api-key:506
+48b3542732b1b8cd02bef245eb980118f1d40c9a:tests/credentials_stay_in_settings_test.sh:generic-api-key:154
+48b3542732b1b8cd02bef245eb980118f1d40c9a:tests/credentials_stay_in_settings_test.sh:generic-api-key:156
+48b3542732b1b8cd02bef245eb980118f1d40c9a:tests/credentials_stay_in_settings_test.sh:generic-api-key:158
+48b3542732b1b8cd02bef245eb980118f1d40c9a:tests/credentials_stay_in_settings_test.sh:generic-api-key:159
+7933f4cbaf86b89bb050857224d4ef73bdc13d86:tests/windows_privacy_test.sh:generic-api-key:130
+b63529d589891759759a4d3d747a90f786a72033:tests/credentials_stay_in_settings_test.sh:generic-api-key:140
+d4a863b473bc92676262c9ccd701332b637c8901:tests/credentials_stay_in_settings_test.sh:generic-api-key:155
+f5d846eb7ae32b6e98a818e8e91bbe3a45fed7cd:tests/confirm_walkthrough_test.sh:generic-api-key:505
+
+# Test fixture (platform/tests/test_studio_remote.py): a made-up token marker, not a secret; added 2026-11-13 on the lead's reading of the line.
+1b6dcaaea3b16adcc0852d9eb49f72d6fc07a1f5:platform/tests/test_studio_remote.py:generic-api-key:25
