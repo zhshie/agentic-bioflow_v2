@@ -11,17 +11,15 @@ import urllib.parse
 from .web_finished import _e      # the one escape of the pages; not copied here
 
 MAX_LENGTH = 300
-RM_FLAG = "--" + "rm"      # two pieces: test_cleanup_confirm TC-068 scans each source line for the deletion-word pattern; the page shows the literal contract command
-HOME_RESULTS = "/home" +"/rstudio/results"      # written in two pieces so the source holds no literal home path (test_scope TC-072 scans it); the page shows the whole path
 SECRET_KEYS = ("token", "password", "key", "secret")
 
 STRINGS = {
     "zh": {
         "intro": "下游分析於使用者自己的電腦或雲端環境進行，平台不代為執行，也不在 NC" "HC 登入節點啟動。",
         "folder": "結果資料夾", "unread": "尚未讀取輸出", "see_outputs": "查看輸出",
-        "copy_note": "請先將此資料夾複製到自己的電腦或雲端環境，再於該處啟動 Studio。",
-        "jupyter": "Jupyter", "rstudio": "RStudio",
-        "placeholder_note": "指令中的「<本機結果資料夾>」請替換為複製後的資料夾路徑。",
+        "copy_note": "此為站台上的結果資料夾。請用下列指令，把結果表拉到自己的電腦。",
+        "commands_note": "平台不執行腳本；請在自己的電腦執行下列指令，結果表會放到該電腦的資料夾。",
+        "placeholder_note": "指令中的「<平台網址>」請替換為平台管理者提供的公開網址；第一行只需在首次使用時執行。",
         "paste": "貼上自己 Studio 的網址", "open": "開啟連結",
         "local_note": "http://localhost 開頭的網址，僅在瀏覽器與 Studio 位於同一台電腦時才能連線。",
         "link": "在新分頁開啟 Studio",
@@ -35,9 +33,9 @@ STRINGS = {
     "en": {
         "intro": "Downstream analysis is done on your own computer or cloud environment; the platform does not run it for you and does not start it on the NC" "HC login node.",
         "folder": "Results folder", "unread": "Outputs not read yet", "see_outputs": "View outputs",
-        "copy_note": "Copy this folder to your own computer or cloud environment first, then start the Studio there.",
-        "jupyter": "Jupyter", "rstudio": "RStudio",
-        "placeholder_note": "In the commands, replace <local results folder> with the path of the copied folder.",
+        "copy_note": "This is the results folder on the site. Use the commands below to pull the result tables to your own computer.",
+        "commands_note": "The platform does not run scripts; run the commands below on your own computer, and the result tables are put in a folder on that computer.",
+        "placeholder_note": "In the commands, replace <platform address> with the public address the platform administrator gave you; the first command is only needed the first time.",
         "paste": "Paste the address of your own Studio", "open": "Open link",
         "local_note": "An address that starts with http://localhost works only when the browser and the Studio are on the same computer.",
         "link": "Open Studio in a new tab",
@@ -87,12 +85,10 @@ def _folder(t, lang, run, outputs, board):
     return '<p><span class="muted">%s</span> <span class="muted">— %s</span> %s</p><p class="muted">%s</p>' % (_e(t["folder"]), _e(t["unread"]), link, _e(t["copy_note"]))
 
 
-def _commands(t, lang):
-    folder = "<local results folder>" if lang == "en" else "<本機結果資料夾>"
-    jup = 'jupyter lab --notebook-dir "%s"' % folder
-    rs = 'docker run %s -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v "%s":%s rocker/rstudio' % (RM_FLAG, folder, HOME_RESULTS)
-    return ('<p>%s</p><pre class="reason">%s</pre><p>%s</p><pre class="reason">%s</pre><p class="muted">%s</p>'
-            % (_e(t["jupyter"]), _e(jup), _e(t["rstudio"]), _e(rs), _e(t["placeholder_note"])))
+def _commands(t, lang, run):
+    server = "<platform address>" if lang == "en" else "<平台網址>"
+    lines = "abf-platform studio-connect --server %s\nabf-platform fetch-results %s" % (server, run["id"])
+    return '<p>%s</p><pre class="reason">%s</pre><p class="muted">%s</p>' % (_e(t["commands_note"]), _e(lines), _e(t["placeholder_note"]))
 
 
 def _form(t, lang, run):
@@ -120,5 +116,5 @@ def render_downstream(lang, run, outputs, studio, title):
     from . import web_board      # imported here: web_board imports this module, and only the link helper is wanted from it
     lang = "en" if lang == "en" else "zh"
     t = STRINGS[lang]
-    inner = '<p>%s</p>%s%s%s%s' % (_e(t["intro"]), _folder(t, lang, run, outputs, web_board), _commands(t, lang), _form(t, lang, run), _answer(t, studio))
+    inner = '<p>%s</p>%s%s%s%s' % (_e(t["intro"]), _folder(t, lang, run, outputs, web_board), _commands(t, lang, run), _form(t, lang, run), _answer(t, studio))
     return '<section class="card"><h2>%s</h2>%s</section>' % (_e(title), inner)
