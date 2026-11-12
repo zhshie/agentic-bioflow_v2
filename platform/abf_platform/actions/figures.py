@@ -370,8 +370,15 @@ def gallery_lock(folder):
 def _stage(folder, final_name, data, tag):
     temp = os.path.join(folder, ".tmp-%s-%s" % (tag, secrets.token_hex(4)))
     fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
-    with os.fdopen(fd, "wb") as f:
-        f.write(data)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+    except BaseException:       # a write that fails half way leaves no temporary file (ruling G4)
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
     return temp, os.path.join(folder, final_name)
 
 
