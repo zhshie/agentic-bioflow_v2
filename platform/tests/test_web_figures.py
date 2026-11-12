@@ -215,9 +215,12 @@ def test_finished_gallery_empty_line(w):
     assert package_row(page) == "— 無"
     folder = gallery(w, ann, rid)
     folder.mkdir(parents=True)
-    (folder / "index.json").write_text("{not json")                       # TC-009: a damaged index reads as an empty gallery
+    (folder / "index.json").write_text("{not json")                       # TC-009, as changed by ruling G2: a damaged index says so, it is not an empty gallery
     r = c.get(url(rid))
-    assert r.status_code == 200 and "圖庫為空" in r.text and "Traceback" not in r.text and str(folder) not in r.text
+    assert r.status_code == 200 and "圖庫暫時無法讀取" in gallery_part(r.text) and "圖庫為空" not in r.text and "Traceback" not in r.text and str(folder) not in r.text
+    en = c.get(url(rid, "&lang=en"))
+    assert en.status_code == 200 and "cannot be read right now" in gallery_part(en.text) and str(folder) not in en.text
+    assert "<img" not in r.text and 'type="checkbox"' not in r.text
 
 
 def test_pending_request_is_a_line_above_the_gallery(w):
@@ -712,3 +715,23 @@ def test_finish_reads_only_packed_figures(w):
     root = Path(__file__).resolve().parents[2]
     doc = (root / "docs" / "PLATFORM.md").read_text(encoding="utf-8")
     assert "packed_only" in doc and "/run/figures/pack" in doc and "/run/figure/delete" in doc and "/run/figure" in doc
+
+
+def test_damaged_index_refuses_pack_and_delete_with_one_sentence(w):
+    # ruling G2: the damage is checked before the names, and the answer is the same sentence for every name list (never a 500, never a path)
+    ann, c, rid = setup(w, items=figs(("a.png",)))
+    page = c.get(url(rid)).text
+    tp, td = token(page, "/run/figures/pack"), token(page, "/run/figure/delete")
+    folder = gallery(w, ann, rid)
+    (folder / "index.json").write_text("{not json")
+    before = tree(folder)
+    seen = []
+    for r in (pack_post(c, rid, ["zz.png"], tok=tp), pack_post(c, rid, ["a.png"], tok=tp), pack_post(c, rid, [], tok=tp),
+              delete_post(c, rid, "zz.png", tok=td), delete_post(c, rid, "a.png", tok=td)):
+        assert r.status_code == 400, r.status_code
+        assert "圖庫暫時無法讀取" in r.text and str(folder) not in r.text and "Traceback" not in r.text
+        seen.append(re.sub(r"<[^>]+>", "", r.text).split("未變更")[0][-40:])
+        assert tree(folder) == before
+    assert len(set(seen)) == 1, seen
+    r = c.post("/run/figures/pack", data={"csrf": tp, "run": rid, "fig": [], "lang": "en"})
+    assert r.status_code == 400 and "cannot be read right now" in r.text
