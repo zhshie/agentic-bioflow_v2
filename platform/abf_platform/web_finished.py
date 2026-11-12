@@ -207,7 +207,7 @@ def _figure(t, run, f, n):
     for key, head, link in (("code", "g_code_h", "g_dl_code"), ("params", "g_params_h", "g_dl_params")):
         if f.get(key):
             shown, cut = _clip(f[key])
-            more = '<p class="muted">%s <a href="%s&amp;part=%s">%s</a></p>' % (_e(t["g_more"]), _e(base), key, _e(t[link])) if cut else ""
+            more = '<p class="muted">%s</p><p><a href="%s&amp;part=%s">%s</a></p>' % (_e(t["g_more"]), _e(base), key, _e(t[link])) if cut else ""
             parts += '<p class="muted">%s</p><pre>%s</pre>%s' % (_e(t[head]), _e(shown), more)
     details = "<details><summary>%s</summary>%s</details>" % (_e(t["g_code"]), parts) if parts else ""
     return ('<li><figure><img src="%s" alt="%s" width="240" loading="lazy"><figcaption>'

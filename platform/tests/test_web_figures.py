@@ -807,3 +807,10 @@ def test_part_download_is_owner_only_and_answers_404_for_everything_else(w):
         assert (got.status_code, got.text, got.headers["content-type"].split(";")[0]) == (ref.status_code, ref.text, ref.headers["content-type"].split(";")[0]), (run_id, name, part)
     assert c.get("/run/figure?run=%s&name=a.png&part=code" % rid).text == "print(1)\n"
     assert c.get("/run/figure?run=%s&name=b.png&part=params" % rid).text == "k=1"
+
+
+def test_part_download_link_is_not_inside_the_sentence(w):
+    # K1 (axe link-in-text-block, serious): the link to the rest of a long code text stands in a paragraph of its own, not inside the sentence
+    ann, c, rid = setup(w, items=[fig("a.png", PNG, code=long_code(), params="seed=1")])
+    g = gallery_part(c.get(url(rid)).text)
+    assert re.search(r'<p class="muted">[^<]*</p><p><a href="[^"]*part=code">', g), g[:3000]
