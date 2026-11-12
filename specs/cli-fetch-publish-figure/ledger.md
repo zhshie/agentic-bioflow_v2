@@ -64,3 +64,63 @@ httpx2 2.14.0). Functions and attributes that `platform/abf_platform/studio_remo
   `origin/v3` as well (`test_cli.py::test_tc035`, `test_station_envs.py::test_tc040`, `::test_nano4_keys_through_a_real_abf_platform_process`: checked
   on an export of `origin/v3` in `/tmp/base`). The full suite uses its own virtual environment.
 - Another session loads the machine; `test_station_envs.py::test_tc071`/`test_tc039` failed once under load and pass alone.
+
+## New constants
+
+`studio_cli.py`: `POLL_SECONDS = 2.0`, `DEADLINE_SECONDS = 120.0` (one listing, or one file, may stay `loading`), `MAX_TOTAL_BYTES = 100 * 1024 * 1024`,
+`MAX_FILES = 200`, `MAX_DEPTH = 3`, `TABLE_SUFFIXES = (.tsv .csv .txt .md .json)`, `HTML_SUFFIXES = (.html .htm)`, `LIST_LIMIT = 50` (skip lines printed one by one);
+`RUN_FILE_MAX_BYTES` is imported from `jobs` (25 MB), not written again. `studio_remote.py`: `CALL_TIMEOUT = 30.0`, `RETRIES = 2`, `RETRY_DELAY = 2.0`,
+`MCP_PATH = "/mcp"`, `CONFIG_ENV = "ABF_STUDIO_CONFIG"`, `PAT_ENV = "ABF_PAT"`.
+
+## The settings file (`ls -l`)
+
+From a real run of `studio-connect --no-check` (a made-up value, on the WSL Linux file system, `ABF_STUDIO_CONFIG=/tmp/lsdemo/cfg/studio.json`):
+
+```
+drwx------ 2 ... 4096 Nov 12 19:20 /tmp/lsdemo/cfg
+-rw------- 1 ... 95 Nov 12 19:20 studio.json
+```
+
+## TC-055, the page (`stage=downstream`), by `scripts/dev/ui_check.py --start` through a driver that adds the page
+
+Four screenshots (1440 and 390 wide, zh and en) were taken in `/tmp/ui-shots-downstream` on the WSL side (not in the repository, not on a synced drive).
+Chromium and axe ran. Result: 0 critical; one serious, `link-in-text-block` on `p:nth-child(3) > a` (the existing "view outputs" link of the results-folder
+line), at 1440 zh, 1440 en and 390 en; moderate 1 on each. **The same rows come out of an export of `origin/v3` run the same way** (so it is not new, and
+the repair would touch `STYLE`, which is pinned); the maintainer decides. The page reads as intended in the zh screenshot at 1440: the sentence "平台不執行腳本 ...", the
+block with the two commands, the placeholder note, the paste form. Whether the wording is to the maintainer's taste is his to say (TC-055 is manual).
+`scripts/dev/ui_check.py` has no `downstream` page; it was not changed (out of scope), the driver only adds one to its tables at run time.
+
+## Not done by the executor (manual, TC-039, TC-046, TC-047)
+
+They need the maintainer's own computer, RStudio and a person to stop Funnel; the steps are in `docs/TESTING.md`. **UNVERIFIED**: the cross-computer run, the R
+code in a real RStudio, and the three bad cases on a real link. What was run instead: the real `abf-platform mcp --http` with two users and a revoked token on
+loopback (TC-029, TC-040, TC-085) and a loopback stub for the other connection failures. Package install by `pip install ./platform` on another computer
+was not tried either.
+
+## `git diff --stat origin/v3...HEAD` (taken before the last edit of this file)
+
+```
+ CHANGELOG.md                                       |   1 +
+ docs/OPERATIONS.md                                 |  20 +
+ docs/PLATFORM.md                                   |  76 +++
+ docs/TESTING.md                                    |  21 +
+ platform/abf_platform/cli.py                       |   4 +-
+ platform/abf_platform/studio_cli.py                | 498 +++++++++++++++++
+ platform/abf_platform/studio_remote.py             | 317 +++++++++++
+ platform/abf_platform/web_downstream.py            |  26 +-
+ platform/tests/__golden__/cli_help_top.txt         |  11 +-
+ platform/tests/__golden__/cli_tree.txt             |   2 +
+ platform/tests/studio_harness.py                   | 156 ++++++
+ platform/tests/test_cleanup_offer.py               |   4 +-
+ platform/tests/test_cli_contract.py                |   6 +-
+ platform/tests/test_station_envs.py                |   4 +-
+ platform/tests/test_studio_cli.py                  | 381 +++++++++++++
+ platform/tests/test_studio_docs.py                 |  99 ++++
+ platform/tests/test_studio_remote.py               | 602 +++++++++++++++++++++
+ platform/tests/test_web_downstream.py              |  35 +-
+ specs/cli-fetch-publish-figure/ledger.md           |  ...
+ specs/cli-fetch-publish-figure/plan.md, test-case.md, test-case-overview.md: the earlier commits of this branch (not touched by the executor)
+```
+
+No line of `jobs.py`, `actions/`, `mcp_server.py`, `http_auth.py`, `store.py`, `web_board.py`, `web.py`, `abf_station/`, `.github/`, `hooks/`, the constitution,
+`plugin.json` or the dependencies of `pyproject.toml` is in it (TC-084).
