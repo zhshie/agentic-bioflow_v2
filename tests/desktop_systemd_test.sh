@@ -188,7 +188,7 @@ if [ "$hrc" -eq 0 ]; then ok "TC-044 tests/hosted_deploy_test.sh passes"; else b
 if [ -n "$BASE" ]; then
   dd=$(git diff -U0 "$BASE" -- tests/hosted_deploy_test.sh | grep -E '^[-+]' | grep -vE '^(\+\+\+|---)' || true)
   nminus=$(printf '%s\n' "$dd" | grep -c '^-' || true)
-  if [ "$nminus" -eq 4 ] && printf '%s\n' "$dd" | grep '^-' | grep -c -E 'TC-069|want_list=|TC-083|-eq 3|three \.service' | grep -qvx 0; then ok "TC-044 only the TC-069 and TC-083 lines of hosted_deploy_test.sh changed (4 lines changed)"; else bad "TC-044 hosted_deploy_test.sh diff is more than the two named assertions" "removed lines: $nminus"; fi
+  if [ "$nminus" -eq 4 ] && [ "$(printf '%s\n' "$dd" | grep '^-' | grep -cE 'TC-069|want_list=|TC-083|-eq 3|three \.service')" -eq 4 ]; then ok "TC-044 only the TC-069 and TC-083 lines of hosted_deploy_test.sh changed (4 lines changed)"; else bad "TC-044 hosted_deploy_test.sh diff is more than the two named assertions" "removed lines: $nminus"; fi
 else skip "TC-044 hosted_deploy_test.sh diff" "no origin/v3 to compare with"; fi
 if hasre "$(grep -E 'want_list=' tests/hosted_deploy_test.sh)" 'station\.env\.example' && hasre "$(grep -E 'want_list=' tests/hosted_deploy_test.sh)" 'keep-wsl-running\.ps1' && hasre "$(grep -E 'want_list=' tests/hosted_deploy_test.sh)" 'abf-station@\.service\.in'; then ok "TC-044 the TC-069 list names the three new files"; else bad "TC-044 the TC-069 list names the three new files"; fi
 if grep -q 'four \.service\.in' tests/hosted_deploy_test.sh && grep -qE 'wc -l\)" -eq 4' tests/hosted_deploy_test.sh; then ok "TC-044 TC-083 counts four .service.in"; else bad "TC-044 TC-083 counts four .service.in"; fi
@@ -201,7 +201,7 @@ tsec=$(printf '%s\n' "$tst" | awk '/^##+ /{on=($0 ~ /desktop-systemd/)} on')
 t46=1; for w in 'TC-011' 'TC-018' 'TC-026' 'TC-035' 'TC-029' "systemctl --user status 'abf-*'" 'active (running)'; do has "$tsec" "$w" || { t46=0; bad "TC-046 TESTING.md desktop-systemd section mentions '$w'"; }; done
 [ "$t46" -eq 1 ] && ok "TC-046 TESTING.md has the desktop steps (reboot, kill, status, token, double start), each with what to see"
 chg_top=$(sed -n '1,12p' "$CHG")
-if hasre "$chg_top" 'desktop-systemd.*WSL|WSL.*desktop-systemd' && printf '%s\n' "$chg_top" | grep -m1 '^- ' | grep -q 'keep-submissions'; then ok "TC-047 CHANGELOG: a desktop-systemd line in the top section; keep-submissions still first"; else bad "TC-047 CHANGELOG line"; fi
+if hasre "$chg_top" 'desktop-systemd.*WSL|WSL.*desktop-systemd' && [ "$(printf '%s\n' "$chg_top" | grep -m1 '^- ' | grep -c 'keep-submissions')" -eq 1 ]; then ok "TC-047 CHANGELOG: a desktop-systemd line in the top section; keep-submissions still first"; else bad "TC-047 CHANGELOG line"; fi
 if [ -n "$BASE" ]; then
   rem=$(git diff -U0 "$BASE" -- "$CHG" | grep -E '^-' | grep -vE '^---' | grep . || true)
   if [ -z "$rem" ]; then ok "TC-047 CHANGELOG: no existing line changed"; else bad "TC-047 CHANGELOG lines were changed"; fi
