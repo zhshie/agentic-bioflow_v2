@@ -182,6 +182,137 @@ def test_list_figures_reads_the_gallery(w):
     assert got["found"] and "a.png" in str(got["figures"])
 
 
+# ---- mcp-publish-figure-gallery (slice 2): pack and delete at the action layer; TC IDs from specs/mcp-publish-figure-gallery/test-case.md ----
+
+def stored(w, ann, run, names=("a.png", "b.png", "c.png")):
+    """The figures `names` in the gallery of `run`, put there the way a person does it: proposed, then 送出 pressed."""
+    press(w, ann.name, call(w, ann, run, [fig(n, code="# " + n + "\n", params="n=" + n) for n in names])["request_id"])
+
+
+def index_of(w, ann, run):
+    return json.loads((gallery(w, ann, run) / "index.json").read_text())["figures"]
+
+
+def tree(folder):
+    return {p.name: (p.read_bytes(), oct(p.stat().st_mode & 0o777)) for p in sorted(folder.iterdir())}
+
+
+def pack(w, ann, run, names):
+    from abf_platform import actions
+    from abf_platform.actions import figures
+    return figures.pack_figures(w.ip.index, w.ip.state_db, run, names, caller=ann, clock=w.clock)
+
+
+def test_pack_figures_whitelist_and_set_semantics(w):
+    # TC-023, TC-024, TC-025, TC-026, TC-030, TC-053, TC-062
+    ann, bob = w.user("ann"), w.user("bob")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run)
+    before = tree(gallery(w, ann, run))
+    got = pack(w, ann, run, ["a.png"])
+    assert got["ok"] and got["count"] == 1
+    idx = index_of(w, ann, run)
+    assert idx["a.png"]["packed"] is True and idx["a.png"]["packed_at"] and not idx["b.png"]["packed"] and not idx["c.png"]["packed"]
+    assert pack(w, ann, run, ["b.png"])["ok"]                       # the package is the last selection, not a sum
+    idx = index_of(w, ann, run)
+    assert [k for k, v in idx.items() if v["packed"]] == ["b.png"] and idx["a.png"]["packed_at"] is None and idx["b.png"]["packed_at"]
+    assert pack(w, ann, run, ["c.png", "c.png"])["count"] == 1      # the same name twice is one figure
+    assert pack(w, ann, run, [])["ok"] and not any(v["packed"] for v in index_of(w, ann, run).values())
+    after = tree(gallery(w, ann, run))
+    assert {k: v for k, v in after.items() if k != "index.json"} == {k: v for k, v in before.items() if k != "index.json"}      # only index.json moves
+    snap = tree(gallery(w, ann, run))
+    for bad in (["a.png", "z.png"], ["../x.png"], ["index.json"], ["a.png.code.txt"], ["x" * 81], ["a\x00.png"], ["a\n.png"], [3],
+                ["f%d.png" % i for i in range(31)], "a.png", None):
+        got = pack(w, ann, run, bad)
+        assert got["ok"] is False and got["reason"] in ("unknown_name", "bad_name", "too_many") and got["message"], bad
+        assert tree(gallery(w, ann, run)) == snap, bad              # nothing moves, not even the valid name of a mixed list
+    got = pack(w, ann, run, ["a.png", "z.png"])
+    assert got["name"] == "z.png" and "z.png" in got["message"]
+    mine = pack(w, bob, run, ["a.png"])                             # TC-053: somebody else's run and a missing run answer alike
+    gone = pack(w, bob, "no-such-run", ["a.png"])
+    assert mine["ok"] is False and mine == gone and mine["found"] is False
+    assert tree(gallery(w, ann, run)) == snap
+
+
+def test_pack_with_no_gallery_changes_nothing(w):
+    # TC-008, TC-026
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    assert pack(w, ann, run, []) == {"ok": True, "found": True, "count": 0, "names": []}
+    assert not gallery(w, ann, run).exists()
+
+
+def test_delete_figure_removes_files_and_pack_state(w):
+    # TC-032, TC-033, TC-035, TC-037, TC-038, TC-053
+    from abf_platform.actions import figures
+    ann, bob = w.user("ann"), w.user("bob")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("a.png", "b.png"))
+    pack(w, ann, run, ["a.png"])
+    folder = gallery(w, ann, run)
+    b_files = {n: v for n, v in tree(folder).items() if n.startswith("b.png")}
+    b_entry = index_of(w, ann, run)["b.png"]
+    assert figures.delete_figure(w.ip.index, w.ip.state_db, run, "a.png", caller=bob)["found"] is False     # not bob's
+    assert (folder / "a.png").exists()
+    assert figures.delete_figure(w.ip.index, w.ip.state_db, run, "a.png", caller=ann)["ok"]
+    assert not (folder / "a.png").exists() and not (folder / "a.png.code.txt").exists() and not (folder / "a.png.params.txt").exists()
+    idx = index_of(w, ann, run)
+    assert list(idx) == ["b.png"] and idx["b.png"] == b_entry
+    assert {n: v for n, v in tree(folder).items() if n.startswith("b.png")} == b_files
+    from abf_platform import actions
+    assert actions.list_figures(w.ip.index, w.ip.state_db, run, caller=ann, packed_only=True)["figures"] == []
+    for bad in ("z.png", "../b.png", "index.json", "b.png.code.txt", "", None):
+        got = figures.delete_figure(w.ip.index, w.ip.state_db, run, bad, caller=ann)
+        assert got["ok"] is False and got["message"], bad
+    assert (folder / "index.json").exists() and (folder / "b.png").exists() and (folder / "b.png.code.txt").exists()
+    (folder / "b.png").unlink()                                      # TC-038: the file is already gone, the entry still goes
+    assert figures.delete_figure(w.ip.index, w.ip.state_db, run, "b.png", caller=ann)["ok"] and index_of(w, ann, run) == {}
+
+
+def test_delete_frees_a_place_in_a_full_gallery(w):
+    # TC-037
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("g0.png",))
+    folder = gallery(w, ann, run)
+    idx = json.loads((folder / "index.json").read_text())
+    for i in range(1, 30):
+        idx["figures"]["g%d.png" % i] = dict(idx["figures"]["g0.png"])
+    (folder / "index.json").write_text(json.dumps(idx))
+    assert call(w, ann, run, [fig("new.png")])["state"] == "refused"
+    assert figures.delete_figure(w.ip.index, w.ip.state_db, run, "g1.png", caller=ann)["ok"]
+    assert call(w, ann, run, [fig("new.png")])["state"] == "pending"
+
+
+def test_pack_resets_on_same_name_overwrite(w):
+    # TC-028
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("a.png",))
+    assert pack(w, ann, run, ["a.png"])["ok"] and index_of(w, ann, run)["a.png"]["packed"] is True
+    press(w, "ann", call(w, ann, run, [fig("a.png", code="print(2)\n")])["request_id"])
+    idx = index_of(w, ann, run)
+    assert list(idx) == ["a.png"] and idx["a.png"]["packed"] is False and idx["a.png"]["packed_at"] is None
+
+
+def test_pack_write_failure_keeps_the_old_index(w, monkeypatch):
+    # TC-031
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("a.png",))
+    snap = tree(gallery(w, ann, run))
+
+    def boom(a, b):
+        raise OSError("read-only /secret/path")
+    monkeypatch.setattr(figures.os, "replace", boom)
+    got = pack(w, ann, run, ["a.png"])
+    assert got["ok"] is False and got["reason"] == "write_failed" and "/secret" not in got["message"]
+    assert tree(gallery(w, ann, run)) == snap                       # the old index, and no temporary file left behind
+    monkeypatch.undo()
+    got = figures.delete_figure(w.ip.index, w.ip.state_db, run, "a.png", caller=ann)
+    assert got["ok"]
 # ==== fix round (ruling F2, F7): the tests the contract names and that were missing or too weak. TC numbers are those of the confirmed contract ====
 
 import hashlib
@@ -466,3 +597,142 @@ def test_f7_the_screen_shows_twelve_characters_of_each_sha256(w):
         assert hashlib.sha256(data).hexdigest()[:12] in got["summary"]
     figs = [{"name": "a.png", "type": "png", "size": 1, "sha256": hashlib.sha256(PNG).hexdigest(), "caption": "", "code": "", "params": ""}]
     assert hashlib.sha256(PNG).hexdigest()[:12] in actions.screen_for_page({"run_name": "r1", "figures": figs}, [], "en")
+
+
+def test_index_updates_do_not_lose_each_other(w, monkeypatch):
+    # ruling G1 (lead, 2026-11-13): pack, delete and the confirmed write each read index.json and replace it whole; they hold one lock of the
+    # gallery folder from the read to the replace. Real threads: a delete and a confirmed write are started in the middle of a pack.
+    import threading
+    from abf_platform import store
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("a.png", "b.png"))
+    rid = call(w, ann, run, [fig("new.png")])["request_id"]
+    bundle = json.loads(w.sql("SELECT bundle_json FROM confirmations WHERE id = ?", (rid,))[0]["bundle_json"])
+    real_read, packer, errors = figures.read_index, [], []
+
+    def read_then_let_the_others_try(folder):
+        got = real_read(folder)
+        if threading.current_thread() is packer[0]:
+            for t in others:
+                t.start()
+            for t in others:
+                t.join(1.5)         # without the lock both finish here, between the read and the write of the pack
+        return got
+
+    def guard(fn):
+        def run_it():
+            try:
+                fn()
+            except BaseException as e:          # noqa: BLE001 - reported below, never lost in a thread
+                errors.append(repr(e))
+        return run_it
+
+    others = [threading.Thread(target=guard(lambda: figures.delete_figure(w.ip.index, w.ip.state_db, run, "a.png", caller=ann))),
+              threading.Thread(target=guard(lambda: figures.write_confirmed(w.ip.state_db, ann.user_id, bundle, rid, time.time())))]
+    monkeypatch.setattr(figures, "read_index", read_then_let_the_others_try)
+    main = threading.Thread(target=guard(lambda: pack(w, ann, run, ["a.png"])))
+    packer.append(main)
+    main.start()
+    main.join(20)
+    for t in others:
+        t.join(20)
+    assert not errors, errors
+    folder = gallery(w, ann, run)
+    listed = sorted(real_read(str(folder))[0])
+    on_disk = sorted(p.name for p in folder.iterdir() if p.suffix in (".png",))
+    assert listed == on_disk == ["b.png", "new.png"], (listed, on_disk)
+
+
+def test_failed_index_write_leaves_no_temporary_file(w, monkeypatch):
+    # ruling G4 (lead, 2026-11-13): a failure while the temporary index is written (not only at the replace) leaves no .tmp-idx-* file behind
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("a.png",))
+    before = tree(gallery(w, ann, run))
+    real = os.fdopen
+
+    class Broken:
+        def __init__(self, f):
+            self.f = f
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            self.f.close()
+
+        def write(self, data):
+            raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(figures.os, "fdopen", lambda fd, mode="r", *a, **k: Broken(real(fd, mode, *a, **k)))
+    got = pack(w, ann, run, ["a.png"])
+    monkeypatch.undo()
+    assert got["ok"] is False and got["reason"] == "write_failed"
+    assert [p.name for p in gallery(w, ann, run).iterdir() if p.name.startswith(".tmp")] == []
+    assert tree(gallery(w, ann, run)) == before
+
+
+def test_delete_removes_files_inside_the_lock(w, monkeypatch):
+    # K2 (lead, 2026-11-13, after acceptance): the files of a deleted figure are removed while the lock is still held, so a confirmed write of the
+    # same name that comes in right after the index write cannot have its new file deleted. Forced interleaving: a thread that writes the same
+    # name is started just before the first unlink.
+    import threading
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    rid = call(w, ann, run, [fig("x.png")])["request_id"]          # proposed while x.png is not in the gallery: replaces nothing
+    bundle = json.loads(w.sql("SELECT bundle_json FROM confirmations WHERE id = ?", (rid,))[0]["bundle_json"])
+    stored(w, ann, run, ("x.png",))
+    real_unlink, errors, fired = os.unlink, [], []
+
+    def unlink_after_the_new_write_tried(path, *a, **k):
+        if not fired and threading.current_thread() is threading.main_thread():
+            fired.append(1)
+            def again():
+                try:
+                    figures.write_confirmed(w.ip.state_db, ann.user_id, bundle, rid, time.time())
+                except BaseException as e:      # noqa: BLE001
+                    errors.append(repr(e))
+            t = threading.Thread(target=again)
+            t.start()
+            t.join(1.5)         # with the lock released already it finishes here, before this unlink
+        return real_unlink(path, *a, **k)
+
+    monkeypatch.setattr(figures.os, "unlink", unlink_after_the_new_write_tried)
+    got = figures.delete_figure(w.ip.index, w.ip.state_db, run, "x.png", caller=ann)
+    monkeypatch.undo()
+    for t in threading.enumerate():
+        if t is not threading.current_thread():
+            t.join(20)
+    assert got["ok"] and not errors, (got, errors)
+    folder = gallery(w, ann, run)
+    assert sorted(figures.read_index(str(folder))[0]) == ["x.png"] and (folder / "x.png").exists(), sorted(p.name for p in folder.iterdir())
+
+
+def test_no_lock_means_no_change(w, monkeypatch):
+    # K3 (lead, 2026-11-13): a lock that cannot be taken refuses the operation with one plain sentence and changes nothing; it never goes on
+    # without the lock. Pack and delete answer reason "busy"; the confirmed write is voided through slice 1's write-failed path.
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("a.png",))
+    rid = call(w, ann, run, [fig("n.png")])["request_id"]
+    before = tree(gallery(w, ann, run))
+    if figures.fcntl is None:
+        pytest.skip("no flock on this system")
+    def refuse(fd, op):
+        raise OSError(5, "Input/output error")
+    monkeypatch.setattr(figures.fcntl, "flock", refuse)
+    packed = pack(w, ann, run, ["a.png"])
+    deleted = figures.delete_figure(w.ip.index, w.ip.state_db, run, "a.png", caller=ann)
+    c, resp = press(w, ann.name, rid)
+    monkeypatch.undo()
+    for got in (packed, deleted):
+        assert got["ok"] is False and got["reason"] == "busy", got
+        assert "圖庫目前無法變更，請稍後再試" in got["message"] and "The gallery cannot be changed right now, please try again later" in got["message"]
+    assert tree(gallery(w, ann, run)) == before
+    row = w.sql("SELECT state, void_reason FROM confirmations WHERE id = ?", (rid,))[0]
+    assert row["state"] == "void" and row["void_reason"], dict(row)

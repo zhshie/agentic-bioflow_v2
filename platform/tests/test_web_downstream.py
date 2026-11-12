@@ -229,7 +229,7 @@ def test_no_new_route_no_new_action(w):
     # TC-012
     from abf_platform import actions
     app = w.web().app
-    assert sorted((r.path, tuple(sorted(r.methods or []))) for r in app.routes) == ROUTES_V3
+    assert sorted((r.path, tuple(sorted(r.methods or []))) for r in app.routes) == sorted(ROUTES_V3 + [("/run/figure", ("GET", "HEAD")), ("/run/figure/delete", ("POST",)), ("/run/figures/pack", ("POST",))])      # mcp-publish-figure-gallery adds these three
     names = sorted(n for n in dir(actions) if not n.startswith("_") and callable(getattr(actions, n))
                    and getattr(getattr(actions, n), "__module__", "").startswith("abf_platform.actions"))
     assert names == sorted(ACTIONS_V3 + ["list_figures", "request_publish_figure", "screen_for_page"])    # mcp-publish-figure adds these three

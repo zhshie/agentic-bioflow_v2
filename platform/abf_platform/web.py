@@ -15,6 +15,9 @@ The only routes there are:
   GET  /run/preview     the page that shows one result file of the caller's own run: a PNG or SVG through <img>, else the line that the type has no preview (web-result-viewer)
   GET  /run/image       the PNG or SVG itself for that <img>; 404 with no body for anything else
   GET  /run/report      a white-listed HTML report itself, for the sandboxed iframe of the preview page; 404 with no body for anything else
+  GET  /run/figure      one figure of the caller's own private gallery (?run=&name=, &download=1 for an attachment; mcp-publish-figure-gallery); the name must be one index.json holds, 404 as one plain line otherwise
+  POST /run/figures/pack  pack exactly the ticked figures (`fig`, any number) of the caller's own run into the delivery package, then 303 to the finished page; cookie, CSRF and same origin, never a token
+  POST /run/figure/delete delete one figure (`name`) of the caller's own run, its code and parameters with it, then 303 to the finished page; the same checks
   GET  /launch/diagram  the workflow diagram of ?pipeline=&revision= as the image the caller's own agent read from the public repository (guided-launch-2); needs the cookie, 404 as one plain line when it is not there
   POST /launch       check the form and ASK for the launch (request_launch), then 303 to /c/<id>; the CSRF token of this login
   POST /act/{verb}   resume, relaunch or cancel one run (request_resume, request_relaunch, request_cancel), then 303 to /c/<id>; a refusal is a line on the run's page.
@@ -71,7 +74,8 @@ from starlette.routing import Route
 
 from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
 from . import actions, oauth, site_link, store, web_board, web_cost, web_launch, web_preview, web_refusal, web_settings
-from . import uploads_web, web_upload
+from . import uploads_web, web_finished, web_upload
+from .actions.figures import delete_figure, gallery_view, pack_figures, read_figure      # the gallery of a run (read, pack, delete): the action layer's own module; the routes only call these
 
 COOKIE = "abf_web"
 KEY_FILE = "web_signing.key"
@@ -100,6 +104,11 @@ _PLAIN = {      # the labels of the plain block at the top of the confirmation p
 LAUNCH_HEADERS = dict(_HEADERS, **{      # /launch alone may show pictures, and only our own (guided-launch-2d: the workflow diagram under the pipeline)
     "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
     % web_board.style_source()})
+FINISHED_HEADERS = dict(_HEADERS, **{      # the finished stage of a succeeded run alone may show pictures, and only our own (the private gallery, mcp-publish-figure-gallery)
+    "Content-Security-Policy": _HEADERS["Content-Security-Policy"].replace("style-src", "img-src 'self'; style-src", 1)})
+FIGURE_HEADERS = dict(_HEADERS, **{      # one figure of the gallery: a picture only, whatever the bytes are (sandbox, no script, no framing), never kept by a cache
+    "Cache-Control": "private, no-store", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"})
+FIGURE_404 = "找不到這張圖 (figure not found)"
 HOME = "/"                  # where a login with no (or a refused) `next` goes: a constant, so there is no open redirect
 
 
@@ -633,6 +642,18 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         except sqlite3.Error:
             return None
 
+    def read_gallery(sid, run_id, caller):
+        """The gallery of the caller's own run for the finished page (the action `gallery_view`, reads only) with the two CSRF tokens of its forms;
+        None when it cannot be read (the page then shows the row as before)."""
+        try:
+            got = gallery_view(index_path, platform_path, run_id, caller=caller, clock=clock)
+        except (sqlite3.Error, OSError):
+            return None
+        got["csrf"] = {"pack": csrf(sid, "figpack:" + run_id), "delete": csrf(sid, "figdel:" + run_id)}
+        for f in got.get("figures") or []:
+            f["url"] = "/run/figure?run=%s&name=%s" % (urllib.parse.quote(run_id, safe=""), urllib.parse.quote(f["name"], safe=""))
+        return got
+
     async def board_page(sid, user, caller, lang, run_id, stage=None, tab=None, flash=None, code=200, relist=False, subpath=None, studio=None):
         """The board for one logged-in user: one run's page (the one named, else the one that needs the person most, else the newest;
         an empty page for a person with no run), with `flash` (one plain line of refusal) on it after a refused button."""
@@ -640,6 +661,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         selected = None
         outputs = None
         finished = None
+        gallery = None
+        headers = _HEADERS
         if run_id or runs:
             selected = await run_in_threadpool(read_run, run_id or web_board.default_run(runs), caller)
             if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
@@ -655,6 +678,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "finished" and not flash:
                 finished = await run_in_threadpool(read_finished, selected, caller)
                 outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
+                gallery = await run_in_threadpool(read_gallery, sid, selected["id"], caller)
+            if gallery and gallery.get("figures"):
+                headers = FINISHED_HEADERS       # a page that holds a picture of the gallery may load pictures, from this site only; every other page keeps the base policy
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "downstream" and not flash:
                 outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
             if selected["status"] == "succeeded":
@@ -666,8 +692,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         except sqlite3.Error:
             refusal = None
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
-                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio)
-        return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio, gallery=gallery)
+        return HTMLResponse(doc, status_code=code, headers=headers)
 
     async def board(request):
         sid, user = user_of(request)
@@ -1080,6 +1106,67 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return await launch_page(sid, user, caller, lang, values, [], notes, source, guide=guide)
 
     DIAGRAM_TYPES = ("image/png", "image/svg+xml", "image/jpeg", "image/gif")
+
+    async def run_figure_get(request):
+        """GET /run/figure: one figure of the caller's own gallery, for the <img> of the finished page and the Download link. The cookie only (no token);
+        the action answers from the gallery index, so a run that is not the caller's, a name that is not there and a file that is gone are one 404 line."""
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        got = await run_in_threadpool(lambda: read_figure(index_path, platform_path, request.query_params.get("run") or "",
+                                                                         request.query_params.get("name") or "", caller=caller,
+                                                                         part=request.query_params.get("part") or None))
+        if not got.get("found"):
+            return PlainTextResponse(FIGURE_404, status_code=404, headers=_HEADERS)
+        headers = dict(FIGURE_HEADERS)
+        if request.query_params.get("download") == "1" or got.get("type") == "text" or (got.get("type") == "svg" and request.headers.get("sec-fetch-dest") == "document"):
+            headers["Content-Disposition"] = 'attachment; filename="%s"' % got["name"]      # a name the gallery holds: letters, digits, dot, underscore, hyphen
+        return Response(got["data"], media_type=got["mime"], headers=headers)
+
+    async def figure_write(request, verb):
+        """POST /run/figures/pack and /run/figure/delete: the person's own button press is the confirmation (the cookie, the CSRF token of this run and
+        this verb, and the same origin); a token is not accepted, and no request or job is made. The action does the work and the owner check."""
+        if not same_origin(request):
+            return foreign(request)
+        sid, user = user_of(request)
+        if user is None:
+            return unauth(request)
+        raw = b""
+        async for chunk in request.stream():
+            raw += chunk
+            if len(raw) > MAX_BODY:
+                break
+        try:
+            fields = urllib.parse.parse_qs(raw[:MAX_BODY].decode("utf-8", errors="replace"), keep_blank_values=True, max_num_fields=100)
+        except ValueError:
+            fields = None
+        first = lambda key: (fields.get(key) or [""])[0] if fields else ""
+        lang = web_board.pick_lang(first("lang"))
+        run_id = first("run")[:200]
+        back = "/?run=%s&stage=finished%s" % (urllib.parse.quote(run_id, safe=""), "&lang=en" if lang == "en" else "")
+        if fields is None:      # more boxes than any gallery holds: refused before anything is read
+            title, body = web_finished.refusal_page(lang, {"verb": verb, "reason": "too_many", "back": back})
+            return _page(title, body, 400, lang=lang)
+        if not _same(first("csrf"), csrf(sid, "fig%s:%s" % ("pack" if verb == "pack" else "del", run_id))):
+            return _page("表單已失效 (form expired)", "<p class=\"bad\">%s</p>" % _esc(web_board.STRINGS[lang]["r_form"]), 403)
+        caller = actions.Caller(user["user_id"], user["name"], user["lab"])
+        if verb == "pack":
+            answer = await run_in_threadpool(lambda: pack_figures(index_path, platform_path, run_id, fields.get("fig", []), caller=caller, clock=clock))
+        else:
+            answer = await run_in_threadpool(lambda: delete_figure(index_path, platform_path, run_id, first("name"), caller=caller))
+        if answer.get("found") is False:      # somebody else's run and a missing one answer alike
+            return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        if answer.get("ok"):
+            return RedirectResponse(back, status_code=303, headers=_HEADERS)
+        title, body = web_finished.refusal_page(lang, dict(answer, verb=verb, back=back))
+        return _page(title, body, 500 if answer.get("reason") == "write_failed" else 400, lang=lang)
+
+    async def figures_pack_post(request):
+        return await figure_write(request, "pack")
+
+    async def figure_delete_post(request):
+        return await figure_write(request, "delete")
 
     async def launch_diagram(request):
         """The picture of the workflow diagram, read by the caller's own agent: only what pipeline_files already holds for this person (no job is
@@ -1545,7 +1632,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                             Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]),
                             Route("/settings/inventory", inventory_post, methods=["POST"]), Route("/usage", usage_page, methods=["GET"]),
                             Route("/launch", launch_get, methods=["GET"]), Route("/launch/diagram", launch_diagram, methods=["GET"]),
-                            Route("/run/file", run_file_get, methods=["GET"]),
+                            Route("/run/file", run_file_get, methods=["GET"]), Route("/run/figure", run_figure_get, methods=["GET"]),
+                            Route("/run/figures/pack", figures_pack_post, methods=["POST"]),
+                            Route("/run/figure/delete", figure_delete_post, methods=["POST"]),
                             Route("/run/log", run_log_get, methods=["GET"]),
 
                             Route("/run/preview", run_preview_get, methods=["GET"]), Route("/run/image", run_image_get, methods=["GET"]),

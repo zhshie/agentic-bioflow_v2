@@ -681,7 +681,7 @@ def test_page_headers_and_css_are_unchanged(w):
         assert m_old and m_new, name + " is not found, so nothing was compared"
         assert m_old.group(0) == m_new.group(0), name
     routes = lambda t: sorted(re.findall(r"@app\.route\(\"([^\"]+)\"|Route\(\"([^\"]+)\"", t))
-    assert routes(src) and routes(old) == routes(src)
+    assert routes(src) and sorted(routes(old) + [("", "/run/figure"), ("", "/run/figure/delete"), ("", "/run/figures/pack")]) == routes(src)      # slice 2 (mcp-publish-figure-gallery) adds these three routes
     # the stylesheet (and so the sha256 the CSP names) lives in web_board.py: that file is not touched at all
     board = subprocess.run(["git", "diff", "--stat", "origin/v3", "--", "platform/abf_platform/web_board.py"], capture_output=True, cwd=str(Path(web.__file__).parent))
     assert board.returncode == 0 and board.stdout == b""

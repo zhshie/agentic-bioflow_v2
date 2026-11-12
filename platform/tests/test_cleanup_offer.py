@@ -813,7 +813,7 @@ def test_no_new_mcp_tool_no_new_route_no_new_cli_command(tmp_path):
     paths = sorted({getattr(r, "path", "?") for r in app.routes})
     assert not any("clean" in p for p in paths)
     assert COMMANDS == commands, commands
-    assert ROUTES == paths, paths
+    assert ROUTES == [p for p in paths if p not in ("/run/figure", "/run/figure/delete", "/run/figures/pack")], paths      # mcp-publish-figure-gallery adds these three
 
 
 COMMANDS = ['agent-token', 'cancel', 'ce', 'dataset', 'fetch-records', 'fetch-results', 'forget', 'launch', 'launches', 'mcp', 'oauth', 'pat', 'publish-figure', 'rebuild', 'relaunch', 'resume',
