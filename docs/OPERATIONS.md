@@ -80,6 +80,32 @@ folder of your virtual environment goes. To install them:
 Bearer tokens never go into a unit file; they are issued with the commands in section 5 and
 shown once.
 
+### 桌機（WSL）上自動啟動
+
+桌機的平台是 WSL 裡的六個行程（`serve`、`web`、`mcp` 與三個 `abf-station run`），而這台 WSL 沒有 systemd。有 systemd 的主機請用上面的 `deploy/systemd/`，本節不適用。這裡用另一種做法：一支看守腳本 `deploy/wsl/abf-supervise.sh` 看守清單上的行程，加一個 Windows 登入工作 `deploy/wsl/install-autostart.ps1` 在登入時啟動它。不需要管理者權限，不需要改 WSL 的設定，也不需要重啟 WSL。看守腳本只管自己啟動的行程（行程編號、結束碼、時間、次數），不讀任何 run 的狀態。
+
+**1. 前提。** WSL 裡已能自己執行那六個指令，且每個指令用完整路徑（登入工作的 PATH 很短）。每個 station 的權杖放在它的 `--token-file` 檔案裡，不放進清單。WSL 裡有 `flock`（Ubuntu 內建於 util-linux）。Windows 端有 PowerShell，用一般使用者開，不用系統管理員。
+
+**2. 寫清單檔。** 複製 `deploy/wsl/processes.example` 到 `~/.config/abf-platform/processes`，把 `<...>` 換成你的路徑與公開網址，然後 `chmod 600` 它（要放別的位置，執行時用 `--list <檔>` 指定）。每行是「名字 空白 完整指令」；名字只用小寫英文字母、數字與減號，不可重複；`#` 開頭與空行略過。清單決定這個帳號會執行什麼，所以群組或其他人可讀寫就會被拒絕；清單裡任何一行（含註解）像權杖或金鑰就會被拒絕。
+
+**3. 用 `--check` 檢查。** `deploy/wsl/abf-supervise.sh --check` 只檢查清單的格式、權限與每個指令的執行檔，不啟動任何東西；有問題會結束碼 2，逐行說哪裡錯。看到「清單沒問題」再往下。
+
+**4. 手動試跑。** 先把自己起的那幾個行程關掉再跑，不然會有兩份（見最後的「兩件做不到的事」）。直接執行 `deploy/wsl/abf-supervise.sh`，另開一個終端用 `deploy/wsl/abf-supervise.sh --status` 看六個都「在跑」，打開網站確認，再用 Ctrl-C 結束它。第二份會說「已經有一份在跑」並結束，不會重複啟動。
+
+**5. 註冊登入工作（`-Apply`）。** 在一般的 PowerShell 執行 `.\install-autostart.ps1 -Distro <distro> -User <user> -Script <script>`：它只印出將要做什麼（工作名稱 `abf-platform-autostart`、動作 `wsl.exe -d <distro> -u <user> --exec <script>`、觸發條件「登入時」），並說明「沒有更動」。確認沒問題再加 `-Apply` 才真的註冊；重複 `-Apply` 結果相同。工作以一般權限執行，失敗時每分鐘重試；若說「權限不足」，它會中止，不會自己提升權限，請回報給維護者。
+
+**6. 怎麼看狀態與記錄。** `deploy/wsl/abf-supervise.sh --status` 印每個名字「在跑／沒在跑」、行程編號、上次啟動時間與重啟次數；看守腳本沒在跑時說明白，結束碼 1。記錄在 `~/.local/state/abf-platform/`：`supervise.log` 是看守腳本自己的事件（每行有時間），`log/<名字>.log` 是各行程的輸出；超過 10 MB 會換成 `.1` 舊檔，只留一份。資料夾 0700、檔案 0600。一個行程結束就會自己重啟：第一次等 2 秒，連續快速失敗就加倍，最多 60 秒，存活滿 30 秒後歸零。
+
+**7. 怎麼停。** 對看守腳本送 SIGTERM（`kill <看守腳本的行程編號>`，編號在 `~/.local/state/abf-platform/supervise.pid`）或在前景按 Ctrl-C：它把訊號轉給所有行程，最多等 10 秒，還在的再強制結束，之後不再重啟。不要對看守腳本用 `kill -9`：它來不及轉訊號，行程會留成孤兒，再啟動就會多出一組。要長時間停掉自動啟動，先停看守腳本，再照下一步移除登入工作，否則下次登入又會起來。
+
+**8. 怎麼移除（`-Remove`）。** 在一般的 PowerShell 執行 `.\install-autostart.ps1 -Remove`，只移除 `abf-platform-autostart` 這一個工作；本來就沒有時會說「本來就沒有這個工作」。清單檔與記錄不會被動。
+
+**兩件做不到的事。**
+- 國網的共用 SSH 連線（要 OTP）不會自動恢復：電腦重開機後要本人重新連線，網站會提示。
+- 從手動啟動換到看守腳本時，要先停掉手動起的那幾個行程，平台會中斷約一分鐘；兩邊同時在，會有兩份行程搶同一個埠。
+
+Tailscale 的對外網址不歸這支腳本管。
+
 ## 4. What to back up
 
 The platform writes these, all in one data folder. Default folder:

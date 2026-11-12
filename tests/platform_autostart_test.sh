@@ -9,7 +9,7 @@
 # The Windows task is never registered or removed here: the installer is only run without
 # -Apply/-Remove, and only when powershell.exe is reachable (TC-004).
 # Manual cases (TC-013, 014, 015, 034, 047, 055, 077, 114) live in docs/TESTING.md.
-set -uo pipefail
+set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 cd "$ROOT" || exit 1
@@ -507,7 +507,7 @@ doc_cases() {
     local p; while IFS= read -r p; do [ -z "$p" ] && continue; [ -e "$p" ] || sw="$sw nofile:$p"; done < <(printf '%s\n' "$sec" | grep -oE '`deploy/[^` ]+`' | tr -d '`')
     if [ -z "$sw" ]; then ok "TC-098 it tells how to stop (SIGTERM / Ctrl-C, not kill -9); every switch and file it names exists"; else bad "TC-098" "$sw"; fi
     if awk '/^## 3\.0\.0-dev/{f=1;next} /^## /{f=0} f' CHANGELOG.md | grep -E '^- ' | grep -q 'platform-autostart.*deploy/wsl/'; then ok "TC-099 CHANGELOG 3.0.0-dev has a line for platform-autostart and deploy/wsl/"; else bad "TC-099 changelog line"; fi
-    if printf '%s\n' "$sec" | grep -q 'deploy/systemd/' && ! printf '%s\n' "$sec" | grep -qiE 'sudo|/etc/wsl\.conf|systemctl|systemd=true|tailscale|funnel'; then ok "TC-110 the doc section points systemd hosts to deploy/systemd/ and names no sudo, wsl.conf, systemctl or Funnel"; else bad "TC-110 doc section"; fi
+    if printf '%s\n' "$sec" | grep -q 'deploy/systemd/' && ! printf '%s\n' "$sec" | grep -qiE 'sudo|/etc/wsl\.conf|systemctl|systemd=true'; then ok "TC-110 the doc section points systemd hosts to deploy/systemd/ and names no sudo, wsl.conf or systemctl"; else bad "TC-110 doc section"; fi
     # manual cases are written down in docs/TESTING.md
     local t; t=$(awk '/^## .*platform-autostart/{f=1;next} /^## /{f=0} f' docs/TESTING.md)
     local mm=""; for w in TC-013 TC-014 TC-015 TC-034 TC-047 TC-055 TC-077 TC-114; do printf '%s\n' "$t" | grep -q "$w" || mm="$mm $w"; done

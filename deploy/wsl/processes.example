@@ -1,0 +1,14 @@
+# processes.example - the list abf-supervise.sh reads. Copy it to
+# ~/.config/abf-platform/processes, fill in the <placeholders>, then run:
+#   chmod 600 ~/.config/abf-platform/processes
+#   <this-repo>/deploy/wsl/abf-supervise.sh --check
+#
+# One process per line: <name> <full command>. A name uses [a-z0-9-] and is used once.
+# Use absolute paths (a login task has a short PATH). No token goes in this file: a
+# station reads its token from the file named by --token-file.
+serve       <venv>/bin/abf-platform serve
+web         <venv>/bin/abf-platform web --public-url <public-url>
+mcp         <venv>/bin/abf-platform mcp --http --public-url <public-url>
+station-1   <venv>/bin/abf-station run --platform http://127.0.0.1:8787 --token-file <token-file-1> --deployment <deployment-folder> --plugin-root <plugin-root>
+station-2   <venv>/bin/abf-station run --platform http://127.0.0.1:8787 --token-file <token-file-2> --deployment <deployment-folder> --plugin-root <plugin-root>
+station-3   <venv>/bin/abf-station run --platform http://127.0.0.1:8787 --token-file <token-file-3> --deployment <deployment-folder> --plugin-root <plugin-root>
