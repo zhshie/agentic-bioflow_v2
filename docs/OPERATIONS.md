@@ -62,6 +62,26 @@ post to the public URL (see "Public URL" in section 5).
 Check either set-up as in "Public URL" (section 5). The whole procedure on a rented server, from
 nothing to a working address, is under "Hosting one lab" (section 5).
 
+### Giving a person the commands for their own computer
+
+A person who works in RStudio on their own computer needs three things from you: a token, the address, and the package. What the commands do is in
+docs/PLATFORM.md, "Commands on your own computer".
+
+1. **The token.** On the machine that runs the platform: `abf-platform user add <name> --lab <lab>` once, then `abf-platform pat new --user <name>`. The
+   token is shown once; hand it over through a channel that is not a chat room others read, and never put it in a file of this repository. It does not
+   expire; `abf-platform pat list` shows the ids and `abf-platform pat revoke <id>` ends one (the person then gets "the token is wrong or revoked" and
+   asks you for a new one).
+2. **The address.** It is the https address people open: the value of `ABF_PUBLIC_URL` in `~/.config/abf-platform/env`, or the one `tailscale funnel status`
+   prints when Funnel is the way in. Give the address alone (the https address people open); the commands add `/mcp` themselves, and an
+   address with a path is refused. The person then runs the `studio-connect` command of the package once, with `--server https://<address>`.
+3. **The package.** The commands are part of this repository's `platform/` package: on their computer, in a clone of the repository,
+   `pip install ./platform` (a virtual environment is advised), which gives them `abf-platform`. The repository is private: ask its owner to give the
+   person read access (a collaborator on the repository, or a read-only deploy key) before they clone it. There is no separate download yet.
+
+On Windows the settings file is `%USERPROFILE%\.abf\studio.json`. It holds the token in clear text, so it must not be in a folder that a cloud-sync
+service copies (OneDrive, Dropbox and the like); the command says so once when it stores the file. If the public address does not answer, the person sees
+that it does not, with the address: check that the machine, Caddy, `abf-mcp` and Funnel are running (section 3).
+
 ## 3. Keeping them running
 
 The three processes start at boot and come back after a crash under systemd. This repository
