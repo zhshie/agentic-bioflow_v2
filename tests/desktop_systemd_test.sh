@@ -273,4 +273,21 @@ if ! printf '%s\n%s\n%s\n' "$sec" "$tsec" "$ps1" | grep -iE 'hidden window|in a 
 if hasre "$sec" 'flash' && hasre "$sec" 'minimi[sz]e' && hasre "$sec" '[Rr]eport' && hasre "$tsec" 'minimi[sz]e' && hasre "$tsec" 'report'; then ok "D9 docs: a window may flash; if it stays, minimise it, do not close it, report"; else bad "D9 docs say what to do if a window stays"; fi
 if has "$sec" 'ExecutionPolicy Bypass' && hasre "$sec" 'right-click|right click' && hasre "$sec" 'Run with PowerShell'; then ok "D9 docs: execution-policy fallback (right-click, Run with PowerShell)"; else bad "D9 execution-policy note"; fi
 
+# ---------- ruling E (second acceptance): the WSL section followed literally ----------
+# E1: do not invent a data folder; the existing runs must be visible after enabling
+if hasre "$sec" '^\*\*重要' && hasre "$sec" '[Dd]elete the .?ABF_PLATFORM_DB' && hasre "$sec" '[Dd]elete .*ABF_SITE_ADDRESS|ABF_SITE_ADDRESS.*Caddy' && hasre "$sec" '(never|do not|Do not) invent' && hasre "$sec" 'empty platform' && hasre "$sec" 'exactly the same value|identical value|same value'; then ok "E1 the 重要 paragraph: delete ABF_PLATFORM_DB and ABF_SITE_ADDRESS, never invent a folder, same value if exported"; else bad "E1 the 重要 paragraph about ABF_PLATFORM_DB"; fi
+if hasre "$sec" 'existing (runs|analyses|analysis records)' && hasre "$sec" '(otherwise|if (it is|the list is) empty).*stop|stop.*(empty|otherwise)'; then ok "E1 checkpoint: existing runs must be visible after enable, otherwise stop"; else bad "E1 checkpoint: existing runs visible, otherwise stop"; fi
+if grep -F 'Desktop platform in WSL' deploy/env.example >/dev/null; then ok "E1 deploy/env.example points to the WSL section"; else bad "E1 deploy/env.example points to the WSL section"; fi
+# E2: no wide pkill; list narrowly, kill by number; save the command lines before the shutdown
+if ! has "$sec" 'pkill' && ! has "$sec" "abf-platform|abf-station" && has "$sec" "pgrep -af 'abf-(platform|station) (serve|web|mcp|run)'" && hasre "$sec" 'kill <(process )?(number|id|pid)'; then ok "E2 no wide pkill pattern; narrow pgrep, kill by process number"; else bad "E2 no wide pkill pattern / narrow pgrep"; fi
+l_save=$(lineno 'pgrep -af' "$sec"); l_sd=$(lineno '`wsl --shutdown`' "$sec")
+if [ -n "$l_save" ] && [ -n "$l_sd" ] && [ "$l_save" -lt "$l_sd" ] && hasre "$sec" 'XDG_' && has "$sec" '8787' && has "$sec" '8788' && has "$sec" '8789' && has "$sec" '--public-url'; then ok "E2 command lines and ABF_/PATH/JAVA_HOME/XDG_ saved before the shutdown; ports and flags compared"; else bad "E2 save the command lines before the shutdown" "$l_save $l_sd"; fi
+# E3: reconnect with on_site.sh, never reset_master.sh
+if has "$sec" 'scripts/on_site.sh --check-reach' && has "$sec" 'scripts/on_site.sh --check-master; echo $?' && ! has "$sec" 'reset_master' && hasre "$sec" '25 seconds' && hasre "$sec" 'without a restart|no restart|need not restart|does not need a restart' && hasre "$sec" 'same (terminal|window)'; then ok "E3 reconnect: --check-reach line, OTP, --check-master prints 0, agent re-checks in 25 s, never reset_master"; else bad "E3 reconnect steps"; fi
+# E4: all preparation before the shutdown; after it only check, daemon-reload, enable, status
+l_dr=$(lineno 'daemon-reload' "$sec"); l_en=$(lineno 'enable --now abf-serve' "$sec"); l_cps=$(printf '%s\n' "$sec" | grep -nE 'cp deploy/' | tail -n1 | cut -d: -f1); l_sed=$(lineno 'sed -i' "$sec"); l_conf=$(lineno 'sudo nano /etc/wsl.conf' "$sec")
+if [ -n "$l_sd" ] && [ -n "$l_dr" ] && [ -n "$l_cps" ] && [ -n "$l_sed" ] && [ -n "$l_conf" ] && [ "$l_cps" -lt "$l_sd" ] && [ "$l_sed" -lt "$l_sd" ] && [ "$l_conf" -lt "$l_sd" ] && [ "$l_sd" -lt "$l_dr" ] && [ "$l_dr" -lt "$l_en" ] && hasre "$sec" 'stopped from .*until|stays down' && hasre "$sec" 'few minutes'; then ok "E4 wsl.conf, env files and unit files are done before the shutdown; daemon-reload and enable come after; outage stated"; else bad "E4 preparation before the shutdown" "$l_conf $l_cps $l_sed $l_sd $l_dr $l_en"; fi
+# E5: no hard-coded venv folder in the sed line; a command that finds it
+if ! printf '%s\n' "$sec" | grep -E 'sed -i' | grep -F 'abf-venv' >/dev/null && hasre "$sec" 'venv folder' && hasre "$sec" '[Ff]ind'; then ok "E5 the sed line has no hard-coded venv name; a command finds it"; else bad "E5 sed hard-codes the venv folder"; fi
+
 [ "$fails" -eq 0 ]
