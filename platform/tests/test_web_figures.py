@@ -730,7 +730,7 @@ def test_damaged_index_refuses_pack_and_delete_with_one_sentence(w):
               delete_post(c, rid, "zz.png", tok=td), delete_post(c, rid, "a.png", tok=td)):
         assert r.status_code == 400, r.status_code
         assert "圖庫暫時無法讀取" in r.text and str(folder) not in r.text and "Traceback" not in r.text
-        seen.append(re.sub(r"<[^>]+>", "", r.text).split("未變更")[0][-40:])
+        seen.append(re.search(r'<p class="bad state-failed">(.*?)</p>', r.text, re.S).group(1))
         assert tree(folder) == before
     assert len(set(seen)) == 1, seen
     r = c.post("/run/figures/pack", data={"csrf": tp, "run": rid, "fig": [], "lang": "en"})

@@ -17,6 +17,7 @@ STRINGS = {
         "in_folder": "在輸出資料夾", "no_files": "無檔案", "no_multiqc": "該次未產生", "unread": "尚未讀取輸出", "see_outputs": "查看輸出",
         "download": "下載交付包", "dl_head": "下載結果檔", "dl_big": "大於 25 MB", "dl_more": "其餘檔案請至「%s」。",
         "g_title": "圖庫", "g_empty": "圖庫為空。可請自己的 LLM 以 MCP 工具 publish_figure 提出圖，經本人在確認頁按「送出」後存入。",
+        "g_broken": "圖庫暫時無法讀取。請稍後再試；若持續發生，請回報給平台管理者。",
         "g_pending": "有存入圖庫的申請待您在確認頁按「送出」。", "g_pending_link": "前往確認頁",
         "g_label": "使用者與 LLM 產生", "g_packed": "已打包", "g_unpacked": "未打包", "g_download": "下載",
         "g_code": "檢視程式碼與參數", "g_code_h": "程式碼", "g_params_h": "參數", "g_pick": "選取 %s",
@@ -40,6 +41,7 @@ STRINGS = {
         "dl_head": "Download result files", "dl_big": "Over 25 MB", "dl_more": "Other files: see %s.",
         "g_title": "Figure gallery", "g_empty": "The gallery is empty. Ask your own LLM to propose figures with the MCP tool publish_figure; "
                    "they are stored after you press Send on the confirmation page.",
+        "g_broken": "The gallery cannot be read right now. Try again later; if it continues, tell the platform administrator.",
         "g_pending": "A request to add figures to the gallery waits for you to press Send on the confirmation page.",
         "g_pending_link": "Open the confirmation page",
         "g_label": "Made by the user and an LLM", "g_packed": "Packed", "g_unpacked": "Not packed", "g_download": "Download",
@@ -208,7 +210,9 @@ def _gallery(t, lang, run, gallery):
         note = ('<p role="status"><span class="sym">…</span> %s <a href="/c/%s">%s</a></p>'
                 % (_e(t["g_pending"]), _e(gallery["pending"]), _e(t["g_pending_link"])))
     figs = gallery.get("figures") or []
-    if not figs:
+    if gallery.get("error"):      # a damaged index.json is said so; it is not an empty gallery (ruling G2), and no path is shown
+        body = '<p class="bad state-failed" role="status"><span class="sym">✗</span> %s</p>' % _e(t["g_broken"])
+    elif not figs:
         body = '<p class="muted" role="status"><span>—</span> %s</p>' % _e(t["g_empty"])
     else:
         token = gallery.get("csrf") or {}
@@ -234,6 +238,8 @@ def refusal_page(lang, answer):
         line = t["gr_bad"] + " " + t["gr_none"]
     elif reason == "too_many":
         line = t["gr_many"] + " " + t["gr_none"]
+    elif reason == "unreadable":
+        line = t["g_broken"] + " " + t["gr_none"]
     else:
         line = t["gr_fail"]
     back = answer.get("back", "/")

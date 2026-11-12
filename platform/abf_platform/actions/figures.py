@@ -614,7 +614,7 @@ def pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time
     """Put exactly the named figures into the delivery package: they get packed=true and packed_at, every other figure of the run is set back to
     packed=false (the package is the selection of this press; none at all is allowed and empties it). All or nothing: a name that is not in
     the gallery, too many names or an unreadable index refuse the whole call and index.json is not touched. {ok, found, count, names} or
-    {ok: False, found, reason, message}; reason is not_found, bad_name, too_many, unknown_name or write_failed."""
+    {ok: False, found, reason, message}; reason is not_found, bad_name, too_many, unknown_name, unreadable (index.json is damaged; checked before the names) or write_failed."""
     folder, _ = _own_folder(index_path, platform_path, run_id, caller)
     if folder is None:
         return _refused("not_found", NOT_YOURS, found=False)
@@ -625,11 +625,11 @@ def pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time
         return _refused(reason, "圖名不合規定，沒有變更任何內容 (a figure name is not valid; nothing was changed)", name=bad)
     with gallery_lock(folder):
         figures, problem = read_index(folder)
+        if problem:     # the damage is said before any name is looked at (ruling G2)
+            return _refused("unreadable", problem)
         for n in chosen:
             if n not in figures:
                 return _refused("unknown_name", "圖庫裡沒有「%s」，沒有變更任何內容 (the gallery has no figure \"%s\"; nothing was changed)" % (n, n), name=n)
-        if problem:
-            return _refused("write_failed", problem)
         if not figures:
             return {"ok": True, "found": True, "count": 0, "names": []}
         stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
@@ -653,10 +653,10 @@ def delete_figure(index_path, platform_path, run_id, name, *, caller):
         return _refused("bad_name", "圖名不合規定，沒有刪除任何內容 (a figure name is not valid; nothing was deleted)", name=bad)
     with gallery_lock(folder):
         figures, problem = read_index(folder)
+        if problem:
+            return _refused("unreadable", problem)
         if name not in figures:
             return _refused("unknown_name", "圖庫裡沒有「%s」，沒有刪除任何內容 (the gallery has no figure \"%s\"; nothing was deleted)" % (name, name), name=name)
-        if problem:
-            return _refused("write_failed", problem)
         rest = {k: v for k, v in figures.items() if k != name}
         try:
             _write_index(folder, rest)
