@@ -643,3 +643,33 @@ def test_index_updates_do_not_lose_each_other(w, monkeypatch):
     listed = sorted(real_read(str(folder))[0])
     on_disk = sorted(p.name for p in folder.iterdir() if p.suffix in (".png",))
     assert listed == on_disk == ["b.png", "new.png"], (listed, on_disk)
+
+
+def test_failed_index_write_leaves_no_temporary_file(w, monkeypatch):
+    # ruling G4 (lead, 2026-11-13): a failure while the temporary index is written (not only at the replace) leaves no .tmp-idx-* file behind
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("a.png",))
+    before = tree(gallery(w, ann, run))
+    real = os.fdopen
+
+    class Broken:
+        def __init__(self, f):
+            self.f = f
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            self.f.close()
+
+        def write(self, data):
+            raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(figures.os, "fdopen", lambda fd, mode="r", *a, **k: Broken(real(fd, mode, *a, **k)))
+    got = pack(w, ann, run, ["a.png"])
+    monkeypatch.undo()
+    assert got["ok"] is False and got["reason"] == "write_failed"
+    assert [p.name for p in gallery(w, ann, run).iterdir() if p.name.startswith(".tmp")] == []
+    assert tree(gallery(w, ann, run)) == before
