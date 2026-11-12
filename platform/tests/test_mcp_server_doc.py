@@ -14,7 +14,7 @@ NUMBERS = {"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
 EXPECTED = {
     "list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
     "list_site_files", "list_used_pipelines", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "run_outputs", "read_run_file", "read_task_log",
-    "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch",
+    "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "publish_figure",
 }
 
 
@@ -37,7 +37,7 @@ def test_registered_tools_are_the_known_twenty_one():
     # TC-012
     tools = _tools()
     assert {n for n, _ in tools} == EXPECTED
-    assert len(tools) == 22
+    assert len(tools) == 23
     assert sum(1 for _, a in tools if a == "_READ_ONLY") == 15      # ruling R2: get_run is _QUERY now
 
 

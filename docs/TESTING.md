@@ -1194,3 +1194,14 @@ Automatic tests: `platform/tests/test_site_connection_status.py`, `platform/test
 3. Existing assertions were changed only where the plan allows: the two tool descriptions (`test_actions_layer.py` BASELINE), `test_su_in_get_run.py` (a compute environment without `suSite` is no longer the default site), `test_refusal_visibility.py` (TC-090 lets the agent facts carry `site_link`) and two lines of `ASPECT_GAPS` that closed.
 
 Procedure P2 additions: read the PITFALLS entry 60 (its Check line names the new tests), and confirm `configs/sites/nchc-nano4-ce.json` has `"suSite": "nano4"` and `configs/sites/su_rates.json` has the `nano4` partitions `ngs*` and `big-mem*`.
+
+## mcp-publish-figure (slice 1): the reviewer checks by hand
+
+Needs a running platform, one user with one finished run, and an MCP client logged in as that user.
+
+1. Ask the client to call `publish_figure` with `run_id` of the run and one small png in `figures` (with `code` and `params`). The answer must say nothing is written yet and give a `/c/<id>` address. Look in `<figures>/<user id>/<run id>/`: it must not exist yet.
+2. Open the address while logged in as the same user. The page is titled 存入圖庫確認, shows the file name, size, code (opened) and parameters, and one 送出 button; the tab order and the button colours are those of the other confirmation pages. Press 送出: the page says 已存入圖庫 1 張 and links to the run. The folder now holds the png, `<name>.code.txt`, `<name>.params.txt` and `index.json`.
+3. Press 送出 again (back button): the same words, still one figure. Send the same file name again with other code: the page marks 覆蓋既有同名圖; after 送出 the gallery still has one entry.
+4. Log in as another user and open the first address: the page must refuse. Call `publish_figure` as that user with the first user's `run_id`: the answer is the same as for a run that does not exist.
+5. Send an SVG containing `<script>`: refused whole, no page address. Send 11 figures: refused, and no request is made.
+6. Open the page in English (`?lang=en`) and at 390 px width: no line is cut off, and each state shows a symbol, words and a colour.

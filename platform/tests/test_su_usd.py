@@ -242,7 +242,7 @@ def test_tc033_parity_and_read_only():
     canvas = {"find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}
     for name in canvas:
         assert callable(getattr(cat_actions, name, None)) or callable(getattr(pipe_actions, name, None)), name
-    for name in tools - {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"} - canvas:
+    for name in tools - {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget", "publish_figure"} - canvas:
         assert callable(getattr(actions, name, None)), name
     # TC-049: get_run alone moved to _QUERY (ruling R2); my_usage stays read-only
     assert re.search(r'name="get_run", annotations=_QUERY', src)

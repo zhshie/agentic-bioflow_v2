@@ -1531,7 +1531,7 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
     nobody =("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單）。請改用終端機指令 `abf-platform %s`，或用帶權杖的 HTTP 連線 "
               "(no one can say yes here: use the terminal command, or HTTP with a token)" % tool)
     if done is not None:
-        nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單），無法確認，沒有存入任何圖。請改用帶權杖的 HTTP 連線 "
+        nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單），無法確認，沒有存入任何圖。請改用 abf-platform 的帶權杖 HTTP 連線 (http) "
                   "(no one can say yes here, so nothing was stored: use HTTP with a token)")
     if caller is None and not form:
         return _no(nobody)

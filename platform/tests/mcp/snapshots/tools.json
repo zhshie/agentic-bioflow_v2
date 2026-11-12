@@ -488,6 +488,50 @@
   {
     "inputSchema": {
       "properties": {
+        "figures": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Figures",
+          "type": "array"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat.",
+          "title": "Request Id"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "user_confirmed": {
+          "default": false,
+          "description": "True only after the person themselves answered yes in the chat to this request; never fill it in for them.",
+          "title": "User Confirmed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "run_id",
+        "figures"
+      ],
+      "title": "publish_figure_toolArguments",
+      "type": "object"
+    },
+    "name": "publish_figure"
+  },
+  {
+    "inputSchema": {
+      "properties": {
         "offset": {
           "default": 0,
           "title": "Offset"

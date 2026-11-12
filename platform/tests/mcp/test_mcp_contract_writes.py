@@ -9,7 +9,7 @@ import pytest
 from helpers import tool_json, tool_text
 from resume_harness import Rig
 
-WRITE_TOOLS = ["cancel", "forget", "launch", "launch_pipeline", "relaunch", "resume"]
+WRITE_TOOLS = ["cancel", "forget", "launch", "launch_pipeline", "publish_figure", "relaunch", "resume"]
 
 # Real write points of the action layer: a call that is only a question must never reach one of them.
 FORBIDDEN = [("abf_platform.confirm", "approve"), ("abf_platform.actions", "approve"), ("abf_platform.actions", "launch"),
@@ -40,7 +40,8 @@ def make_rig(tmp_path, monkeypatch):
 def call_args(rig, tool):
     return {"launch": lambda: rig.w.choices(run="run-new"), "launch_pipeline": lambda: {"pipeline_id": 999999, "run_name": "run-new", "samplesheet_text": "a,b\n1,2\n"},
             "cancel": lambda: {"run_name": "run-c"}, "forget": lambda: {"run_name": "run-f"},
-            "resume": lambda: {"run_name": "run-r"}, "relaunch": lambda: {"run_name": "run-r"}}[tool]()
+            "resume": lambda: {"run_name": "run-r"}, "relaunch": lambda: {"run_name": "run-r"},
+            "publish_figure": lambda: {"run_id": "id-run-f", "figures": [{"filename": "a.png", "content_base64": "iVBORw0KGgoAAAAA"}]}}[tool]()
 
 
 def dump(rig):
@@ -110,6 +111,7 @@ ERROR_INPUTS = {
     "my_usage": {"month": "nope-month"},
     "run_outputs": {"run_id": "nope-run-zz"},
     "read_run_file": {"run_id": "nope-run-zz", "path": "nope.txt"},
+    "publish_figure": {"run_id": "nope-run-zz", "figures": [{"filename": "a.png", "content_base64": "iVBORw0KGgo="}]},
     "read_task_log": {"run_name": "nope-run-zz", "task": "nope-task", "which": "out"},
     "find_module": {"q": "zzznomodule"},
     "describe_module": {"name": "nope_module_zz"},

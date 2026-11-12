@@ -247,7 +247,7 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
         return {"ok": False, "sent": False, "state": "refused", "request_id": None, "url": None, "count": 0, "reason": reason, "message": reason}
     view = _owned_run(index_path, platform_path, run_id, caller)
     if view is None:
-        return refused(NOT_YOURS)
+        return refused("找不到 run「%s」。請用 list_runs 查自己的 run 編號後再送 (run not found: %s; use list_runs to see your own run ids)" % (str(run_id)[:80], str(run_id)[:80]))
     try:
         built = _build_figures(figures)
         folder = run_folder(plat, _caller_id(caller), run_id)
