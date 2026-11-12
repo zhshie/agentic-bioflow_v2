@@ -334,22 +334,29 @@ def _chmod(path, mode):
         pass
 
 
+class GalleryBusy(OSError):
+    """The gallery lock could not be taken. An OSError, so the confirmed write ends in slice 1's write-failed path."""
+
+
+BUSY_MESSAGE = "圖庫目前無法變更，請稍後再試。沒有變更任何內容 (The gallery cannot be changed right now, please try again later. Nothing was changed.)"
+
+
 @contextlib.contextmanager
 def gallery_lock(folder):
     """One lock for each gallery folder, held from the read of index.json to its replace (ruling G1): pack, delete and the confirmed write all
     read the index and replace it whole, so two of them at once lose an update. It is a flock on the folder itself, taken on a handle of its own
     each time, so it holds between processes and between the web server's workers alike; there is no lock file, because a gallery folder holds
-    only its figures and index.json. A folder that is not there is not locked: there is no index to lose."""
+    only its figures and index.json. A folder that is not there is not locked: there is no index to lose. A lock that cannot be taken raises GalleryBusy."""
     key = os.path.realpath(folder)
     fd = None
     if fcntl is not None and os.path.isdir(key):
         try:
             fd = os.open(key, os.O_RDONLY)
             fcntl.flock(fd, fcntl.LOCK_EX)
-        except OSError:
+        except OSError as e:        # never go on without the lock (ruling K3): the operation is refused and changes nothing
             if fd is not None:
                 os.close(fd)
-                fd = None
+            raise GalleryBusy(e.errno or 0, "the gallery lock could not be taken") from None
     try:
         yield
     finally:
@@ -621,7 +628,15 @@ def _clean_names(names):
     return out, None, None
 
 
-def pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time.time):
+def pack_figures(*a, **k):
+    """_pack_figures, except that a gallery lock that cannot be taken is refused with reason busy and nothing is changed (ruling K3)."""
+    try:
+        return _pack_figures(*a, **k)
+    except GalleryBusy:
+        return _refused("busy", BUSY_MESSAGE)
+
+
+def _pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time.time):
     """Put exactly the named figures into the delivery package: they get packed=true and packed_at, every other figure of the run is set back to
     packed=false (the package is the selection of this press; none at all is allowed and empties it). All or nothing: a name that is not in
     the gallery, too many names or an unreadable index refuse the whole call and index.json is not touched. {ok, found, count, names} or
@@ -652,10 +667,18 @@ def pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time
     return {"ok": True, "found": True, "count": len(chosen), "names": chosen}
 
 
-def delete_figure(index_path, platform_path, run_id, name, *, caller):
+def delete_figure(*a, **k):
+    """_delete_figure, with the same refusal when the gallery lock cannot be taken (ruling K3)."""
+    try:
+        return _delete_figure(*a, **k)
+    except GalleryBusy:
+        return _refused("busy", BUSY_MESSAGE)
+
+
+def _delete_figure(index_path, platform_path, run_id, name, *, caller):
     """Remove one figure of the caller's own run: its image, its code and its parameters, and its entry in index.json (so it leaves the package
     too). {ok, found, name} or {ok: False, found, reason, message}. The index is written first, so a file that cannot be removed afterwards is
-    only a leftover that nothing lists. Only files inside the run's own gallery folder are ever removed."""
+    only a leftover (the files go inside the lock) that nothing lists. Only files inside the run's own gallery folder are ever removed."""
     folder, _ = _own_folder(index_path, platform_path, run_id, caller)
     if folder is None:
         return _refused("not_found", NOT_YOURS, found=False)
@@ -673,9 +696,9 @@ def delete_figure(index_path, platform_path, run_id, name, *, caller):
             _write_index(folder, rest)
         except OSError:
             return _refused("write_failed", "未能刪除，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not delete; the gallery is unchanged. Try again later or tell the administrator)")
-    for leaf in (name, name + ".code.txt", name + ".params.txt"):
-        try:
-            os.unlink(os.path.join(folder, leaf))
-        except OSError:
-            pass
+        for leaf in (name, name + ".code.txt", name + ".params.txt"):       # still inside the lock (ruling K2): a same-named figure written next cannot lose its file
+            try:
+                os.unlink(os.path.join(folder, leaf))
+            except OSError:
+                pass
     return {"ok": True, "found": True, "name": name}
