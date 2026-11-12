@@ -358,10 +358,8 @@ PUBLISH_FIGURE_STORE_LINES = {
 }
 
 
-def test_no_schema_change():
-    # TC-032
-    # three-dot compare with origin/v3: a newer local origin/v3 snapshot no longer causes a false red
-    # refresh origin/v3 first; if that is impossible, skip with the reason (never pass silently)
+def fetch_origin_v3():
+    """Refresh origin/v3 (CI checkouts are shallow and lack it). Returns None when it is there, else the reason it could not be fetched."""
     # In a local mirror clone, origin is the worktree whose own origin/v3 is the fresh one (its v3 is stale):
     # that ref exists only there, so try it first; against GitHub it fails and we fetch v3 itself.
     def _fetch(src):
@@ -371,7 +369,17 @@ def test_no_schema_change():
     if f.returncode != 0:
         f = _fetch("v3")
     if f.returncode != 0:
-        pytest.skip("cannot fetch origin/v3: " + (f.stderr or f.stdout).strip()[:200])
+        return "cannot fetch origin/v3: " + (f.stderr or f.stdout).strip()[:200]
+    return None
+
+
+def test_no_schema_change():
+    # TC-032
+    # three-dot compare with origin/v3: a newer local origin/v3 snapshot no longer causes a false red
+    # refresh origin/v3 first; if that is impossible, skip with the reason (never pass silently)
+    why = fetch_origin_v3()
+    if why:
+        pytest.skip(why)
     # mcp-publish-figure: the one change to the schema paths that is allowed is the new confirmation kind publish_figure in store.py (its CHECK,
     # its migration test and the figures_root setting); every other changed line, in any of the three paths, still fails this test.
     diff = subprocess.run(["git", "diff", "-U0", "origin/v3...HEAD", "--"] + SCHEMA_PATHS, cwd=str(HERE.parent), capture_output=True, text=True).stdout

@@ -398,6 +398,10 @@ def test_existing_kinds_unchanged(w):
 
 def test_constitution_untouched():
     # TC-089
+    from test_mcp_launch_pipeline import fetch_origin_v3
+    why = fetch_origin_v3()
+    if why:
+        pytest.skip(why)
     root = Path(__file__).resolve().parents[2]
     r = subprocess.run(["git", "diff", "origin/v3", "--", ".specify/memory/constitution.md"], cwd=str(root), capture_output=True)
     if r.returncode != 0:
@@ -660,6 +664,10 @@ def test_confirm_page_states_say_it_in_words(w):
 def test_page_headers_and_css_are_unchanged(w):
     # TC-052 (a missing origin/v3 is a skip with its reason, never a silent pass)
     from abf_platform import web
+    from test_mcp_launch_pipeline import fetch_origin_v3
+    why = fetch_origin_v3()
+    if why:
+        pytest.skip(why)
     try:
         base = subprocess.run(["git", "show", "origin/v3:platform/abf_platform/web.py"], capture_output=True, cwd=str(Path(web.__file__).parent))
     except OSError as e:
