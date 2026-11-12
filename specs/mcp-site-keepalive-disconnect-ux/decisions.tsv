@@ -14,3 +14,4 @@ ts	phase	decision	why	evidence	result
 2026-11-12T11:00	red-green	照 11-11 深夜裁決動工，雖然派工說既有程式應已符合	上一輪卡住時沒動程式；TC 已在 f7de2c6a 改成與裁決一致，矛盾已消除	6c26aa8d	RED 4 支 pytest 紅、shell 測試逾時（舊迴圈）
 2026-11-12T11:05	green	keepalive_log.sh 單次執行，上一次狀態從 log 讀回；ISO 轉秒用 bash 算術而不是 date -d	裁決禁止常駐迴圈；portable_userland.sh 不准 date -d	scripts/keepalive_log.sh:30	keepalive_log_test 34 項、no_second_run_state、portable_userland 綠
 2026-11-12T11:06	repin	重釘 test_web_settings_ce_mobile.py 的 zh STRINGS 雜湊	zh 紅條文字依裁決由 run 改為分析，字串表雜湊必然改變	platform/tests/test_web_settings_ce_mobile.py	該檔 10 綠；wording sweep 19 綠
+2026-11-12T17:40	evidence	不改 meta refresh，改以 base 對照證明它是既有的	修掉會動既有自動重整行為與 test_web_board.py:923 的斷言，超出計畫範圍；base 同一規則同一節點已在 UI2.md 記錄	web_board.py:956 @9ae086b2; docs/reports/cloud-burn-2026-11/UI2.md:18	已寫入 summary.md 與 ledger

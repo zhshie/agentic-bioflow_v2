@@ -106,3 +106,5 @@ ts=2026-11-12T11:06:34+08:00 machine=DESKTOP-7J5L5BJ event=reopened
 - [x] zh／en × 1440／390 截圖重拍、keepalive 實演重跑（見上面兩節）。
 - 上一節列的兩個卡點（DAEMON 閘、用字閘）因此都解掉：`no_second_run_state_test.sh`、`test_keep_submissions.py`、`test_resume_edit_params_station.py`、`test_web_wording_sweep.py` 已綠。
 - 全套結果見本輪 executor 報告與 `executor-status`。
+
+- 2026-11-12 對照 base：axe `meta-refresh` 在 base 9ae086b2 就存在（web_board.py:956；UI2.md 同一規則同一節點），本件沒碰它；`.linkbar` 無 serious／critical。見 screenshots/summary.md。
