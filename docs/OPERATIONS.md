@@ -72,8 +72,8 @@ docs/PLATFORM.md, "Commands on your own computer".
    expire; `abf-platform pat list` shows the ids and `abf-platform pat revoke <id>` ends one (the person then gets "the token is wrong or revoked" and
    asks you for a new one).
 2. **The address.** It is the https address people open: the value of `ABF_PUBLIC_URL` in `~/.config/abf-platform/env`, or the one `tailscale funnel status`
-   prints when Funnel is the way in. Give the address alone (for example `https://<host>.<tailnet>.ts.net`); the commands add `/mcp` themselves, and an
-   address with a path is refused. The person runs `abf-platform studio-connect --server https://<address>` once.
+   prints when Funnel is the way in. Give the address alone (the https address people open); the commands add `/mcp` themselves, and an
+   address with a path is refused. The person then runs the `studio-connect` command of the package once, with `--server https://<address>`.
 3. **The package.** The commands are part of this repository's `platform/` package: on their computer, in a clone of the repository,
    `pip install ./platform` (a virtual environment is advised), which gives them `abf-platform`. The repository is private: ask its owner to give the
    person read access (a collaborator on the repository, or a read-only deploy key) before they clone it. There is no separate download yet.

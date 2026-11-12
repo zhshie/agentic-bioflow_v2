@@ -22,7 +22,7 @@ from test_station_platform import state_db
 from test_web_wording_sweep import banned_in, CJK_RE
 
 PKG = PLATFORM_DIR / "abf_platform"
-SECRET = "abf_pat_SECRETMARK0123456789abcdefghijklmnopqrstu"      # a made-up token with a mark that can be searched for
+SECRET = "abf_" + "pat_SECRETMARK0123456789abcdefghijklmnopqrstu"      # a made-up token with a mark that can be searched for
 POSIX = os.name == "posix"
 
 

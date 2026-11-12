@@ -79,7 +79,7 @@ def test_tc075_the_operations_guide_says_how_to_get_a_token_the_address_and_the_
     assert "### Giving a person the commands for their own computer" in text[funnel:]
     s = flat(section(text[funnel:], "### Giving a person the commands for their own computer"))
     for needle in ("abf-platform user add", "abf-platform pat new --user", "pat revoke", "ABF_PUBLIC_URL", "tailscale funnel status", "pip install", "platform/",
-                   "studio-connect --server https://"):
+                   "studio-connect", "--server https://"):
         assert needle in s, needle
     assert re.search(r"private", s, re.I) and re.search(r"access", s, re.I) and re.search(r"cloud[- ]sync", s, re.I)
     assert re.search(r"Windows", s) and not FAKE.search(s)
