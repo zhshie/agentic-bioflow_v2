@@ -53,3 +53,14 @@
 
 - bash 測試 `tests/desktop_systemd_test.sh`（比照 `tests/hosted_deploy_test.sh` 的風格），先寫會失敗的測試。
 - 全套以 PR 上的 CI 為準。
+
+## 裁決（lead，2026-11-13，回應 verifier P1–P8）
+
+P1 範例檔放 `deploy/station.env.example`（不放 `deploy/systemd/` 下）。`tests/hosted_deploy_test.sh` 點名改兩處、其餘不動：TC-069 的檔案清單加入 `deploy/systemd/abf-station@.service.in`、`deploy/station.env.example`、`deploy/wsl/keep-wsl-running.ps1`；TC-083 的 `.service.in` 數由 3 改 4。
+P2 站台 unit 只帶 `NoNewPrivileges=true`（附一句註解），不帶 `PrivateTmp`、`ProtectHome`、`ProtectSystem`、`PrivateNetwork`、`RestrictAddressFamilies`、`ReadOnlyPaths`、`ReadWritePaths`。
+P3 站台 unit 加 `RestartPreventExitStatus=2 3`：設定有錯或權杖被拒就停在 failed，不無止境重試。
+P4 文件寫明 agent 拒絕啟動的原因看 `journalctl --user -u 'abf-station@<名字>'`。
+P5 排程工作明設：執行時間不設上限、用電池也啟動、換電池不停止、同時只留一個實例、隱藏、觸發器指定目前使用者、一般權限。
+P6 照建議：兩個 `EnvironmentFile` 都不加 `-`；env 檔的 `PATH` 要寫完整；用 `%i`；agent 名字只用英數、底線、點。
+P7 linger 與保活工作兩者都要，文件照實寫可能需要 sudo、`systemd=true` 需要新版 WSL（`wsl --update`）、沒有人登入 Windows 時不會啟動。這幾點實際行為是人工項。
+P8 照建議。
