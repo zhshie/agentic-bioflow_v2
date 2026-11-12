@@ -65,6 +65,29 @@ def _mb(n):
     return "%.1f" % (n / (1024 * 1024))
 
 
+_UNSEEN = ("Cc", "Cf", "Cs", "Zl", "Zp")          # control, format (bidi, zero width), surrogate, line and paragraph separators
+_LONG_SPACE = re.compile(r"[^\S\r\n]{9,}")
+
+
+def _safe(value, limit=80):
+    """A piece of what the caller sent, fit to be echoed in a refusal: no control, format or surrogate character, at most `limit` characters (ruling N2)."""
+    return "".join(ch for ch in str(value) if unicodedata.category(ch) not in _UNSEEN)[:limit]
+
+
+def _lone_surrogate(value):
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return True
+    return False
+
+
+def _squeeze(text):
+    """For display only (ruling N1): a run of more than 8 blank characters is shown as 8, so padding cannot push a forged line to the start of a
+    visual line. What is stored is never passed through here."""
+    return _LONG_SPACE.sub(" " * 8, text)
+
+
 # ---- checks (before any request exists, and again when the person says yes) -----------------------------------------------------
 
 def check_name(name):
@@ -73,7 +96,7 @@ def check_name(name):
         raise FigureRefused("檔名是空的或不是文字 (the file name is empty or not text)")
     if not _NAME.fullmatch(name) or ".." in name:
         raise FigureRefused("檔名「%s」不合規定：只能用英數字、點、底線與連字號，開頭須是英數字，最長 80 字元，不可有空白、斜線或「..」 "
-                            "(the file name is not allowed: letters, digits, dot, underscore and hyphen only, at most 80 characters)" % name[:80])
+                            "(the file name is not allowed: letters, digits, dot, underscore and hyphen only, at most 80 characters)" % _safe(name))
     low = name.lower()
     if low in _RESERVED or low.endswith(_RESERVED_SUFFIXES):
         raise FigureRefused("檔名「%s」是平台保留的名稱 (that file name is reserved)" % name)
@@ -94,8 +117,10 @@ def _text_problem(value, label, limit, unit):
         encoded = value.encode("utf-8")
     except UnicodeEncodeError:
         raise FigureRefused("%s 含有不成對的代理字元，不是正確的文字 (%s contains a lone surrogate, which is not valid text)" % (label, label))
-    if label == "caption" and any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in value):
-        raise FigureRefused("caption 不可含換行或控制字元（說明只能是單行文字）(the caption must be one line of text: no line break or control character)")
+    if label == "caption" and any(unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp") for ch in value):
+        raise FigureRefused("caption 不可含換行、控制字元或不可見的格式字元（說明只能是單行文字）(the caption must be one line of text: no line break, control or invisible format character)")
+    if label != "caption" and any((unicodedata.category(ch) == "Cc" and ch not in "\n\t") or unicodedata.category(ch) in ("Cf", "Zl", "Zp") for ch in value):
+        raise FigureRefused("%s 含有控制字元或不可見的格式字元（只有換行與 Tab 可以）(%s contains a control or invisible format character; only a line break and a tab are allowed)" % (label, label))
     size = len(value) if unit == "chars" else len(encoded)
     if size > limit:
         raise FigureRefused("%s 超過上限（%d %s）(%s is over the limit of %d %s)" % (
@@ -140,7 +165,7 @@ def _build_figures(figures):
             if not isinstance(f, dict):
                 raise FigureRefused("每張圖要是含 filename 與 content_base64 的物件 (each figure must be an object with filename and content_base64)")
             name = f.get("filename")
-            label = "第 %d 張「%s」" % (i, name if isinstance(name, str) else "")
+            label = "第 %d 張「%s」" % (i, _safe(name) if isinstance(name, str) else "")
             kind = check_name(name)
             if name.lower() in seen:
                 raise FigureRefused("同一批內有重複的檔名 (the same file name twice in one call)")
@@ -252,12 +277,36 @@ def _screen(run_name, figures, existing, lang="zh"):
         else:
             lines.append("Parameters: none" if en else "參數：無")
         lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
+    return _squeeze("\n".join(lines).rstrip() + "\n")
 
 
 def screen_for_page(bundle, replaces, lang):
     """The screen text of a stored request in `lang`, for the confirmation page."""
     return _screen(bundle["run_name"], bundle["figures"], set(replaces or ()), lang)
+
+
+def _identity(entry):
+    """Which figure an index entry is: the request that wrote it (its creation time for an entry that has none)."""
+    return entry.get("request_id") or entry.get("created") or ""
+
+
+def _own_request(platform_path, request_id, caller_id):
+    """The stored bundle of the caller's own publish_figure request, else None: somebody else's request is not read at all (ruling N6)."""
+    if not isinstance(request_id, str) or not request_id or len(request_id) > 64:
+        return None
+    con = store.open_readonly(platform_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute("SELECT bundle_json FROM confirmations WHERE id = ? AND kind = 'publish_figure' AND caller_user_id IS ? "
+                          "AND bundle_json IS NOT NULL AND channel IS NOT 'TERMINAL'", (request_id, caller_id)).fetchone()
+    finally:
+        con.close()
+    try:
+        bundle = json.loads(row["bundle_json"]) if row is not None else None
+    except (TypeError, ValueError):
+        return None
+    return bundle if isinstance(bundle, dict) else None
 
 
 async def request_publish_figure(platform_path, *, run_id, figures, caller=None, person=None, clock=time.time, remote=False, index_path=None,
@@ -270,9 +319,12 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
 
     def refused(reason):
         return {"ok": False, "sent": False, "state": "refused", "request_id": None, "url": None, "count": 0, "reason": reason, "message": reason}
+    if (isinstance(run_id, str) and _lone_surrogate(run_id)) or (isinstance(figures, list) and any(
+            isinstance(f, dict) and isinstance(f.get("filename"), str) and _lone_surrogate(f["filename"]) for f in figures)):
+        return refused("run 編號或檔名含有不成對的代理字元，不是正確的文字，未送出 (the run id or a file name contains a lone surrogate, which is not valid text; nothing was sent)")
     view = _owned_run(index_path, platform_path, run_id, caller)
     if view is None:
-        return refused("找不到 run「%s」。請用 list_runs 查自己的 run 編號後再送 (run not found: %s; use list_runs to see your own run ids)" % (str(run_id)[:80], str(run_id)[:80]))
+        return refused("找不到 run「%s」。請用 list_runs 查自己的 run 編號後再送 (run not found: %s; use list_runs to see your own run ids)" % (_safe(run_id), _safe(run_id)))
     confirm.drop_figure_content(plat, _caller_id(caller), clock)       # the next request of the same person drops the bytes of what is over (void, expired)
     try:
         built = _build_figures(figures)
@@ -286,14 +338,18 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
         if len(set(existing) | names) > MAX_PER_RUN:
             raise FigureRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
         replaces = sorted(names & set(existing))
-        stored = confirm.facts(plat, request_id) if isinstance(request_id, str) and user_confirmed else None
-        if stored and stored.get("what") == "publish_figure":
-            replaces = stored["replaces"]          # a repeated call that carries the yes: what the screen said, not what the gallery says now (it changed by that very yes)
+        ids = {n: _identity(existing[n]) for n in replaces}
+        stored = _own_request(plat, request_id, _caller_id(caller)) if isinstance(request_id, str) and user_confirmed is True else None
+        if stored:
+            replaces = stored.get("replaces", replaces)          # a repeated call that carries the yes: what the screen said, not what the gallery says now (it changed by that very yes)
+            ids = stored.get("replaces_ids")
         bundle = {"run_name": view["name"], "run_id": run_id, "figures": built, "replaces": replaces}
+        if ids is not None:
+            bundle["replaces_ids"] = ids          # which figure each name was when the screen was made (ruling N4)
         size = len(json.dumps(bundle).encode())
         if size > MAX_BUNDLE_BYTES:
             raise FigureRefused(SIZE_MESSAGE % _mb(size))
-        if not (isinstance(request_id, str) and user_confirmed):        # a call that only relays a yes makes no new request
+        if not (isinstance(request_id, str) and user_confirmed is True):        # a call that only relays a yes makes no new request
             waiting = confirm.pending_figure_bytes(plat, _caller_id(caller), clock, except_sha=common.bundle_sha256(bundle))
             if waiting + size > MAX_PENDING_BYTES:
                 raise FigureRefused(PENDING_MESSAGE % (_mb(waiting), _mb(size)))
@@ -379,6 +435,43 @@ def _stage(folder, final_name, data, tag):
     return temp, os.path.join(folder, final_name)
 
 
+INCONSISTENT_MESSAGE = ("寫入失敗，而且舊檔也沒能全部還原：這個圖庫可能處於不一致的狀態，請回報給平台管理者 (the write failed and the old files "
+                        "could not all be put back: the gallery may be inconsistent; tell the platform administrator)")
+
+
+def _restore(folder, path, old):
+    """Put one file back to the bytes it had (`old` None: it was not there): through a temporary name and a replace, like every write here."""
+    if old is None:
+        if os.path.exists(path):
+            os.unlink(path)
+        return
+    temp, final = _stage(folder, os.path.basename(path), old, "undo")
+    try:
+        os.replace(temp, final)
+    except BaseException:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
+    _chmod(final, 0o600)
+
+
+def _sweep_tmp(folder):
+    """Remove the .tmp-* files a killed write left in the gallery folder. Called with the gallery lock held, before a write: no other writer is
+    staging then, because every writer stages inside the lock (ruling N3)."""
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return
+    for leaf in names:
+        if leaf.startswith(".tmp-"):
+            try:
+                os.unlink(os.path.join(folder, leaf))
+            except OSError:
+                pass
+
+
 def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
     """Write the figures of a confirmed request. Everything is checked once more (names, bytes, the number in the gallery); JobRefused when
     it no longer passes, any other error when the disk says no. On any failure nothing stays behind and every file that was touched,
@@ -406,6 +499,7 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
 
 def _commit(folder, built, bundle, rid, now):
     """The part of write_confirmed that reads and replaces index.json; it runs with the gallery lock held."""
+    _sweep_tmp(folder)
     existing, problem = read_index(folder)
     if len(set(existing) | {f["name"] for f, _ in built}) > MAX_PER_RUN:
         raise jobs.JobRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
@@ -420,8 +514,12 @@ def _commit(folder, built, bundle, rid, now):
     if sorted(replacing) != sorted(bundle.get("replaces", [])):
         raise jobs.JobRefused("圖庫在申請送出後有變動，會被取代的圖與確認畫面上寫的不同，沒有寫入任何圖，請重新提出 "
                               "(the gallery changed after the request was made: what would be replaced is not what the screen said; nothing was written)")
+    ids = bundle.get("replaces_ids")
+    if ids is not None and any(ids.get(n) != _identity(existing[n]) for n in replacing):
+        raise jobs.JobRefused("要取代的圖在申請送出後已被換過，與確認畫面上寫的不是同一張，沒有寫入任何圖，請重新提出 "
+                              "(a figure this request would replace is no longer the one the screen showed; nothing was written)")
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
-    staged, replaced, backups = [], [], {}
+    staged, replaced, backups, touched = [], [], {}, []
     index = {k: dict(v) for k, v in existing.items()}
     try:
         for f, data in built:
@@ -449,11 +547,13 @@ def _commit(folder, built, bundle, rid, now):
                 backups[path] = None
         for temp, final in staged:
             os.replace(temp, final)
+            touched.append(final)
             _chmod(final, 0o600)
             replaced.append(temp)
         for path in stale:
             try:
                 os.unlink(path)
+                touched.append(path)
             except OSError:
                 pass
     except BaseException:
@@ -463,17 +563,14 @@ def _commit(folder, built, bundle, rid, now):
                     os.unlink(temp)
                 except OSError:
                     pass
-        for path, old in backups.items():       # every file the write touched goes back to the bytes it had (or is removed when it was not there)
+        stuck = False
+        for path in touched:       # every file the write changed goes back to the bytes it had (or is removed when it was not there)
             try:
-                if old is None:
-                    if os.path.exists(path):
-                        os.unlink(path)
-                else:
-                    with open(path, "wb") as restored:
-                        restored.write(old)
-                    _chmod(path, 0o600)
+                _restore(folder, path, backups.get(path))
             except OSError:
-                pass
+                stuck = True
+        if stuck:       # the old bytes could not all be put back: never say that nothing was stored (ruling N3)
+            raise jobs.JobRefused(INCONSISTENT_MESSAGE) from None
         raise
 
 
@@ -650,6 +747,7 @@ def _pack_figures(index_path, platform_path, run_id, names, *, caller, clock=tim
             return _refused(reason, "一次最多選 %d 張圖，沒有變更任何內容 (at most %d figures at a time; nothing was changed)" % (MAX_PER_RUN, MAX_PER_RUN))
         return _refused(reason, "圖名不合規定，沒有變更任何內容 (a figure name is not valid; nothing was changed)", name=bad)
     with gallery_lock(folder):
+        _sweep_tmp(folder)
         figures, problem = read_index(folder)
         if problem:     # the damage is said before any name is looked at (ruling G2)
             return _refused("unreadable", problem)
@@ -686,6 +784,7 @@ def _delete_figure(index_path, platform_path, run_id, name, *, caller):
     if chosen is None:
         return _refused("bad_name", "圖名不合規定，沒有刪除任何內容 (a figure name is not valid; nothing was deleted)", name=bad)
     with gallery_lock(folder):
+        _sweep_tmp(folder)
         figures, problem = read_index(folder)
         if problem:
             return _refused("unreadable", problem)

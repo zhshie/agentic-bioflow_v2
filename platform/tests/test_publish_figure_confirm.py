@@ -681,7 +681,7 @@ def test_page_headers_and_css_are_unchanged(w):
         assert m_old and m_new, name + " is not found, so nothing was compared"
         assert m_old.group(0) == m_new.group(0), name
     routes = lambda t: sorted(re.findall(r"@app\.route\(\"([^\"]+)\"|Route\(\"([^\"]+)\"", t))
-    assert routes(src) and sorted(routes(old) + [("", "/run/figure"), ("", "/run/figure/delete"), ("", "/run/figures/pack")]) == routes(src)      # slice 2 (mcp-publish-figure-gallery) adds these three routes
+    assert routes(src) and sorted(routes(old) + [r for r in (("", "/run/figure"), ("", "/run/figure/delete"), ("", "/run/figures/pack")) if r not in routes(old)]) == routes(src)      # slice 2 (mcp-publish-figure-gallery) adds these three routes; once origin/v3 has them they are in `old` already
     # the stylesheet (and so the sha256 the CSP names) lives in web_board.py: that file is not touched at all
     board = subprocess.run(["git", "diff", "--stat", "origin/v3", "--", "platform/abf_platform/web_board.py"], capture_output=True, cwd=str(Path(web.__file__).parent))
     assert board.returncode == 0 and board.stdout == b""
@@ -787,7 +787,7 @@ def test_n1_long_runs_of_spaces_are_collapsed_on_every_screen_but_not_in_the_fil
     run = seed(w, "r1", "succeeded", ann)
     pad = " " * 300
     code = "x = 1" + pad + "[2] other.png\n" + " " * 8 + "ok\n"
-    got = call(w, ann, run, [fig("a.png", caption="c" + pad + "d", code=code, params="k" + pad + "= 1")])
+    got = call(w, ann, run, [fig("a.png", caption="c" + " " * 150 + "d", code=code, params="k" + pad + "= 1")])
     assert got["state"] == "pending" and " " * 9 not in got["summary"] and "[2] other.png" in got["summary"]
     assert " " * 8 + "ok" in got["summary"]                                              # a run of 8 is left alone
     assert " " * 9 not in w.confirmations()[0]["screen_text"]
@@ -863,7 +863,7 @@ def test_n3_a_failed_write_that_restores_fine_still_says_nothing_was_stored(w, m
 
 def test_n3_leftover_temporary_files_are_removed_before_the_next_write(w):
     # N3: a kill between two replaces leaves .tmp-* files; the next write into that gallery (confirm, pack, delete) clears them
-    from abf_platform import actions
+    from abf_platform.actions import figures
     ann = w.user("ann")
     run = seed(w, "r1", "succeeded", ann)
     press(w, "ann", call(w, ann, run, [fig("a.png")])["request_id"])
@@ -874,9 +874,9 @@ def test_n3_leftover_temporary_files_are_removed_before_the_next_write(w):
         if step == "confirm":
             press(w, "ann", call(w, ann, run, [fig("b.png")])["request_id"])
         elif step == "pack":
-            assert actions.pack_figures(w.ip.index, w.ip.state_db, run, ["a.png"], caller=ann)["ok"]
+            assert figures.pack_figures(w.ip.index, w.ip.state_db, run, ["a.png"], caller=ann)["ok"]
         else:
-            assert actions.delete_figure(w.ip.index, w.ip.state_db, run, "b.png", caller=ann)["ok"]
+            assert figures.delete_figure(w.ip.index, w.ip.state_db, run, "b.png", caller=ann)["ok"]
         assert not [p for p in folder.iterdir() if p.name.startswith(".tmp-")], step
     assert (folder / "a.png").exists()
 
