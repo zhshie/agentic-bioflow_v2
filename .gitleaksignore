@@ -1,6 +1,7 @@
-# Closed list: the gitleaks findings (35 hits, 26 distinct fingerprints) examined and approved as
-# false positives by the maintainer on 2026-11-12. Rules in .gitleaks.toml are untouched.
-# tests/gitleaksignore_test.sh pins the count; adding a line is a reviewed act.
+# Closed list: 26 fingerprints. The examined report (2026-11-12) had 34 findings = 25 distinct
+# fingerprints, approved as false positives by the maintainer; one more (a made-up test token in
+# platform/tests/test_studio_remote.py, commit 1b6dcaae) was added after it. Rules in .gitleaks.toml are untouched.
+# tests/gitleaksignore_test.sh pins the count and the contents; adding a line is a reviewed act.
 
 # Report documents (docs/reports): example token/header strings quoted in prose; R4.md line is a truncated 13-character placeholder that matched no token on the production platform.
 064f30b85b6d1bc3eb5e20343f39fcc27b664c14:docs/reports/cloud-burn-2026-11/AR06.md:generic-api-key:74
