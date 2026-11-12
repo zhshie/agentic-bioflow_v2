@@ -375,7 +375,10 @@ def test_tc073_the_pinned_tests_are_still_there_and_the_contract_files_were_not_
             assert "def %s(" % n in text, (fname, n)
     git = subprocess.run(["git", "cat-file", "-e", "3d106d5f"], cwd=REPO_ROOT, capture_output=True)
     if git.returncode == 0:
-        diff = subprocess.run(["git", "diff", "--stat", "3d106d5f", "HEAD", "--", "specs/cli-fetch-publish-figure/plan.md",
-                               "specs/cli-fetch-publish-figure/test-case.md", "specs/cli-fetch-publish-figure/test-case-overview.md"],
-                              cwd=REPO_ROOT, capture_output=True, text=True)
+        # the lead appends rulings to plan.md after acceptance (an addition is allowed, a deletion or a changed line is not); the two test files stay as they were
+        diff = subprocess.run(["git", "diff", "--stat", "3d106d5f", "HEAD", "--", "specs/cli-fetch-publish-figure/test-case.md",
+                               "specs/cli-fetch-publish-figure/test-case-overview.md"], cwd=REPO_ROOT, capture_output=True, text=True)
         assert diff.stdout.strip() == "", diff.stdout
+        plan = subprocess.run(["git", "diff", "--numstat", "3d106d5f", "HEAD", "--", "specs/cli-fetch-publish-figure/plan.md"],
+                              cwd=REPO_ROOT, capture_output=True, text=True)
+        assert all(line.split()[1] == "0" for line in plan.stdout.splitlines()), plan.stdout

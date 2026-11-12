@@ -104,10 +104,6 @@ def _t(key, **kw):
     return STRINGS[studio_remote.lang()][key].format(**kw)
 
 
-def _say(text):
-    cliout.say(text)
-
-
 def _bad(text):
     cliout.err(text)
 
@@ -239,7 +235,7 @@ class _Report:
     def skip(self, rel, why, problem=False):
         self.skipped.append(rel)
         if len(self.skipped) <= LIST_LIMIT:
-            _say(_t("skip", rel=rel, why=why))
+            cliout.say(_t("skip", rel=rel, why=why))
         self.problem = self.problem or problem
 
     def fail(self, rel, reason):
@@ -364,7 +360,7 @@ async def _fetch(args):
             else:
                 _bad(_why(root))
             return 1
-        _say(_t("folder_line", path=folder))
+        cliout.say(_t("folder_line", path=folder))
         await _list(session, run_id, report, candidates, "", 1, root, compute_env)
         base, total = folder.resolve(), 0
         for index, (rel, size) in enumerate(candidates):
@@ -397,29 +393,29 @@ async def _fetch(args):
                     continue
                 total += len(data)
                 report.got.append(rel)
-                _say(_t("got_over" if over else "got", rel=rel, size=len(data)))
+                cliout.say(_t("got_over" if over else "got", rel=rel, size=len(data)))
     return _finish(report, folder)
 
 
 def _finish(report, folder):
     if report.hidden.get("limit"):
-        _say(_t("more", n=report.hidden["limit"]))
+        cliout.say(_t("more", n=report.hidden["limit"]))
     if len(report.skipped) > LIST_LIMIT:
-        _say(_t("more", n=len(report.skipped) - LIST_LIMIT))
+        cliout.say(_t("more", n=len(report.skipped) - LIST_LIMIT))
     if report.pending:
         names = "、".join(report.pending[:LIST_LIMIT]) if studio_remote.lang() == "zh" else ", ".join(report.pending[:LIST_LIMIT])
         _bad(_t("pending", names=names))
     line = _t("summary", got=len(report.got), skipped=len(report.skipped))
     if report.failed:
         line += _t("summary_fail", failed=len(report.failed))
-    _say(line + _t("summary_tail", path=folder))
+    cliout.say(line + _t("summary_tail", path=folder))
     if report.incomplete:
-        _say(_t("incomplete"))
+        cliout.say(_t("incomplete"))
     if report.failed or report.pending:
         _bad(_t("fail_end"))
     code = r_snippet(report.got, folder)
     if code:
-        _say(code)
+        cliout.say(code)
     cliout.set_data({"folder": str(folder), "fetched": report.got, "skipped": report.skipped, "failed": report.failed})
     return 1 if (report.problem or report.failed or report.incomplete) else 0
 
@@ -447,12 +443,12 @@ def cmd_studio_connect(args):
         path, replaced = studio_remote.save_config(server, token)
     except studio_remote.StudioError as e:
         return _fail(e)
-    _say(studio_remote.tr("server_line", server=server))
-    _say(studio_remote.tr("saved", path=path))
+    cliout.say(studio_remote.tr("server_line", server=server))
+    cliout.say(studio_remote.tr("saved", path=path))
     if replaced:
-        _say(studio_remote.tr("overwritten"))
+        cliout.say(studio_remote.tr("overwritten"))
     if not studio_remote.permission_bits_trusted():
-        _say(studio_remote.tr("cloud_note"))
+        cliout.say(studio_remote.tr("cloud_note"))
     cliout.set_data({"server": server, "settings_file": str(path), "replaced": replaced})
     return 0
 
