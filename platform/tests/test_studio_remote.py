@@ -34,8 +34,7 @@ def _world(tmp_path, monkeypatch):
         if k.startswith("ABF_"):
             monkeypatch.delenv(k)
     monkeypatch.setenv("LC_ALL", "zh_TW.UTF-8")
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))      # not the HOME variable: a subprocess would lose the user site-packages
     monkeypatch.setenv("ABF_STUDIO_CONFIG", str(tmp_path / "cfg" / "studio.json"))
     (tmp_path / "home").mkdir()
     from abf_platform import studio_remote
@@ -72,6 +71,15 @@ def write_config(tmp_path, server, token=SECRET, mode=0o600):
     if POSIX:
         os.chmod(cfg_path(tmp_path), mode)
     return cfg_path(tmp_path)
+
+
+def no_connection(monkeypatch):
+    """Any attempt to open the MCP transport fails the test: the check of the settings file comes before every connection."""
+    import mcp.client.streamable_http as transport
+
+    def boom(*a, **k):
+        raise AssertionError("a connection was made")
+    monkeypatch.setattr(transport, "streamable_http_client", boom)
 
 
 def words_ok(text):
@@ -231,11 +239,7 @@ def test_tc009_the_environment_token_wins_over_the_file(tmp_path, capsys, monkey
 
 def test_tc010_not_configured_says_what_to_do_exit_2_and_does_not_connect(tmp_path, capsys, monkeypatch):
     # TC-010
-    from abf_platform import studio_remote
-
-    def boom(*a, **k):
-        raise AssertionError("a connection was made")
-    monkeypatch.setattr(studio_remote, "open_session", boom)
+    no_connection(monkeypatch)
     rc, out, err = main(["fetch-results", "r1"], capsys)
     assert rc == 2 and "abf-platform studio-connect --server" in err
     assert not (tmp_path / "home" / "abf-results").exists() and not cfg_path(tmp_path).exists()
@@ -246,11 +250,9 @@ def test_tc010_not_configured_says_what_to_do_exit_2_and_does_not_connect(tmp_pa
 def test_tc011_a_config_others_can_read_is_refused(tmp_path, capsys, monkeypatch):
     # TC-011
     path = write_config(tmp_path, "https://platform.example", mode=0o644)
-    called = []
-    from abf_platform import studio_remote
-    monkeypatch.setattr(studio_remote, "open_session", lambda *a, **k: called.append(1))
+    no_connection(monkeypatch)
     rc, out, err = main(["fetch-results", "r1"], capsys)
-    assert rc == 2 and "chmod 600 %s" % path in err and called == []
+    assert rc == 2 and "chmod 600 %s" % path in err
     assert SECRET not in out + err
     words_ok(err)
 
@@ -328,7 +330,7 @@ def test_tc029_somebody_elses_run_and_a_missing_run_get_the_same_one_sentence(se
     write_config(tmp_path, server["url"], token=server["bob"])
     rc1, out1, err1 = main(["fetch-results", server["run"]], capsys)
     rc2, out2, err2 = main(["fetch-results", "no-such-run-0000"], capsys)
-    assert rc1 == rc2 == 1 and (out1, err1) == (out2, err2) and "Run not found" in out1 + err1
+    assert rc1 == rc2 == 1 and (out1, err1) == (out2, err2) and "Run not found" in out1 + err1, (rc1, out1, err1, rc2, out2, err2)
     assert not (tmp_path / "home" / "abf-results").exists()
     assert server["bob"] not in out1 + err1
 
@@ -393,7 +395,7 @@ def test_tc043_retries_at_most_twice_two_seconds_apart_and_always_ends(tmp_path,
     import asyncio
     from abf_platform import studio_remote
     source = (PKG / "studio_remote.py").read_text(encoding="utf-8")
-    assert re.search(r"^CALL_TIMEOUT = 30(\.0)?", source, re.M) and re.search(r"^RETRIES = 2", source, re.M) and re.search(r"^RETRY_DELAY = 2(\.0)?", source, re.M)
+    assert re.search(r"^CALL_TIMEOUT = 30(\.0)?\b", source, re.M) and re.search(r"^RETRIES = 2\b", source, re.M) and re.search(r"^RETRY_DELAY = 2(\.0)?\b", source, re.M)
     slept = []
 
     async def fake_sleep(s):
@@ -524,7 +526,7 @@ def test_tc082_the_commands_open_no_database(tmp_path, capsys, monkeypatch):
     # TC-082
     empty = tmp_path / "emptydb"
     empty.mkdir()
-    env = pkg_env(ABF_PLATFORM_DB=empty / "index.db", ABF_STUDIO_CONFIG=cfg_path(tmp_path), HOME=tmp_path / "home", USERPROFILE=tmp_path / "home")
+    env = pkg_env(ABF_PLATFORM_DB=empty / "index.db", ABF_STUDIO_CONFIG=cfg_path(tmp_path))
     r = subprocess.run([sys.executable, "-m", "abf_platform", "studio-connect", "--server", "https://platform.example", "--token-stdin", "--no-check"],
                        env=env, input=SECRET + "\n", capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stderr
@@ -576,8 +578,12 @@ def test_tc085_the_tools_the_commands_call_exist_on_the_server_and_are_the_slice
     called = set()
     for name in ("studio_cli.py", "studio_remote.py"):
         for n in ast.walk(ast.parse((PKG / name).read_text(encoding="utf-8"))):
-            if isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) == "call_tool" and n.args and isinstance(n.args[0], ast.Constant):
-                called.add(n.args[0].value)
+            if not isinstance(n, ast.Call):
+                continue
+            fn = getattr(n.func, "attr", getattr(n.func, "id", ""))
+            index = {"call_tool": 0, "_ask": 1}.get(fn)      # call_tool(name, args) and the polling helper _ask(session, name, args)
+            if index is not None and len(n.args) > index and isinstance(n.args[index], ast.Constant):
+                called.add(n.args[index].value)
     assert called == {"run_outputs", "read_run_file", "list_compute_envs"}, called
     tools, _ = mcp_http_call(server["url"] + "/mcp", [], token=server["alice"])
     assert called <= {t.name for t in tools}

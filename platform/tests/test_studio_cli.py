@@ -25,8 +25,7 @@ def _world(tmp_path, monkeypatch):
         if k.startswith("ABF_"):
             monkeypatch.delenv(k)
     monkeypatch.setenv("LC_ALL", "zh_TW.UTF-8")
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))      # not the HOME variable: a subprocess would lose the user site-packages
     (tmp_path / "home").mkdir()
     from abf_platform import studio_cli
     monkeypatch.setattr(studio_cli, "POLL_SECONDS", 0.01)
@@ -279,10 +278,10 @@ def test_tc032_the_help_says_what_it_is_and_what_it_is_not_and_has_no_user_optio
 def test_tc033_the_asv_and_counts_tables_get_one_read_line_each_and_the_text_is_fixed():
     # TC-033
     from abf_platform import studio_cli
-    a = studio_cli.r_snippet(["ASV_table.tsv", "counts.csv", "notes.md"], "/home/u/abf-results/r1")
-    assert a == studio_cli.r_snippet(["ASV_table.tsv", "counts.csv", "notes.md"], "/home/u/abf-results/r1")
-    assert 'read.delim(file.path("/home/u/abf-results/r1", "ASV_table.tsv"), check.names = FALSE, row.names = 1)' in a
-    assert 'read.csv(file.path("/home/u/abf-results/r1", "counts.csv"), check.names = FALSE, row.names = 1)' in a
+    a = studio_cli.r_snippet(["ASV_table.tsv", "counts.csv", "notes.md"], "/data/u/abf-results/r1")
+    assert a == studio_cli.r_snippet(["ASV_table.tsv", "counts.csv", "notes.md"], "/data/u/abf-results/r1")
+    assert 'read.delim(file.path("/data/u/abf-results/r1", "ASV_table.tsv"), check.names = FALSE, row.names = 1)' in a
+    assert 'read.csv(file.path("/data/u/abf-results/r1", "counts.csv"), check.names = FALSE, row.names = 1)' in a
     assert a.count("read.") == 2 and "notes.md" not in a
     assert "Console" in a.splitlines()[0]
     assert studio_cli.r_snippet(["feature-table.tsv", "Abundance.tsv"], "/d").count("read.delim(") == 2

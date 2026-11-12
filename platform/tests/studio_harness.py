@@ -149,7 +149,7 @@ class Stub:
         self._t.start()
 
     def initialize_posts(self):
-        return [r for r in self.requests if r[0] == "POST"]
+        return [r for r in self.requests if r[0] == "POST" and b'"method":"initialize"' in r[2]]
 
     def stop(self):
         self.server.shutdown()
