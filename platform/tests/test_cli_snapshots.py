@@ -31,6 +31,11 @@ def _lf(text):
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _unwrap_ellipsis(text):
+    """The one wrap difference between python versions: a line that is only `...` (argparse's subcommand remainder) joins the line before."""
+    return re.sub(r"\n[ ]+\.\.\.(?=\n)", " ...", text)
+
+
 def assert_golden(name, text, golden_dir=None):
     """Compare text with <golden_dir>/<name>.txt; fail with a unified diff. Never writes unless ABF_UPDATE_GOLDEN=1 (and then still fails)."""
     path = Path(golden_dir or GOLDEN_DIR) / (name + ".txt")
@@ -44,7 +49,7 @@ def assert_golden(name, text, golden_dir=None):
         raise AssertionError("snapshot %s is missing (it is never created by a plain run); generate it with ABF_UPDATE_GOLDEN=1, read it, commit it" % path.name)
     with open(path, encoding="utf-8", newline="") as f:
         old = _lf(f.read())
-    if old == text:
+    if _unwrap_ellipsis(old) == _unwrap_ellipsis(text):   # python 3.14 argparse keeps the trailing "..." on the usage line; <=3.13 wrapped it
         return
     diff = "".join(difflib.unified_diff(old.splitlines(True), text.splitlines(True), "committed/" + path.name, "actual/" + path.name))
     if update:

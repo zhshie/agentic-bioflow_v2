@@ -672,7 +672,7 @@ def test_no_inline_style_or_script_in_gallery(w):
 def test_style_untouched(w):
     # TC-065
     from abf_platform import web_board
-    assert hashlib.sha256(web_board.STYLE.encode("utf-8")).hexdigest().startswith("719ce2ab")
+    assert hashlib.sha256(web_board.STYLE.encode("utf-8")).hexdigest().startswith("15f0b560")
     ann, c, rid = setup(w)
     page = c.get(url(rid)).text
     classes = set(re.findall(r'class="([^"]+)"', gallery_part(page)))

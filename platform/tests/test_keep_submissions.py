@@ -705,7 +705,7 @@ def test_tc094_tc095_tc104_eleven_tools_and_the_column_names_scan_still_catches_
                      "list_site_files", "list_used_pipelines", "my_usage", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
     saying_yes = {"yes", "y", "confirm", "confirmed", "confirmation", "confirmation_id", "approve", "approved", "kind", "command"}
     for t in tools:
-        if t.name in ("launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"):
+        if t.name in ("launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget", "publish_figure"):
             assert t.annotations.read_only_hint is False and not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
         else:
             assert t.annotations.read_only_hint is (t.name != "get_run"), t.name      # ruling R2: get_run queues a read of the site for a lost run
@@ -771,7 +771,7 @@ def test_tc083_no_new_confirmation_kind_and_approve_knows_nothing_of_forget():
     # TC-083
     from abf_platform import confirm, store
     assert set(confirm.JOB_KIND) == {"launch", "cancel", "clean_work"}
-    assert "CHECK (kind IN ('launch', 'cancel', 'clean_work'))" in store.STATE_SCHEMA
+    assert "CHECK (kind IN ('launch', 'cancel', 'clean_work', 'publish_figure'))" in store.STATE_SCHEMA    # mcp-publish-figure: the one kind added, it queues no job
     assert "forget" not in inspect.getsource(confirm.approve)
 
 

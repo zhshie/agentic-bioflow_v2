@@ -147,7 +147,7 @@ Two consequences the command layer has to respect:
   M3 is pending (`docs/LAB_AGENTS.md`, §10). What is known rather than
   guessed: `ControlPersist` governs idle time, not survival; `wsl --shutdown`
   and the machine going to sleep are both known to end it. The paste-this
-  command also carries `-o ServerAliveInterval=60`, a client-side keepalive
+  command also carries `-o ControlPersist=yes` (no idle timeout; how long the site keeps the connection is measured by `scripts/keepalive_log.sh`, not assumed), `-o ServerAliveCountMax=10`, and `-o ServerAliveInterval=60`, a client-side keepalive
   sent every 60 s so a silently-dropped network path does not look identical
   to an idle one — this is ordinary ssh behaviour, not something measured at
   this site, and it is not a claim about whether the master survives a closed

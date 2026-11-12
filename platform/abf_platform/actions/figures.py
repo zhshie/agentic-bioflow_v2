@@ -20,12 +20,14 @@ import os
 import re
 import secrets
 import time
+import unicodedata
 
-from .. import jobs, status, store
+from .. import common, confirm, jobs, status, store
 
 MAX_FIGURES_PER_CALL = 10
 MAX_PER_RUN = 30
 MAX_BUNDLE_BYTES = 5 * 1024 * 1024
+MAX_PENDING_BYTES = 20 * 1024 * 1024        # the images one person may have waiting for a yes at the same time (the rows hold them until then)
 MAX_CAPTION_CHARS = 200
 MAX_CODE_BYTES = 100 * 1024
 MAX_PARAMS_BYTES = 10 * 1024
@@ -44,6 +46,8 @@ _SVG_EXTERNAL = re.compile(r"(?:href|src)\s*=\s*[\"']?\s*(?:https?:)?//|url\(\s*
 NOT_YOURS = "找不到這個 run (run not found)"      # the same words for a run that is not yours and one that is not there
 
 SIZE_MESSAGE = "這次送入的圖合計超過 5 MB 上限（目前 %s MB），請分次或縮小圖檔 (the figures together exceed the 5 MB limit; send fewer per call or smaller files)"
+PENDING_MESSAGE = ("等待確認的圖合計已達每人 20 MB 上限（目前 %s MB，這次 %s MB）；請先到確認頁處理、或等 10 分鐘逾時之後再送 "
+                   "(the figures waiting for a yes are over the limit of 20 MB per person; answer or wait for the open requests to expire, then send again)")
 FULL_MESSAGE = "這個分析的圖庫已滿（最多 %d 張）；請改用既有的檔名覆蓋，或請本人先到網頁刪除不要的圖 (the gallery of this run is full: at most %d figures; reuse a name to replace one)"
 
 
@@ -80,7 +84,13 @@ def _text_problem(value, label, limit, unit):
         raise FigureRefused("%s 必須是文字 (%s must be text)" % (label, label))
     if chr(0) in value:
         raise FigureRefused("%s 含有 NUL 字元，不是純文字 (%s contains a NUL character)" % (label, label))
-    size = len(value) if unit == "chars" else len(value.encode("utf-8", "surrogatepass"))
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise FigureRefused("%s 含有不成對的代理字元，不是正確的文字 (%s contains a lone surrogate, which is not valid text)" % (label, label))
+    if label == "caption" and any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in value):
+        raise FigureRefused("caption 不可含換行或控制字元（說明只能是單行文字）(the caption must be one line of text: no line break or control character)")
+    size = len(value) if unit == "chars" else len(encoded)
     if size > limit:
         raise FigureRefused("%s 超過上限（%d %s）(%s is over the limit of %d %s)" % (
             label, limit, "字元" if unit == "chars" else "位元組", label, limit, "characters" if unit == "chars" else "bytes"))
@@ -220,6 +230,7 @@ def _screen(run_name, figures, existing, lang="zh"):
     for i, f in enumerate(figures, 1):
         lines.append("[%d] %s" % (i, f["name"]))
         lines.append(("Type: %s   Size: %d bytes" if en else "類型：%s　大小：%d 位元組") % (f["type"], f["size"]))
+        lines.append(("SHA-256 (first 12): %s" if en else "SHA-256（前 12 碼）：%s") % f["sha256"][:12])
         if f["name"] in existing:
             lines.append("Replaces the figure of the same name" if en else "覆蓋既有同名圖 (replaces the figure of the same name)")
         lines.append(("Caption: %s" if en else "說明：%s") % (f["caption"] or "-"))
@@ -256,6 +267,7 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
     view = _owned_run(index_path, platform_path, run_id, caller)
     if view is None:
         return refused("找不到 run「%s」。請用 list_runs 查自己的 run 編號後再送 (run not found: %s; use list_runs to see your own run ids)" % (str(run_id)[:80], str(run_id)[:80]))
+    confirm.drop_figure_content(plat, _caller_id(caller), clock)       # the next request of the same person drops the bytes of what is over (void, expired)
     try:
         built = _build_figures(figures)
         folder = run_folder(plat, _caller_id(caller), run_id)
@@ -267,10 +279,18 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
                 raise FigureRefused("「%s」與圖庫裡的「%s」只差大小寫，請用相同的檔名 (the name differs from \"%s\" only in case)" % (n, lower[n.lower()], lower[n.lower()]))
         if len(set(existing) | names) > MAX_PER_RUN:
             raise FigureRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
-        bundle = {"run_name": view["name"], "run_id": run_id, "figures": built, "replaces": sorted(names & set(existing))}
+        replaces = sorted(names & set(existing))
+        stored = confirm.facts(plat, request_id) if isinstance(request_id, str) and user_confirmed else None
+        if stored and stored.get("what") == "publish_figure":
+            replaces = stored["replaces"]          # a repeated call that carries the yes: what the screen said, not what the gallery says now (it changed by that very yes)
+        bundle = {"run_name": view["name"], "run_id": run_id, "figures": built, "replaces": replaces}
         size = len(json.dumps(bundle).encode())
         if size > MAX_BUNDLE_BYTES:
             raise FigureRefused(SIZE_MESSAGE % _mb(size))
+        if not (isinstance(request_id, str) and user_confirmed):        # a call that only relays a yes makes no new request
+            waiting = confirm.pending_figure_bytes(plat, _caller_id(caller), clock, except_sha=common.bundle_sha256(bundle))
+            if waiting + size > MAX_PENDING_BYTES:
+                raise FigureRefused(PENDING_MESSAGE % (_mb(waiting), _mb(size)))
     except FigureRefused as e:
         return refused(str(e))
     text = _screen(view["name"], built, existing)
@@ -318,7 +338,9 @@ def _stage(folder, final_name, data, tag):
 
 def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
     """Write the figures of a confirmed request. Everything is checked once more (names, bytes, the number in the gallery); JobRefused when
-    it no longer passes, any other error when the disk says no. On any failure nothing stays behind and index.json is as it was."""
+    it no longer passes, any other error when the disk says no. On any failure nothing stays behind and every file that was touched,
+    index.json included, has the bytes it had before. The names are matched without regard to case, and what would be replaced must be what the
+    screen said (bundle["replaces"]); otherwise nothing is written."""
     try:
         folder = run_folder(platform_path, caller_user_id, bundle["run_id"])
         figures = bundle["figures"]
@@ -335,11 +357,22 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
     existing, problem = read_index(folder)
     if len(set(existing) | {f["name"] for f, _ in built}) > MAX_PER_RUN:
         raise jobs.JobRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
+    lower = {k.lower(): k for k in existing}
+    replacing = set()
+    for f, _ in built:
+        hit = lower.get(f["name"].lower())
+        if hit is not None and hit != f["name"]:
+            raise jobs.JobRefused("「%s」與圖庫裡的「%s」只差大小寫，沒有寫入任何圖，請用相同的檔名重新提出 (the name differs from \"%s\" only in case; nothing was written)" % (f["name"], hit, hit))
+        if hit is not None:
+            replacing.add(hit)
+    if sorted(replacing) != sorted(bundle.get("replaces", [])):
+        raise jobs.JobRefused("圖庫在申請送出後有變動，會被取代的圖與確認畫面上寫的不同，沒有寫入任何圖，請重新提出 "
+                              "(the gallery changed after the request was made: what would be replaced is not what the screen said; nothing was written)")
     for sub in (os.path.dirname(folder), folder):
         os.makedirs(sub, mode=0o700, exist_ok=True)
         _chmod(sub, 0o700)
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
-    staged, created, replaced = [], [], []
+    staged, replaced, backups = [], [], {}
     index = {k: dict(v) for k, v in existing.items()}
     try:
         for f, data in built:
@@ -359,9 +392,13 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
             for key, suffix, field in (("code_file", ".code.txt", "code"), ("params_file", ".params.txt", "params")):
                 if old.get(key) and not f[field]:
                     stale.append(os.path.join(folder, f["name"] + suffix))
+        for path in [final for _, final in staged] + stale:        # what is there now, to put back if any step fails
+            try:
+                with open(path, "rb") as old_file:
+                    backups[path] = old_file.read()
+            except FileNotFoundError:
+                backups[path] = None
         for temp, final in staged:
-            if not os.path.exists(final):
-                created.append(final)
             os.replace(temp, final)
             _chmod(final, 0o600)
             replaced.append(temp)
@@ -377,12 +414,17 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
                     os.unlink(temp)
                 except OSError:
                     pass
-        for final in created:
-            if os.path.basename(final) != "index.json" or not existing:
-                try:
-                    os.unlink(final)
-                except OSError:
-                    pass
+        for path, old in backups.items():       # every file the write touched goes back to the bytes it had (or is removed when it was not there)
+            try:
+                if old is None:
+                    if os.path.exists(path):
+                        os.unlink(path)
+                else:
+                    with open(path, "wb") as restored:
+                        restored.write(old)
+                    _chmod(path, 0o600)
+            except OSError:
+                pass
         raise
 
 

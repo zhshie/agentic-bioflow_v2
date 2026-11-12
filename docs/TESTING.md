@@ -1195,6 +1195,41 @@ Automatic tests: `platform/tests/test_site_connection_status.py`, `platform/test
 
 Procedure P2 additions: read the PITFALLS entry 60 (its Check line names the new tests), and confirm `configs/sites/nchc-nano4-ce.json` has `"suSite": "nano4"` and `configs/sites/su_rates.json` has the `nano4` partitions `ngs*` and `big-mem*`.
 
+## cli-fetch-publish-figure, slice 1 (studio-connect, fetch-results): the maintainer checks on his own computer
+
+Automatic tests: `platform/tests/test_studio_remote.py`, `test_studio_cli.py`, `test_studio_docs.py`, `test_web_downstream.py`. Four cases cannot be automatic (TC-039, TC-046, TC-047 and TC-055). Do them on another computer, one that is **not** the one that runs the platform (the desktop): the point is that the commands work with only the package, an address and a token. If you only have the platform's own computer, still use the public address (`https://...ts.net`), never `http://127.0.0.1`, and write "cross-computer not verified" in the ledger.
+
+**Set-up.** On the computer: a clone of the repository, `pip install ./platform` in a virtual environment, RStudio installed. On the platform's computer: `abf-platform user add <name> --lab <lab>` and `abf-platform pat new --user <name>` (docs/OPERATIONS.md, "Giving a person the commands for their own computer"). Have one run that has SUCCEEDED and whose results folder the site can list (the site connection open).
+
+**TC-047, across computers.**
+1. `abf-platform studio-connect --server https://<the public address>` and paste the token at the hidden prompt. It prints the address, "the token was stored in <path>" and, on Windows, the cloud-sync reminder. Run `ls -l <path>` (Windows: `icacls <path>`): the file must be readable by you only. Put that line in the ledger.
+2. `abf-platform fetch-results <run id>`. The first line is the folder (`~/abf-results/<run id>`); the tables of the results folder are there (the `.html` report and binary files are listed as skipped, with the reason).
+
+**TC-039, the R code.** Copy the code block the command printed (after "Paste the code below into the RStudio Console") into the RStudio Console. The ASV or counts table must load; open it with `View()` and look at it. Write down what you saw.
+
+**TC-046, the three bad cases.** Each must show a different sentence that you can follow, and no stack. Paste the three messages into the ledger.
+1. A wrong token: run `studio-connect` again with a made-up token (it is refused and the old file is kept), or set `ABF_PAT=abf_pat_wrong` for one `fetch-results`: the message says the token is wrong or revoked and to ask the administrator.
+2. The network off on your computer (flight mode): the message says to check the local network and names the address.
+3. Ask the maintainer to stop Funnel or the MCP service for a minute: the message says that the public address does not answer, names the address, and that the platform machine may be off or Funnel or the MCP service not running. It tries at most three times and ends.
+
+**TC-055, the page.** Open the run in the web board, `stage=downstream`, at 1440 and 390 px wide, in Chinese and in English (four screenshots). The two commands show in a block with the sentence "the platform does not run scripts; run the commands below on your own computer"; no `jupyter lab`, `docker run` or `publish-figure`. The axe scan must show nothing serious or critical. `scripts/dev/ui_check.py` has no `downstream` page: if Playwright cannot be used for it, write "axe UNVERIFIED" in the ledger. Do not save the screenshots in a Drive workspace.
+
+**The ledger** (`specs/cli-fetch-publish-figure/ledger.md`) must hold: `git diff --stat origin/v3...HEAD`; the new constants (`MAX_TOTAL_BYTES`, `MAX_FILES`, `MAX_DEPTH`, `POLL_SECONDS`, `DEADLINE_SECONDS` in studio_cli; `CALL_TIMEOUT`, `RETRIES`, `RETRY_DELAY` in studio_remote); the version of the `mcp` package and the functions of its client that the commands use; the `ls -l` line of the settings file; and which of the four manual cases were done where.
+
+## The red "site connection is down" bar (mcp-site-keepalive-disconnect-ux, TC-032): the maintainer looks at it
+
+No code needed. You need the platform's web page open in a browser and one agent that is running (the one on your WSL machine).
+
+1. Make the connection drop on purpose: in the WSL terminal where you logged in to the site, close the connection (or wait until it drops by itself). Wait about a minute for the agent to notice and report it.
+2. Open the platform's web page and log in (the board is the first page; also open "設定" and the new-analysis page). In English, add `?lang=en` to the address.
+3. What you should see, on every page, directly under the dark top bar and above the page itself: a pale red bar across the whole width, with a red cross and red text. In Chinese it reads 「站台連線已掉：請在執行 agent「<agent name>」那台機器的 WSL 終端機重新登入（貼上開連線指令並輸入 OTP）。已在跑的分析不受影響；新的分析在恢復前無法送出。」 In English it reads "The site connection is down. On the machine running agent "<agent name>", log in again in its WSL terminal (paste the connect line, type the one-time code). Runs already going are not affected; new runs cannot be sent until it is back." It must name your agent and say which terminal to go to, and it must say that runs already going are not affected.
+4. Make the window narrow (about phone width, 390 px): the bar is still there, the text wraps onto more lines, and the page does not scroll sideways.
+5. When it must NOT appear: while the connection is open; for an agent that is switched off (the page then shows no bar at all, because the platform does not know the state); and for someone else's agent (log in as another user).
+6. Log in again in the WSL terminal as the bar says, wait about a minute, reload: the bar is gone.
+7. While the bar is up, ask for a new run and say yes: the answer must be a refusal that names the same agent and the WSL terminal, and nothing is started.
+
+Pass: you saw the bar in step 3 and 4, did not see it in step 5, and it went away in step 6. Answer 好 or 不好 for the colours and the wording; a 不好 opens a new fix, it does not undo this feature. Screenshots from a throwaway platform with an online agent reporting a closed link are in `specs/mcp-site-keepalive-disconnect-ux/screenshots/`.
+
 ## mcp-publish-figure (slice 1): the reviewer checks by hand
 
 Needs a running platform, one user with one finished run, and an MCP client logged in as that user.
@@ -1204,7 +1239,8 @@ Needs a running platform, one user with one finished run, and an MCP client logg
 3. Press 送出 again (back button): the same words, still one figure. Send the same file name again with other code: the page marks 覆蓋既有同名圖; after 送出 the gallery still has one entry.
 4. Log in as another user and open the first address: the page must refuse. Call `publish_figure` as that user with the first user's `run_id`: the answer is the same as for a run that does not exist.
 5. Send an SVG containing `<script>`: refused whole, no page address. Send 11 figures: refused, and no request is made.
-6. Open the page in English (`?lang=en`) and at 390 px width: no line is cut off, and each state shows a symbol, words and a colour.
+6. Do not press 送出 on a fresh request: wait 10 分鐘 (10 minutes) and press it then (or open the page): the page says the request has expired (逾時), and the folder is still as it was (a request that nobody answered writes nothing). Then ask again for the same figure: the new request is made and the old one is not reused.
+7. Open the page in English (`?lang=en`) and at 390 px width: no line is cut off, and each state shows a symbol, words and a colour.
 
 ## mcp-publish-figure-gallery (slice 2): the maintainer and the reviewer check by hand
 

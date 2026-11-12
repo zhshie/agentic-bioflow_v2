@@ -216,3 +216,23 @@ source: 維護者 2026-11-07 方向裁示、2026-11-12 選 B（見「裁決」�
 - **FAIL**：任何不經確認就能到達的寫入路徑；動作層以外出現重複的邏輯（路由處理函式自己實作）；第二位使用者能讀或改第一位的紀錄；對等性測試缺一邊；日誌或回應洩漏密鑰；結構變動沒有 migration 也沒有計畫說明。
 - **「需要人看的事」**：錯誤訊息用詞是否夠白話、動作命名是否直覺等主觀問題。
 - 報告固定一行：`專長守則檢查：……`（列出做了哪些檢查、結果）。
+
+## 裁決（lead，2026-11-12 深夜，驗收不通過與對抗審之後的修正輪）
+
+驗收（新 context 的 verifier）：REJECT。對抗審：確認通道守住，另有 7 項。以下為修正輪範圍，每項先寫會失敗的測試。
+
+F1 既有測試退步（v3 綠、本分支紅，共 10 條）要同步到綠，只增不減：`test_keep_submissions.py`（tc040、tc073、tc083、tc094/095/104）、`test_mcp.py::test_tc024`、`test_su_usd.py::test_tc033`、`test_mcp_canvas_read.py::test_registration`、`test_mcp_launch_pipeline.py`（`test_tool_count_and_no_extra_tools`、`test_no_schema_change`）、`test_guidance.py::test_tc501_six_read_only_tools_remain`。同步＝把新工具與新 kind 加進釘住的清單；不得刪或放寬任何斷言。
+F2 補齊合約指定但不存在或太弱的測試（verifier 的 B 類清單）：TC-008、011、012、013、014、021、022、023（15 種檔名全測）、024、025、026、027、028、030、031、032、033、036、037、038、054（改成真的會失敗的斷言）、061、062、063、084、086、095、096。測試函式的 TC 註解要用已確認合約的編號。`test_constitution_untouched` 與 `test_page_headers_and_css_are_unchanged` 在拿不到 `origin/v3` 時不得靜默通過，要明確失敗或明確標示略過原因。
+F3 ledger 補 TC-092（遷移前後列數與 `PRAGMA foreign_key_check` 的實際輸出）、TC-093（`confirmations.kind` 每個讀寫位置的清單）。補一條「遷移連跑兩次結果相同」的測試。
+F4 資料庫膨脹（對抗審 1，改掉計畫第 10 條「base64 保留到 forget」）：`publish_figure` 的申請一旦 confirmed 且已寫入、或被作廢、或逾期，該列的 `content_base64` 要清掉，只留檔名、大小、sha256、說明；逾期列的清理在同一使用者下一次提出申請時順手做即可，不加背景工作。另加「每位使用者待確認的 `publish_figure` 內容總量上限」常數（20 MiB），超過就拒絕並說明。`test_confirmed_row_keeps_bundle_until_forget` 依此改寫為「confirmed 後內容已清、中繼資料還在、圖庫檔案不受影響」，這是 lead 點名的改動。重放同一個已完成的 `user_confirmed` 呼叫要回「已完成」，不是「內容不同」（對抗審 7）。
+F5 覆蓋寫入失敗要能還原（對抗審 3）：寫入任何一步失敗時，被覆蓋的舊圖、舊程式碼檔、舊參數檔與 `index.json` 都回到寫入前的位元組，訊息才可以說「沒有任何圖被存入」。
+F6 核准時重新檢查（對抗審 4）：`write_confirmed` 重做大小寫不分的檔名衝突檢查；實際會被取代的集合若與畫面上顯示的 `replaces` 不同，拒絕並說明，什麼都不寫。
+F7 說明文字（對抗審 5、6）：caption 含換行或控制字元一律拒絕；caption、code、params 含孤立代理字元在申請時就明確拒絕。確認畫面每張圖多顯示 sha256 的前 12 碼。
+F8 `docs/TESTING.md` 補「不按、等 10 分鐘就不寫」那一步。
+
+不在本輪：SVG 內容過濾可被繞過（對抗審 2）由第 2 片送圖時的標頭把關（該片 TC-042、TC-043）；Windows 保留檔名；forget 時圖庫檔案保留（列入晨報請維護者看）。
+限制不變：不碰 `.github/`、`hooks/`、憲法、`plugin.json`、`platform/abf_station/`、`jobs.py`、CSS。
+
+## 裁決（lead，2026-11-13，修正輪之後）
+
+F4 取代了合約 TC-071 與 TC-083 中「核准後 `bundle_json` 仍含圖的 base64」的預期：核准並寫入後、作廢或逾期後，該列只留檔名、大小、sha256、說明，不留圖的內容。這是 lead 因對抗審（資料庫無上限膨脹）對合約的修訂，維護者 2026-11-12 已口頭同意（「2. 確認」，lead 的理解），列入晨報請他再看一次。驗收時 TC-071、TC-083 依本裁決判定。

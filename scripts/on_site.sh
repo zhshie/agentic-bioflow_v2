@@ -204,15 +204,18 @@ no_master() {
         "Without one, every command asks for a one-time code - which only you" \
         "can supply. Open it yourself:" \
         "" \
-        "    $open_ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=8h -o ServerAliveInterval=60 $HOST true" \
+        "    $open_ssh -o ControlMaster=auto -o ControlPath=$CP -o ControlPersist=yes -o ServerAliveInterval=60 -o ServerAliveCountMax=10 $HOST true" \
         ${bridge_note:+"$bridge_note"} \
         "" \
-        "ControlPersist detaches the master into the background as soon as it" \
-        "has authenticated, so that command returns immediately and the" \
-        "terminal is yours again. What ControlPersist governs is idle time," \
-        "not whether closing the terminal ends the connection - that is" \
-        "unmeasured (M3 pending, see docs/LAB_AGENTS.md). What is known to" \
-        "end it: 'wsl --shutdown' and the machine going to sleep."
+        "ControlPersist=yes detaches the master into the background as soon as" \
+        "it has authenticated, so that command returns immediately and the" \
+        "terminal is yours again, and it sets no idle timeout; the" \
+        "ServerAlive options only widen how long a network break is put up" \
+        "with (about 10 minutes). How long the site keeps the connection is" \
+        "measured by scripts/keepalive_log.sh (see its log), not assumed." \
+        "Whether closing the terminal ends it is unmeasured (M3 pending, see" \
+        "docs/LAB_AGENTS.md). What is known to end it: 'wsl --shutdown' and" \
+        "the machine going to sleep."
 }
 
 # Git Bash used to be refused outright here, and PITFALLS 16g narrowed why:

@@ -88,8 +88,10 @@ def test_downstream_succeeded_shows_section_not_placeholder(w):
     assert re.search(r'<input type="url"[^>]*name="studio"[^>]*value=""', form) and "開啟連結" in form
     assert "csrf" not in form.lower()
     assert 'role="alert"' not in zh and "target=" not in zh
-    assert 'jupyter lab --notebook-dir &quot;&lt;本機結果資料夾&gt;&quot;' in zh
-    assert 'docker run --rm -p 127.0.0.1:8787:8787 -e DISABLE_AUTH=true -v &quot;&lt;本機結果資料夾&gt;&quot;:' + "/home" + '/rstudio/results rocker/rstudio' in zh
+    # cli-fetch-publish-figure slice 1 (TC-048, TC-049, TC-053): the two commands replace the jupyter and docker lines
+    assert "abf-platform studio-connect --server &lt;平台網址&gt;" in zh and "abf-platform fetch-results %s" % rid in zh
+    assert "平台不執行腳本" in zh and "請在自己的電腦執行下列指令" in zh
+    assert "jupyter lab" not in zh and "docker run" not in zh and "rocker/rstudio" not in zh and "publish-figure" not in zh
     assert "0.0.0.0" not in zh and "-p 8787:8787" not in zh
     assert not re.search(r"<iframe|<img|<script|建議分析|終端機|啟動</button>|停止", card)
     # TC-005: the folder cannot be read yet
@@ -99,14 +101,15 @@ def test_downstream_succeeded_shows_section_not_placeholder(w):
     finish(w, listings(w)[-1]["id"], entries=ENTRIES)
     n = len(listings(w))
     zh = mid(c.get(url(rid)).text)
-    assert "<code>%s/results</code>" % FOLDER in zh and "尚未讀取輸出" not in zh and "複製到自己的電腦或雲端環境" in zh
+    assert "<code>%s/results</code>" % FOLDER in zh and "尚未讀取輸出" not in zh and "拉到自己的電腦" in zh
     assert len(listings(w)) == n
     # TC-002
     en = mid(c.get(url(rid, lang=True)).text)
     en_card = re.search(r'<section class="card"><h2>Downstream</h2>.*?</section>', en, re.S).group(0)
     assert no_cjk(en) and '<span class="later">' not in en_card and "Coming later" not in en_card
     assert 'name="lang" value="en"' in en and 'type="url"' in en and 'name="studio"' in en and "Open link" in en
-    assert "jupyter lab --notebook-dir" in en and "rocker/rstudio" in en and "<code>%s/results</code>" % FOLDER in en
+    assert "abf-platform fetch-results %s" % rid in en and "abf-platform studio-connect --server &lt;platform address&gt;" in en and "<code>%s/results</code>" % FOLDER in en
+    assert "jupyter" not in en and "rocker" not in en and "publish-figure" not in en and "The platform does not run scripts" in en
 
 
 def test_downstream_nonsucceeded_keeps_placeholder(w):
@@ -117,6 +120,7 @@ def test_downstream_nonsucceeded_keeps_placeholder(w):
     for rid in ids:
         zh = mid(c.get(url(rid)).text)
         assert '<span class="later">之後開放</span>' in zh and 'name="studio"' not in zh and "jupyter" not in zh
+        assert "fetch-results" not in zh and "studio-connect" not in zh      # TC-052
         en = mid(c.get(url(rid, lang=True)).text)
         assert '<span class="later">Coming later</span>' in en and 'name="studio"' not in en and no_cjk(en)
 
@@ -278,10 +282,31 @@ def test_wording_in_command_block(w, lang):
     rid, c = succeeded(w)
     page = mid(c.get(url(rid, None, lang)).text)
     blocks = " ".join(re.findall(r'<pre class="reason">(.*?)</pre>', page, re.S))
-    assert "jupyter" in blocks and "rocker" in blocks
+    assert "studio-connect" in blocks and "fetch-results" in blocks and "jupyter" not in blocks and "rocker" not in blocks      # TC-049
+    assert len(blocks.strip().splitlines()) == 2      # slice 1: the two commands, not the third
     for word in ("password", "token", "AKIA", "sk-", "nchc", "ln01", "sbatch", "srun"):
         assert word.lower() not in blocks.lower()
     rest = LOGIN_NODE_SENTENCE.sub("", page)      # the one sentence that says "not on the NCHC login node" is the only place the name may stand
     for word in ("nchc", "ln01", "sbatch", "srun"):
         assert word not in rest.lower()
     assert len(re.findall(r"<form", page)) == 1 and "<button" in page and page.count("<button") == 1
+
+
+@pytest.mark.parametrize("lang", ["zh", "en"])
+def test_downstream_commands_escape_run_id(lang):
+    # TC-051: a run id with < and " cannot make a tag or leave the line
+    from abf_platform import web_downstream as d
+    page = d.render_downstream(lang, {"id": 'x<b>"y&z'}, None, None, "t")
+    assert "<b>" not in page and 'x"y' not in page
+    assert "abf-platform fetch-results x&lt;b&gt;&quot;y&amp;z" in page
+    if lang == "en":
+        assert no_cjk(page)
+
+
+def test_downstream_strings_for_the_commands_are_in_both_languages_and_pinned_pieces_are_gone():
+    # TC-078, TC-049 (the parity and the wording of the whole table are also pinned by test_strings_table_parity_and_wording)
+    from abf_platform import web_downstream as d
+    assert set(d.STRINGS["zh"]) == set(d.STRINGS["en"])
+    assert not hasattr(d, "RM_FLAG") and not hasattr(d, "HOME_RESULTS")
+    text = " ".join(d.STRINGS["zh"].values()) + " ".join(d.STRINGS["en"].values())
+    assert "jupyter" not in text.lower() and "docker" not in text.lower() and "rocker" not in text.lower()

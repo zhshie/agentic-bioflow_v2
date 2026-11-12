@@ -65,7 +65,7 @@ def test_tc024_six_read_only_tools_and_the_two_that_ask_a_person(tmp_path):
         assert t.annotations is not None
         assert not re.search(r"delete|clean|write|confirm|approve", t.name)
         assert not (set(t.input_schema.get("properties", {})) & {"command", "cmd", "script", "kind", "shell", "args"})
-        if t.name in ("launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"):
+        if t.name in ("launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "publish_figure"):
             assert t.annotations.read_only_hint is False
             continue
         assert t.annotations.read_only_hint is (t.name != "get_run")      # ruling R2: get_run queues a read of the site for a lost run
