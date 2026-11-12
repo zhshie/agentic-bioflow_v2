@@ -375,7 +375,8 @@ def facts(state_path, rid):
         if row["kind"] == "clean_work":
             return {"what": "clean_work", "run_name": bundle["run_name"], "work": bundle["work"]}
         if row["kind"] == "publish_figure":
-            return {"what": "publish_figure", "run_name": bundle["run_name"], "count": len(bundle["figures"])}
+            return {"what": "publish_figure", "run_name": bundle["run_name"], "count": len(bundle["figures"]),
+                    "figures": bundle["figures"], "replaces": bundle.get("replaces", [])}
         what = "resume" if "resume" in bundle else "relaunch" if "relaunch" in bundle else "launch"
         source = bundle["resume"]["origin"] if what == "resume" else bundle
         out = {"what": what, "run_name": bundle["run_name"], "pipeline": source["pipeline"], "revision": source["revision"],

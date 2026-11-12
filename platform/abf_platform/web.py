@@ -447,7 +447,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         en = lang == "en"
         title = "Confirm adding figures" if en else "存入圖庫確認"
         facts = actions.request_facts(platform_path, rid) or {}
-        shown = "<details open><summary>%s</summary><pre>%s</pre></details>" % (_PLAIN[lang]["full"], _esc(req["summary"] or ""))
+        text = req["summary"] or ""
+        if en and facts.get("figures"):      # the stored screen is Chinese; the page in English shows the same facts in English
+            text = actions.screen_for_page({"run_name": facts["run_name"], "figures": facts["figures"]}, facts.get("replaces"), "en")
+        shown = "<details open><summary>%s</summary><pre>%s</pre></details>" % (_PLAIN[lang]["full"], _esc(text))
         if req["state"] in ("pending", "confirmed"):
             shown = plain_block(rid, lang) + shown
         if req["state"] == "pending":

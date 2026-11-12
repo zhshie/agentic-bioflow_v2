@@ -212,27 +212,35 @@ def list_figures(index_path, platform_path, run_id, *, caller=None, packed_only=
 
 # ---- the request ----------------------------------------------------------------------------------------------------------------
 
-def _screen(run_name, figures, existing):
-    lines = ["== 存入圖庫確認 (confirm adding figures) ==", "分析：%s" % run_name, "圖片：%d 張" % len(figures), ""]
+def _screen(run_name, figures, existing, lang="zh"):
+    """The text the person reads before pressing Send, in Chinese (the stored screen) or in English (the page in English)."""
+    en = lang == "en"
+    lines = ["== Confirm adding figures ==" if en else "== 存入圖庫確認 (confirm adding figures) ==", ("Run: %s" if en else "分析：%s") % run_name,
+             ("Figures: %d" if en else "圖片：%d 張") % len(figures), ""]
     for i, f in enumerate(figures, 1):
         lines.append("[%d] %s" % (i, f["name"]))
-        lines.append("類型：%s　大小：%d 位元組" % (f["type"], f["size"]))
+        lines.append(("Type: %s   Size: %d bytes" if en else "類型：%s　大小：%d 位元組") % (f["type"], f["size"]))
         if f["name"] in existing:
-            lines.append("覆蓋既有同名圖 (replaces the figure of the same name)")
-        lines.append("說明：%s" % (f["caption"] or "-"))
+            lines.append("Replaces the figure of the same name" if en else "覆蓋既有同名圖 (replaces the figure of the same name)")
+        lines.append(("Caption: %s" if en else "說明：%s") % (f["caption"] or "-"))
         code_lines = f["code"].splitlines()
         if code_lines:
-            lines.append("程式碼（共 %d 行，顯示前 %d 行）：" % (len(code_lines), CODE_PREVIEW_LINES))
+            lines.append(("Code (%d lines, the first %d shown):" if en else "程式碼（共 %d 行，顯示前 %d 行）：") % (len(code_lines), CODE_PREVIEW_LINES))
             lines.extend("  " + ln for ln in code_lines[:CODE_PREVIEW_LINES])
         else:
-            lines.append("程式碼：無")
+            lines.append("Code: none" if en else "程式碼：無")
         if f["params"]:
-            lines.append("參數：")
+            lines.append("Parameters:" if en else "參數：")
             lines.extend("  " + ln for ln in f["params"].splitlines())
         else:
-            lines.append("參數：無")
+            lines.append("Parameters: none" if en else "參數：無")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def screen_for_page(bundle, replaces, lang):
+    """The screen text of a stored request in `lang`, for the confirmation page."""
+    return _screen(bundle["run_name"], bundle["figures"], set(replaces or ()), lang)
 
 
 async def request_publish_figure(platform_path, *, run_id, figures, caller=None, person=None, clock=time.time, remote=False, index_path=None,
@@ -259,7 +267,7 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
                 raise FigureRefused("「%s」與圖庫裡的「%s」只差大小寫，請用相同的檔名 (the name differs from \"%s\" only in case)" % (n, lower[n.lower()], lower[n.lower()]))
         if len(set(existing) | names) > MAX_PER_RUN:
             raise FigureRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
-        bundle = {"run_name": view["name"], "run_id": run_id, "figures": built}
+        bundle = {"run_name": view["name"], "run_id": run_id, "figures": built, "replaces": sorted(names & set(existing))}
         size = len(json.dumps(bundle).encode())
         if size > MAX_BUNDLE_BYTES:
             raise FigureRefused(SIZE_MESSAGE % _mb(size))

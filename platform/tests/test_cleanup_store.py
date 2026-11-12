@@ -152,9 +152,9 @@ def structure(con):
 def test_fresh_confirmations_take_clean_work_and_still_refuse_resume_relaunch_retry_and_empty(tmp_path):
     # TC-001, TC-002
     con = open_new(tmp_path / "platform.db")
-    for i, kind in enumerate(("launch", "cancel", "clean_work")):
+    for i, kind in enumerate(("launch", "cancel", "clean_work", "publish_figure")):
         con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES (?, 'x', ?, 1)", ("k%d" % i, kind))
-    assert declared_kinds(check_of(con, "confirmations")) == ["launch", "cancel", "clean_work"]
+    assert declared_kinds(check_of(con, "confirmations")) == ["launch", "cancel", "clean_work", "publish_figure"]
     before = con.execute("SELECT COUNT(*) FROM confirmations").fetchone()[0]
     for kind in ("resume", "relaunch", "retry", ""):
         with pytest.raises(sqlite3.IntegrityError):

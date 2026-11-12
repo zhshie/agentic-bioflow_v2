@@ -2069,3 +2069,4 @@ def remove_pipeline_registration(platform_path, *, ce, pipeline, revision, confi
 
 request_publish_figure = _figures.request_publish_figure
 list_figures = _figures.list_figures
+screen_for_page = _figures.screen_for_page
