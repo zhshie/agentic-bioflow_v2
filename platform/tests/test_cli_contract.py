@@ -136,6 +136,8 @@ MATRIX = dict([
          no_fail="its refusals exit 2 (an address or token that cannot be used) or 3 (no connection), which this matrix does not take as failures (test_studio_remote.py covers them)"),
     leaf("fetch-results", ["fetch-results"], no_happy="it reads a platform over the network and writes a folder on the computer it runs on; a test has no platform (test_studio_cli.py covers it with fakes)",
          no_fail="its refusals exit 2 (not set up, and the settings file is the computer's own) or 3 (no connection), which this matrix does not take as failures (test_studio_remote.py covers them)"),
+    leaf("publish-figure", ["publish-figure"], no_happy="it sends a figure to a platform over the network and the person answers at a link; a test has no platform (test_studio_publish.py covers it with fakes)",
+         no_fail="its refusals exit 1 (the platform said no), 2 (not set up) or 3 (no connection); a test has no platform (test_studio_publish.py and test_studio_remote.py cover them)"),
 ])
 
 
@@ -170,7 +172,7 @@ def test_every_leaf_is_in_the_matrix():
         assert bool(row["happy"]) != bool(row["no_happy"]), path
         assert bool(row["fail"]) != bool(row["no_fail"]), path
     # the launch commands are in it as well
-    assert {"launch", "cancel", "forget", "resume", "relaunch", "launches", "fetch-records", "studio-connect", "fetch-results"} <= set(MATRIX)
+    assert {"launch", "cancel", "forget", "resume", "relaunch", "launches", "fetch-records", "studio-connect", "fetch-results", "publish-figure"} <= set(MATRIX)
 
 
 @pytest.mark.parametrize("path", sorted(MATRIX))

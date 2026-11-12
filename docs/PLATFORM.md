@@ -935,9 +935,9 @@ When the site turns a launch back because there is no open connection (`reason=n
 
 ## Commands on your own computer (cli-fetch-publish-figure)
 
-Two commands run on the computer where a person works (the one that has RStudio), not on the computer that runs the platform. They talk to the platform
+Three commands run on the computer where a person works (the one that has RStudio), not on the computer that runs the platform. They talk to the platform
 the way an AI assistant does: they are MCP clients of the platform's public address (`https://<host>/mcp`), with the person's own personal token, and they
-call the same read tools (`run_outputs`, `read_run_file`, and `list_compute_envs` for one hint). The platform runs no script for them, and they open no
+call the same tools (`run_outputs`, `read_run_file`, and `list_compute_envs` for one hint, and `publish_figure` for the third command). The platform runs no script for them, and they open no
 database of the platform, so a computer that has only the package and a token can use them. The platform decides whose run it is and which folders of
 the site may be read; the commands do not repeat those checks.
 
@@ -945,6 +945,7 @@ the site may be read; the commands do not repeat those checks.
 abf-platform studio-connect --server https://platform.example     # once: keep the address and the token on this computer
 abf-platform fetch-results run1                                   # pull the small result tables of one run into ~/abf-results/run1
 abf-platform fetch-results run1 --dir results-run1                # or into a folder of your choice
+abf-platform publish-figure run1 fig.png --code plot.R --params params.json   # propose one figure; you press the button at the link it prints
 ```
 
 ### studio-connect
@@ -993,7 +994,32 @@ RStudio Console. It only reads. It is not `fetch-records`, which asks the agent 
 - The R code is one line for each ASV or counts table (`read.delim(file.path("<folder>", "<file>"), check.names = FALSE, row.names = 1)`, `read.csv` for
   a `.csv`), or for the first five tables when there is none, and it holds no token, no password and no host name.
 
+### publish-figure
+
+`abf-platform publish-figure <run> <image file> [--code FILE] [--params FILE] [--caption TEXT]` proposes one figure, made on this computer (in RStudio, say), to the
+gallery of one of the person's own runs. It calls the MCP tool `publish_figure(run_id, figures=[one figure])` once. The command never stores
+anything, and **the person's yes is not something it can give**: it never sends `user_confirmed` or a request id, it does not wait, poll or press anything,
+and it never opens the link. The platform answers that the figure waits for the person's yes and gives the address of the confirmation page; the command
+prints its own sentences (the file name and size, "not saved yet; the person must open the link below in a browser and press Send") and the link exactly as
+the platform gave it, and ends with exit code 0. The person opens the link on any computer, logs in as themselves, looks at what is asked and presses the
+button; only then does the figure go into the run's private gallery. A figure in the gallery is the person's own and is not added to the delivery bundle;
+the person ticks it for the bundle on the web page. The words of the tool's own message are not printed (they speak to a chat client, not to a person at a
+terminal).
+
+- Checked on this computer before anything is sent, with the limits of the gallery taken from one place (`MAX_BUNDLE_BYTES`, `MAX_CODE_BYTES`,
+  `MAX_PARAMS_BYTES`, `MAX_CAPTION_CHARS` of `abf_platform.actions.figures`, constants only): the figure file exists, is a regular file and fits the
+  bundle limit (counted in bytes, and again after base64); a code or params file is UTF-8 text without NUL and within its limit in bytes; a caption is one
+  line without control characters, within its limit in characters, and can be encoded as UTF-8. The command says which file or field was hit and sends
+  nothing. The file name, its type, the content of the image, the number of figures in the gallery and whether the run is the person's own are judged by
+  the platform; a run that is not the person's and a run that does not exist get the same answer.
+- A refusal of the platform (size, type, the gallery is full, a name that is not allowed, an unknown run) is printed as its reason, with exit code 1;
+  nothing is written. The whole command ends within 120 seconds.
+- A second send of the same figure asks the person again; it is the person's yes that makes an existing name be replaced.
+
 ### Exit codes and messages
+
+For `publish-figure`, 0 means that the platform is waiting for the person's yes and the link was printed (or, when the platform's own form was answered at once, that
+the figure was stored), and 1 means that the figure was not sent (a local check, or the platform's refusal).
 
 | Code | Meaning |
 |---|---|
@@ -1007,7 +1033,7 @@ command tries again at most twice, two seconds apart, and one call waits at most
 `LC_MESSAGES` or `LANG`) starts with `en`. With `--json` the commands give one JSON object like the others (`{ok, command, data, output}`; a failure is
 `{ok: false, error: {what, why, next}}` on stderr); the token is never in it.
 
-The page of a succeeded run (stage `downstream`) shows the two commands in place of the old `jupyter lab` and `docker run` lines.
+The page of a succeeded run (stage `downstream`) shows the three commands in place of the old `jupyter lab` and `docker run` lines.
 
 ## What it does not do
 

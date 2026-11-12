@@ -282,3 +282,9 @@ README 規則只看檔案路徑，本案範圍不含保護路徑，機械推定�
 - R12 `http://` 迴路位址不走環境變數的 proxy。
 
 不在本輪：Windows 上設定檔 ACL、`x.tsv:ads`／`con.tsv` 類檔名（目標是 RStudio 容器，另案）。
+
+## 裁決（lead，2026-11-13，第 2 片驗收 ACCEPT 之後）
+
+- `studio_cli.py` 的 `from .actions.figures import MAX_*`：接受（verifier 實測在乾淨環境載入不產生任何檔案、不開資料庫；TC-083 的放行範圍只限 `studio_cli`、`actions.figures`、`MAX_` 開頭的名稱）。executor 當時應先停手回報再做，這一點記錄在此。之後若要讓使用者端指令完全不載入動作層，另案把上限搬到只含常數的模組。
+- 連線逾時的自動重試可能讓同一張圖被提出兩次；兩次都只是等本人確認的申請，不會重複寫入。記錄為已知行為。
+- `cli.py` 的說明文字少列 `--params`、`--caption`：列入後續小修。
