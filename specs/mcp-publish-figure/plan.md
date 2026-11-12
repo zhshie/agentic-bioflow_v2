@@ -141,6 +141,14 @@ source: 維護者 2026-11-07 方向裁示、2026-11-12 選 B（見「裁決」�
 ## 裁決（lead，11-12，維護者回『好』＝選 B）
 **publish_figure 不得無確認寫入，不修憲法 7.0.0。** 改走既有四條確認通道之一（沿用 mcp-chat-confirm 的做法）：圖表發布前產生待確認項，維護者在確認頁按一次才真正寫檔；未確認不寫、不重試。UI 措辭、符號、導向等未決問題：一律沿用 DESIGN.md 與既有確認頁的現成寫法（不新創），採用的選擇記進 ledger；有衝突以禁用字表為準。合約與計畫中與此矛盾的條目由 verifier 重出（fix-contract-regrade-push）。
 
+## 裁決（dev-resolver，2026-11-12）
+- 動作：`retry`（第 1／2 次裁決）。這次失敗是流程對不上，不是合約過期，也不是實作有問題。
+- 證據 1（沒有可重新閱卷或推送的實作）：`git diff --stat origin/v3...HEAD` 只有 4 個檔，全在 `specs/mcp-publish-figure/`（`ledger.md`、`plan.md`、`test-case-overview.md`、`test-case.md`）；`ledger.md` 只有標題一行。`fix-contract-regrade-push` 的前提是「已有實作」，本案不成立。
+- 證據 2（合約不是舊的）：`test-case.md` 只有一筆提交 `2d997282`（11-12 11:31:16，"test cases from verifier"），晚於計畫改寫的提交 `d9d9fe74`（11:26:01）；worktree 的 `plan.md` 與本檔內容相同。合約標題為「第 1 片：經確認通道存入私有圖庫」，共 98 條；`TC-001` 寫「回 `state: "pending"` … 圖庫資料夾沒有任何新檔」、`TC-089` 寫「`git diff origin/v3 -- .specify/memory/constitution.md` … diff 為空」，與 11-12 lead 裁決（選 B）一致。失敗原因所稱的「stale test-case.md」在 worktree 找不到對應。
+- 下一輪要做的事（與前兩輪不同之處）：以**一般完整流程**執行，不走 `fix-contract-regrade-push`。沿用現有合約 `2d997282`，不整份重出、不刪除 `test-case.md`；executor 依本計畫第 1 片實作，verifier 依該合約閱卷，通過後照 L 級要求（爆炸半徑證明、對抗審）再推送。
+- 若執行中發現某一條案例與本計畫或 lead 裁決矛盾：回報時必須寫出案例編號並引用計畫原文與案例原文，不得只寫「整份合約需重出」；不得放寬、刪除或跳過任何案例。
+- 本裁決不變更計畫範圍；憲法、保護路徑、被釘住的測試一律照本檔原有規定不動。
+
 ## 專長守則（ui）
 
 ### executor
