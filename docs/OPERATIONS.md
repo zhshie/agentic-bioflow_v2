@@ -100,6 +100,77 @@ folder of your virtual environment goes. To install them:
 Bearer tokens never go into a unit file; they are issued with the commands in section 5 and
 shown once.
 
+### Desktop platform in WSL（桌機）
+
+This is for a lab whose platform runs on a Windows desktop, inside WSL (Windows Subsystem for
+Linux). The aim: you log in to Windows, do nothing, and a minute or two later the platform is
+there; if one of its processes dies, it comes back in a few seconds. It uses the same systemd
+user units as "Hosting one lab" above, plus one unit for the site agent (`deploy/systemd/abf-station@.service.in`)
+and one small Windows script (`deploy/wsl/keep-wsl-running.ps1`). Run the commands in the Ubuntu
+window unless a step says Windows. Steps 2 and 5 need the administrator password of the Linux side (sudo), and only you
+should do them.
+
+1. **What you need.** WSL 2 with Ubuntu 22.04 or newer (Windows PowerShell: `wsl -l -v` shows
+   VERSION 2), a recent WSL (`wsl --update` in Windows PowerShell if step 2 is not accepted), and the platform
+   already installed in a virtual environment as in "Hosting one lab", step 2.
+2. **Turn systemd on.** WSL starts without systemd unless you ask for it. Open the file with
+   `sudo nano /etc/wsl.conf` and make sure it holds these two lines (add them at the end if the file is empty):
+   ```
+   [boot]
+   systemd=true
+   ```
+   Save (Ctrl+O, Enter, Ctrl+X). Then, in Windows PowerShell, run `wsl --shutdown` and open Ubuntu again.
+   **This stops everything inside WSL**: every process you started there, the platform if it is running, and the
+   shared SSH connection to the National Center (國網). After the restart you must connect again yourself and type the OTP;
+   nothing does that for you. The platform is away for about a minute. Check that it worked: `ps -p 1 -o comm=` must print `systemd`.
+3. **Write the settings file.** Copy `deploy/env.example` to `~/.config/abf-platform/env` and make it yours only
+   (`mkdir -p ~/.config/abf-platform && cp deploy/env.example ~/.config/abf-platform/env && chmod 600 ~/.config/abf-platform/env`).
+   Replace every `<...>`; `ABF_PUBLIC_URL` is the https address people use. **systemd does not read `~/.bashrc`.**
+   If you started the platform by hand before, some variables it needs (for example where the deployment's settings
+   file is) came from `~/.bashrc`; the services never see them. Every variable the platform needs must be written
+   into `~/.config/abf-platform/env`, one `NAME=value` per line, no `export`.
+4. **Install the units and start them.**
+   - The agent's token: make it with `abf-platform agent-token new <name> --user <user>`; it is shown once, so copy it
+     into a file at that moment: a file inside WSL's own home folder (not under `/mnt/c`, a Windows drive, where permission
+     bits mean nothing), then `chmod 600` on it. The token never goes into a unit or into any example file.
+   - Name the agent with letters, digits, underscore and dot only (`lab1`, `site_a`). The same `<name>` is used twice and must be identical: in the file
+     `~/.config/abf-platform/station-<name>.env` (copy `deploy/station.env.example` and fill it in; it holds the path of the token file, the deployment folder and the plugin folder) and in the unit instance `abf-station@<name>`.
+   - Copy the four templates and drop the `.in`, replace `<venv>` as in "Hosting one lab", then start. For the agent unit the file keeps the `@` in its name (`abf-station@.service`):
+     ```sh
+     for u in serve web mcp; do cp deploy/systemd/abf-$u.service.in ~/.config/systemd/user/abf-$u.service; done
+     cp deploy/systemd/abf-station@.service.in ~/.config/systemd/user/abf-station@.service
+     sed -i "s|<venv>|abf-venv|" ~/.config/systemd/user/abf-*.service
+     systemctl --user daemon-reload
+     ```
+     Before you run the next line, stop everything you started by hand (see "Switching from starting by hand" below), or two copies fight for the same port.
+     ```sh
+     systemctl --user enable --now abf-serve abf-web abf-mcp abf-station@<name>
+     ```
+5. **Keep it running with nobody at a terminal.** Run `loginctl enable-linger $USER` once. If it asks for a password, run
+   `sudo loginctl enable-linger $USER`. This lets your services run without a terminal window open. It does
+   not keep WSL itself open: that is the job of the Windows task in step 6. The two do different jobs and you need both.
+6. **Make Windows keep WSL open.** From the repository folder in Ubuntu, show what the script would do (it changes nothing):
+   `powershell.exe -ExecutionPolicy Bypass -File "$(wslpath -w deploy/wsl/keep-wsl-running.ps1)"`. Then add `-Apply` at the end to register the
+   task `abf-wsl-keepalive`: when you log in to Windows it opens WSL in a hidden window and keeps it open. It runs with your
+   normal rights and asks for no administrator password; add `-Distro <name>` if the Linux you use is not the default one. **It does
+   not start while nobody is logged in to Windows**, that is, when you are not logged in to Windows nothing runs: after a reboot, the platform is up only once you have logged in.
+7. **Look at what is running.** One command lists all four services: `systemctl --user status 'abf-*'`. Each should say
+   `active (running)` in green. When one does not, read its last lines: `journalctl --user -u abf-web -n 50`.
+   An agent that refuses to start (a wrong path, a token file that is not safe) stops in `failed` and does not retry
+   every few seconds; the reason is one line `abf-station will not start: ...` in `journalctl --user -u 'abf-station@<name>'`, because under systemd there is no terminal to show it.
+   - Stop: `systemctl --user stop abf-serve abf-web abf-mcp abf-station@<name>`
+   - Restart: `systemctl --user restart abf-serve abf-web abf-mcp abf-station@<name>`
+   - Remove: `systemctl --user disable --now abf-serve abf-web abf-mcp abf-station@<name>`, then delete the files in
+     `~/.config/systemd/user/` and run `systemctl --user daemon-reload`. To remove the Windows task, run the script from step 6 with `-Remove`.
+
+**Switching from starting by hand.** If the platform has been started by hand in a terminal, stop those processes
+first (Ctrl+C in that terminal, or close it); then run step 4's last command. Otherwise the hand-started processes hold the ports,
+the services cannot start, and you may end up with two copies. Expect the platform to be unreachable for about a minute.
+
+**What this does not do.** The connection to the National Center does not come back by itself: after a reboot or `wsl --shutdown`,
+you connect again and type the OTP; the agent waits for it. Tailscale Funnel is not handled here: it is set up as in
+"Hosting one lab" and nothing in these steps starts or restarts it. If a computer is off or nobody is logged in to Windows, the platform is not running.
+
 ## 4. What to back up
 
 The platform writes these, all in one data folder. Default folder:

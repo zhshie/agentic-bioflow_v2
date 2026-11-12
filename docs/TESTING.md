@@ -1229,3 +1229,23 @@ No code needed. You need the platform's web page open in a browser and one agent
 7. While the bar is up, ask for a new run and say yes: the answer must be a refusal that names the same agent and the WSL terminal, and nothing is started.
 
 Pass: you saw the bar in step 3 and 4, did not see it in step 5, and it went away in step 6. Answer 好 or 不好 for the colours and the wording; a 不好 opens a new fix, it does not undo this feature. Screenshots from a throwaway platform with an online agent reporting a closed link are in `specs/mcp-site-keepalive-disconnect-ux/screenshots/`.
+
+## desktop-systemd: the maintainer checks on the desktop that runs the platform
+
+Automatic test: `tests/desktop_systemd_test.sh` (the shape of the files and the docs only). It cannot show that the platform really comes back; these steps do. First follow docs/OPERATIONS.md, "Desktop platform in WSL" (it makes the one-minute stop and asks you to type the OTP again), then do them in this order. Write what you saw in `specs/desktop-systemd/ledger.md`.
+
+**TC-011, after a reboot.** Restart Windows, log in, open nothing, wait two minutes, open the platform's web address. You must see the page, log in and see your runs.
+
+**TC-012, ten minutes later.** Still without opening a terminal, open the web address again, then in Windows PowerShell run `wsl -l -v`: your Linux must say `Running`.
+
+**TC-026, one command shows what runs.** In Ubuntu run `systemctl --user status 'abf-*'`. Four services (serve, web, mcp, station) must each say `active (running)`.
+
+**TC-018, kill one.** Run `systemctl --user show -p MainPID abf-web`, then `kill <that number>`. After about ten seconds run the same `show` line: the number must be different, the page works, and the MainPID of the other three did not change.
+
+**TC-029, two starts are one copy.** Run `systemctl --user start abf-web` twice, then `systemctl --user status 'abf-*'`: still one process for each service. TC-030: start the platform by hand in a terminal; it must fail with a port-in-use message and the running one must stay up.
+
+**TC-019, a bad token file.** Run `chmod 644` on the agent's token file and `systemctl --user restart abf-station@<name>`. It must stop in `failed` (not retry every few seconds), and `journalctl --user -u 'abf-station@<name>'` shows one line `abf-station will not start: ...`. Run `chmod 600` on the file again and restart it. TC-020: with the National Center connection open (you typed the OTP), do one read-only job from the website that reads the site; it must succeed.
+
+**TC-035, no token in the settings.** Run `grep -r '<the first characters of your token>' ~/.config/systemd/user ~/.config/abf-platform` (use only the first eight characters, never the whole token): it must print nothing. Only the path of the token file is allowed to appear.
+
+**TC-013, TC-039.** `wsl --version` shows a version that accepts `systemd=true`, `systemctl --user status` works, and `loginctl enable-linger $USER` worked as the text says (say in the ledger whether it asked for a password). Run the Windows script with `-Apply` twice, then `Get-ScheduledTask -TaskName abf-wsl-keepalive` in Windows PowerShell: one task. Run it with `-Remove`: none.

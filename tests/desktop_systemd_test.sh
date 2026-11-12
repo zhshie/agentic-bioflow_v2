@@ -31,6 +31,7 @@ TST=docs/TESTING.md
 CHG=CHANGELOG.md
 SCLI=platform/abf_station/cli.py
 PCLI=platform/abf_platform/cli.py
+BASE=$(git merge-base origin/v3 HEAD 2>/dev/null || true)
 OLD_UNITS=("$D/systemd/abf-serve.service.in" "$D/systemd/abf-web.service.in" "$D/systemd/abf-mcp.service.in")
 # words that are tool names, built from pieces so this file never contains them as a call (TC-051)
 SC="system""ctl"; WSLX="ws""l"; SCH="sch""tasks"
@@ -106,8 +107,8 @@ if command -v systemd-analyze >/dev/null 2>&1 && [ -f "$UNIT" ]; then
 else skip "TC-017 systemd-analyze verify" "systemd-analyze is not installed here (or the unit is missing); the shape checks above stand"; fi
 
 # TC-021: the three old units are byte-for-byte the ones of origin/v3
-if git rev-parse --verify -q origin/v3 >/dev/null 2>&1; then
-  if [ -z "$(git diff origin/v3 -- "${OLD_UNITS[@]}")" ]; then ok "TC-021 the three existing units are unchanged against origin/v3"; else bad "TC-021 an existing unit changed"; fi
+if [ -n "$BASE" ]; then
+  if [ -z "$(git diff "$BASE" -- "${OLD_UNITS[@]}")" ]; then ok "TC-021 the three existing units are unchanged against origin/v3"; else bad "TC-021 an existing unit changed"; fi
 else skip "TC-021 existing units unchanged" "no origin/v3 to compare with"; fi
 
 # ---------- US3: seeing what runs ----------
@@ -120,7 +121,7 @@ has "$tail_sec" 'daemon-reload' || { t23=0; bad "TC-023 daemon-reload after remo
 psubs=$(grep -oE 'sub\.add_parser\("[a-z-]+"' "$PCLI" | sed -E 's/.*\("//; s/"$//'); ssubs=$(grep -oE 'add_parser\("[a-z-]+"' "$SCLI" | sed -E 's/.*\("//; s/"$//')
 n24=0
 while IFS= read -r w; do [ -z "$w" ] && continue; n24=$((n24+1)); if printf '%s\n' "$psubs" | grep -x -- "$w" >/dev/null; then ok "TC-024 abf-platform $w exists"; else bad "TC-024 abf-platform $w exists"; fi; done < <(printf '%s\n' "$sec" | grep -oE 'abf-platform +[a-z][a-z-]*' | awk '{print $2}' | sort -u)
-while IFS= read -r w; do [ -z "$w" ] && continue; n24=$((n24+1)); if printf '%s\n' "$ssubs" | grep -x -- "$w" >/dev/null; then ok "TC-024 abf-station $w exists"; else bad "TC-024 abf-station $w exists"; fi; done < <(printf '%s\n' "$sec" | grep -oE 'abf-station +[a-z][a-z-]*' | awk '{print $2}' | sort -u)
+while IFS= read -r w; do [ -z "$w" ] && continue; n24=$((n24+1)); if printf '%s\n' "$ssubs" | grep -x -- "$w" >/dev/null; then ok "TC-024 abf-station $w exists"; else bad "TC-024 abf-station $w exists"; fi; done < <(printf '%s\n' "$sec" | sed 's/abf-station will not start//' | grep -oE 'abf-station +[a-z][a-z-]*' | awk '{print $2}' | sort -u)
 while IFS= read -r p; do [ -z "$p" ] && continue; n24=$((n24+1)); if [ -e "$p" ]; then ok "TC-024 path $p exists"; else bad "TC-024 path $p exists"; fi; done < <(printf '%s\n' "$sec" | grep -oE '`(deploy|docs|platform|tests|scripts|specs)/[^` ]*[A-Za-z0-9]`' | tr -d '`' | sort -u)
 [ "$n24" -gt 0 ] || bad "TC-024 the section names at least one command or path"
 for need in 'deploy/systemd/abf-station@.service.in' 'deploy/station.env.example' 'deploy/wsl/keep-wsl-running.ps1'; do has "$sec" "$need" || bad "TC-024 section names $need"; done
@@ -131,7 +132,7 @@ n_stop=$(lineno 'stop' "$(printf '%s\n' "$sec" | sed -n '/by hand/,$p')")
 if hasre "$sec" 'by hand' && hasre "$sec" '[Ss]top .*(started by hand|you started)|started by hand' && hasre "$sec" 'port' && hasre "$sec" 'minute' && hasre "$sec" 'two (copies|platforms)|second copy'; then ok "TC-027 switch-over: stop the hand-started ones (port, two copies), about a minute"; else bad "TC-027 switch-over text"; fi
 l_sw=$(printf '%s\n' "$sec" | grep -nE 'Switching|switching|from (starting )?by hand|started by hand' | head -n1 | cut -d: -f1)
 l_en=$(printf '%s\n' "$sec" | grep -nF 'enable --now abf-serve' | head -n1 | cut -d: -f1)
-if [ -n "$l_sw" ] && [ -n "$l_en" ] && has "$sec" 'before you run'; then ok "TC-027 the switch-over warning is tied to the enable --now step (before you run it)"; else bad "TC-027 warning before enable --now"; fi
+if [ -n "$l_sw" ] && [ -n "$l_en" ] && hasre "$sec" '[Bb]efore you run'; then ok "TC-027 the switch-over warning is tied to the enable --now step (before you run it)"; else bad "TC-027 warning before enable --now"; fi
 if hasre "$sec" '[Ll]etters, digits, underscore|letters, digits, underscores|digits, underscore' && has "$sec" 'station-<name>.env' && has "$sec" 'abf-station@<name>'; then ok "TC-028 agent name rule and the two names that must match"; else bad "TC-028 agent name rule"; fi
 if hasre "$envex" 'station-<name>\.env' && hasre "$envex" 'abf-station@<name>'; then ok "TC-028 station.env.example names station-<name>.env and abf-station@<name>"; else bad "TC-028 env example names the file and the instance"; fi
 
@@ -168,7 +169,7 @@ if [ -f "$PS1" ]; then
     if [ "$(head -c3 "$PS1" | od -An -tx1 | tr -d ' ')" = "efbbbf" ]; then ok "TC-041 non-ASCII, and it starts with a UTF-8 BOM"; else bad "TC-041 non-ASCII without a BOM"; fi
   else ok "TC-041 pure ASCII"; fi
 else bad "TC-041 $PS1 exists"; fi
-if hasre "$ps1" 'param *\(' && has "$ps1" '[string]$Distro' && hasre "$ps1" 'if *\(\$Distro\)' && has "$ps1" '-d ' && hasre "$ps1" '"""?\$Distro"""?|\x27"\x27|`"\$Distro`"|\\"\$Distro\\"|\x27"\$Distro"\x27|"\\"" *\+ *\$Distro'; then ok "TC-042 -Distro; '-d' only when given, name quoted"; else bad "TC-042 -Distro handling"; fi
+if hasre "$ps1" 'param *\(' && has "$ps1" '[string]$Distro' && hasre "$ps1" 'if *\(\$Distro\)' && has "$ps1" '-d ' && has "$ps1" '-d "'"'"' + $Distro + '"'"'"'; then ok "TC-042 -Distro; '-d' only when given, name quoted"; else bad "TC-042 -Distro handling"; fi
 # TC-043: a '# Not <tool>: <reason>' line in the first 40 lines of the unit and the script, naming something outside the repo
 for f in "$UNIT" "$PS1"; do
   line=$(sed -n '1,40p' "$f" 2>/dev/null | tr -d '\r' | grep -E '^# Not [^:]+: ' | head -n1)
@@ -184,10 +185,10 @@ fi
 # TC-044/045 run the two existing tests (they are unchanged apart from the two named lines)
 ht=$(bash tests/hosted_deploy_test.sh 2>&1); hrc=$?
 if [ "$hrc" -eq 0 ]; then ok "TC-044 tests/hosted_deploy_test.sh passes"; else bad "TC-044 hosted_deploy_test.sh" "$(printf '%s\n' "$ht" | grep FAIL | head -n3 | tr '\n' ' ')"; fi
-if git rev-parse --verify -q origin/v3 >/dev/null 2>&1; then
-  dd=$(git diff -U0 origin/v3 -- tests/hosted_deploy_test.sh | grep -E '^[-+]' | grep -vE '^(\+\+\+|---)' || true)
+if [ -n "$BASE" ]; then
+  dd=$(git diff -U0 "$BASE" -- tests/hosted_deploy_test.sh | grep -E '^[-+]' | grep -vE '^(\+\+\+|---)' || true)
   nminus=$(printf '%s\n' "$dd" | grep -c '^-' || true)
-  if [ "$nminus" -eq 3 ] && printf '%s\n' "$dd" | grep '^-' | grep -c -E 'TC-069|want_list=|TC-083|-eq 3|three \.service' | grep -qvx 0; then ok "TC-044 only the TC-069 and TC-083 lines of hosted_deploy_test.sh changed (3 lines removed)"; else bad "TC-044 hosted_deploy_test.sh diff is more than the two named assertions" "removed lines: $nminus"; fi
+  if [ "$nminus" -eq 4 ] && printf '%s\n' "$dd" | grep '^-' | grep -c -E 'TC-069|want_list=|TC-083|-eq 3|three \.service' | grep -qvx 0; then ok "TC-044 only the TC-069 and TC-083 lines of hosted_deploy_test.sh changed (4 lines changed)"; else bad "TC-044 hosted_deploy_test.sh diff is more than the two named assertions" "removed lines: $nminus"; fi
 else skip "TC-044 hosted_deploy_test.sh diff" "no origin/v3 to compare with"; fi
 if hasre "$(grep -E 'want_list=' tests/hosted_deploy_test.sh)" 'station\.env\.example' && hasre "$(grep -E 'want_list=' tests/hosted_deploy_test.sh)" 'keep-wsl-running\.ps1' && hasre "$(grep -E 'want_list=' tests/hosted_deploy_test.sh)" 'abf-station@\.service\.in'; then ok "TC-044 the TC-069 list names the three new files"; else bad "TC-044 the TC-069 list names the three new files"; fi
 if grep -q 'four \.service\.in' tests/hosted_deploy_test.sh && grep -qE 'wc -l\)" -eq 4' tests/hosted_deploy_test.sh; then ok "TC-044 TC-083 counts four .service.in"; else bad "TC-044 TC-083 counts four .service.in"; fi
@@ -201,14 +202,14 @@ t46=1; for w in 'TC-011' 'TC-018' 'TC-026' 'TC-035' 'TC-029' "systemctl --user s
 [ "$t46" -eq 1 ] && ok "TC-046 TESTING.md has the desktop steps (reboot, kill, status, token, double start), each with what to see"
 chg_top=$(sed -n '1,12p' "$CHG")
 if hasre "$chg_top" 'desktop-systemd.*WSL|WSL.*desktop-systemd' && printf '%s\n' "$chg_top" | grep -m1 '^- ' | grep -q 'keep-submissions'; then ok "TC-047 CHANGELOG: a desktop-systemd line in the top section; keep-submissions still first"; else bad "TC-047 CHANGELOG line"; fi
-if git rev-parse --verify -q origin/v3 >/dev/null 2>&1; then
-  rem=$(git diff -U0 origin/v3 -- "$CHG" | grep -E '^-' | grep -vE '^---' | grep . || true)
+if [ -n "$BASE" ]; then
+  rem=$(git diff -U0 "$BASE" -- "$CHG" | grep -E '^-' | grep -vE '^---' | grep . || true)
   if [ -z "$rem" ]; then ok "TC-047 CHANGELOG: no existing line changed"; else bad "TC-047 CHANGELOG lines were changed"; fi
 fi
 
 # ---------- out of scope ----------
-if git rev-parse --verify -q origin/v3 >/dev/null 2>&1; then
-  names=$(git diff --name-only origin/v3...HEAD; git diff --name-only; git ls-files --others --exclude-standard)
+if [ -n "$BASE" ]; then
+  names=$(git diff --name-only "$BASE"...HEAD; git diff --name-only; git ls-files --others --exclude-standard)
   if printf '%s\n' "$names" | grep -E '^(platform/|hooks/|\.github/|\.specify/memory/constitution\.md|\.claude-plugin/plugin\.json)' | grep . >/dev/null; then bad "TC-048 a protected path changed" "$(printf '%s\n' "$names" | grep -E '^(platform/|hooks/|\.github/|\.specify/memory/constitution\.md|\.claude-plugin/plugin\.json)')"; else ok "TC-048 no change under platform/, hooks/, .github/, the constitution or plugin.json"; fi
   if printf '%s\n' "$names" | grep -E 'requirements.*\.txt|pyproject\.toml' | grep . >/dev/null; then bad "TC-053 a dependency file changed"; else ok "TC-053 no dependency file changed"; fi
 else skip "TC-048 protected paths" "no origin/v3 to compare with"; skip "TC-053 dependencies" "no origin/v3 to compare with"; fi
@@ -218,7 +219,7 @@ if hasre "$sec" 'Funnel' && hasre "$sec" 'Funnel .*(not|outside)|not .*Funnel|Fu
 if ! git ls-files "$D" | grep -iE 'tailscale|caddy.*service' | grep . >/dev/null && ! ls "$D" "$D/systemd" "$D/wsl" 2>/dev/null | grep -iE 'tailscale|caddy.*service' >/dev/null; then ok "TC-050 no tailscale or caddy unit under deploy/"; else bad "TC-050 a tailscale or caddy unit exists"; fi
 selfname=$(basename "$0")
 if grep -nE "^[[:space:]]*($SC|$WSLX|$SCH|powershell\.exe|schtasks\.exe)([[:space:]]|\$)" "$HERE/$selfname" | grep -v 'powershell.exe -NoProfile' >/dev/null; then bad "TC-051 this test calls no service, wsl or scheduler tool"; else ok "TC-051 this test calls no service, wsl or scheduler tool"; fi
-if ! grep -rnE '/etc/wsl\.conf' "$D" "$HERE/desktop_systemd_test.sh" 2>/dev/null | grep -E '>>|tee|sed -i|>[[:space:]]*/etc' | grep . >/dev/null; then ok "TC-051 /etc/wsl.conf is only in docs; nothing writes it"; else bad "TC-051 something writes /etc/wsl.conf"; fi
+if ! grep -rnE '/etc/wsl\.conf' "$D" 2>/dev/null | grep -E '>>|tee|sed -i|>[[:space:]]*/etc' | grep . >/dev/null; then ok "TC-051 /etc/wsl.conf is only in docs; nothing writes it"; else bad "TC-051 something writes /etc/wsl.conf"; fi
 if git ls-files "$D" scripts hooks | grep -iE 'supervis|autostart|watchdog' | grep . >/dev/null || [ -n "$(git ls-files --others --exclude-standard | grep -iE 'supervis|autostart|watchdog')" ]; then bad "TC-052 a supervisor/autostart/watchdog file exists"; else ok "TC-052 no supervisor, autostart or watchdog file"; fi
 if printf '%s\n%s\n%s\n' "$sec" "$unit" "$ps1" | grep -iE 'supervisor script|autostart\.sh|watchdog' | grep . >/dev/null; then bad "TC-052 the doc teaches a hand-written watchdog"; else ok "TC-052 nothing teaches a hand-written watchdog"; fi
 
