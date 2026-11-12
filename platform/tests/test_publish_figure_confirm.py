@@ -337,7 +337,7 @@ def test_page_headers_and_css_are_unchanged(w):
             m_new = re.search(r"^%s\s*=.*?(?=^\S)" % name, src, re.M | re.S)
             assert (m_old and m_old.group(0)) == (m_new and m_new.group(0)), name
         routes = lambda t: sorted(re.findall(r"@app\.route\(\"([^\"]+)\"|Route\(\"([^\"]+)\"", t))
-        assert routes(old) == routes(src)
+        assert routes(src) == sorted(routes(old) + [("", "/run/figure"), ("", "/run/figure/delete"), ("", "/run/figures/pack")])      # slice 2 (mcp-publish-figure-gallery) adds exactly these three routes
 
 
 # ---- the database --------------------------------------------------------------------------------------------------------------------
