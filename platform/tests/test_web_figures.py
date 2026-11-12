@@ -767,7 +767,6 @@ def test_finished_page_inlines_only_the_start_of_code_and_params(w):
     page = c.get(url(rid)).text
     g = gallery_part(page)
     assert len(page.encode("utf-8")) < 120_000, len(page)                       # not 2 x 100 KB of code
-    shown = htmllib.unescape(re.findall(r"<pre>(.*?)</pre>", g, re.S)[0])
     first = [x for x in re.findall(r"<pre>(.*?)</pre>", g, re.S) if "L0000" in x]
     assert len(first) == 2
     for pre in first:

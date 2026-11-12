@@ -1115,11 +1115,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         got = await run_in_threadpool(lambda: read_figure(index_path, platform_path, request.query_params.get("run") or "",
-                                                                         request.query_params.get("name") or "", caller=caller))
+                                                                         request.query_params.get("name") or "", caller=caller,
+                                                                         part=request.query_params.get("part") or None))
         if not got.get("found"):
             return PlainTextResponse(FIGURE_404, status_code=404, headers=_HEADERS)
         headers = dict(FIGURE_HEADERS)
-        if request.query_params.get("download") == "1" or (got.get("type") == "svg" and request.headers.get("sec-fetch-dest") == "document"):
+        if request.query_params.get("download") == "1" or got.get("type") == "text" or (got.get("type") == "svg" and request.headers.get("sec-fetch-dest") == "document"):
             headers["Content-Disposition"] = 'attachment; filename="%s"' % got["name"]      # a name the gallery holds: letters, digits, dot, underscore, hyphen
         return Response(got["data"], media_type=got["mime"], headers=headers)
 

@@ -573,16 +573,37 @@ def gallery_view(index_path, platform_path, run_id, *, caller, clock=time.time):
     return out
 
 
-def read_figure(index_path, platform_path, run_id, name, *, caller):
+PARTS = {"code": ("code_file", ".code.txt"), "params": ("params_file", ".params.txt")}
+
+
+def read_figure(index_path, platform_path, run_id, name, *, caller, part=None):
     """The bytes of one figure of the caller's own run: {found: True, name, type, mime, data}. Only a name that index.json holds is read (the
     name is compared with the index, never joined into a path by what the caller wrote); a run that is not the caller's, a name that is not
-    there and a file that is gone all give {found: False}."""
+    there and a file that is gone all give {found: False}. With part="code" or "params" (ruling G5) the answer is the stored text of that part as
+    plain text ({found, name: "<name>.code.txt", type: "text", mime, data}); a figure without that part, and any other part, give {found: False}."""
     folder, _ = _own_folder(index_path, platform_path, run_id, caller)
     if folder is None or not isinstance(name, str):
         return {"found": False, "message": NOT_YOURS}
     figures, _problem = read_index(folder)
     if name not in figures:
         return {"found": False, "message": NOT_YOURS}
+    if part:
+        if part not in PARTS:
+            return {"found": False, "message": NOT_YOURS}
+        key, suffix = PARTS[part]
+        entry = figures[name]
+        if entry.get(key) != name + suffix:      # the stored name is derived, never taken from the index as a path
+            return {"found": False, "message": NOT_YOURS}
+        try:
+            check_name(name)
+            path = os.path.join(folder, name + suffix)
+            if os.path.realpath(path) != os.path.join(os.path.realpath(folder), name + suffix):
+                raise FigureRefused("path")
+            with open(path, "rb") as f:
+                data = f.read()
+        except (FigureRefused, OSError):
+            return {"found": False, "message": NOT_YOURS}
+        return {"found": True, "name": name + suffix, "type": "text", "mime": "text/plain; charset=utf-8", "data": data}
     try:
         kind = check_name(name)
         path = os.path.join(folder, name)
