@@ -14,18 +14,26 @@ executed or parsed as HTML: an image is only ever loaded by an <img>, and code, 
 """
 import base64
 import binascii
+import contextlib
 import hashlib
 import json
 import os
 import re
 import secrets
 import time
+import unicodedata
 
-from .. import jobs, status, store
+try:
+    import fcntl
+except ImportError:      # not a Unix: the platform runs on Linux; there is no cross-process lock to take elsewhere
+    fcntl = None
+
+from .. import common, confirm, jobs, status, store
 
 MAX_FIGURES_PER_CALL = 10
 MAX_PER_RUN = 30
 MAX_BUNDLE_BYTES = 5 * 1024 * 1024
+MAX_PENDING_BYTES = 20 * 1024 * 1024        # the images one person may have waiting for a yes at the same time (the rows hold them until then)
 MAX_CAPTION_CHARS = 200
 MAX_CODE_BYTES = 100 * 1024
 MAX_PARAMS_BYTES = 10 * 1024
@@ -44,6 +52,8 @@ _SVG_EXTERNAL = re.compile(r"(?:href|src)\s*=\s*[\"']?\s*(?:https?:)?//|url\(\s*
 NOT_YOURS = "找不到這個 run (run not found)"      # the same words for a run that is not yours and one that is not there
 
 SIZE_MESSAGE = "這次送入的圖合計超過 5 MB 上限（目前 %s MB），請分次或縮小圖檔 (the figures together exceed the 5 MB limit; send fewer per call or smaller files)"
+PENDING_MESSAGE = ("等待確認的圖合計已達每人 20 MB 上限（目前 %s MB，這次 %s MB）；請先到確認頁處理、或等 10 分鐘逾時之後再送 "
+                   "(the figures waiting for a yes are over the limit of 20 MB per person; answer or wait for the open requests to expire, then send again)")
 FULL_MESSAGE = "這個分析的圖庫已滿（最多 %d 張）；請改用既有的檔名覆蓋，或請本人先到網頁刪除不要的圖 (the gallery of this run is full: at most %d figures; reuse a name to replace one)"
 
 
@@ -80,7 +90,13 @@ def _text_problem(value, label, limit, unit):
         raise FigureRefused("%s 必須是文字 (%s must be text)" % (label, label))
     if chr(0) in value:
         raise FigureRefused("%s 含有 NUL 字元，不是純文字 (%s contains a NUL character)" % (label, label))
-    size = len(value) if unit == "chars" else len(value.encode("utf-8", "surrogatepass"))
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise FigureRefused("%s 含有不成對的代理字元，不是正確的文字 (%s contains a lone surrogate, which is not valid text)" % (label, label))
+    if label == "caption" and any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in value):
+        raise FigureRefused("caption 不可含換行或控制字元（說明只能是單行文字）(the caption must be one line of text: no line break or control character)")
+    size = len(value) if unit == "chars" else len(encoded)
     if size > limit:
         raise FigureRefused("%s 超過上限（%d %s）(%s is over the limit of %d %s)" % (
             label, limit, "字元" if unit == "chars" else "位元組", label, limit, "characters" if unit == "chars" else "bytes"))
@@ -220,6 +236,7 @@ def _screen(run_name, figures, existing, lang="zh"):
     for i, f in enumerate(figures, 1):
         lines.append("[%d] %s" % (i, f["name"]))
         lines.append(("Type: %s   Size: %d bytes" if en else "類型：%s　大小：%d 位元組") % (f["type"], f["size"]))
+        lines.append(("SHA-256 (first 12): %s" if en else "SHA-256（前 12 碼）：%s") % f["sha256"][:12])
         if f["name"] in existing:
             lines.append("Replaces the figure of the same name" if en else "覆蓋既有同名圖 (replaces the figure of the same name)")
         lines.append(("Caption: %s" if en else "說明：%s") % (f["caption"] or "-"))
@@ -256,6 +273,7 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
     view = _owned_run(index_path, platform_path, run_id, caller)
     if view is None:
         return refused("找不到 run「%s」。請用 list_runs 查自己的 run 編號後再送 (run not found: %s; use list_runs to see your own run ids)" % (str(run_id)[:80], str(run_id)[:80]))
+    confirm.drop_figure_content(plat, _caller_id(caller), clock)       # the next request of the same person drops the bytes of what is over (void, expired)
     try:
         built = _build_figures(figures)
         folder = run_folder(plat, _caller_id(caller), run_id)
@@ -267,10 +285,18 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
                 raise FigureRefused("「%s」與圖庫裡的「%s」只差大小寫，請用相同的檔名 (the name differs from \"%s\" only in case)" % (n, lower[n.lower()], lower[n.lower()]))
         if len(set(existing) | names) > MAX_PER_RUN:
             raise FigureRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
-        bundle = {"run_name": view["name"], "run_id": run_id, "figures": built, "replaces": sorted(names & set(existing))}
+        replaces = sorted(names & set(existing))
+        stored = confirm.facts(plat, request_id) if isinstance(request_id, str) and user_confirmed else None
+        if stored and stored.get("what") == "publish_figure":
+            replaces = stored["replaces"]          # a repeated call that carries the yes: what the screen said, not what the gallery says now (it changed by that very yes)
+        bundle = {"run_name": view["name"], "run_id": run_id, "figures": built, "replaces": replaces}
         size = len(json.dumps(bundle).encode())
         if size > MAX_BUNDLE_BYTES:
             raise FigureRefused(SIZE_MESSAGE % _mb(size))
+        if not (isinstance(request_id, str) and user_confirmed):        # a call that only relays a yes makes no new request
+            waiting = confirm.pending_figure_bytes(plat, _caller_id(caller), clock, except_sha=common.bundle_sha256(bundle))
+            if waiting + size > MAX_PENDING_BYTES:
+                raise FigureRefused(PENDING_MESSAGE % (_mb(waiting), _mb(size)))
     except FigureRefused as e:
         return refused(str(e))
     text = _screen(view["name"], built, existing)
@@ -308,17 +334,56 @@ def _chmod(path, mode):
         pass
 
 
+class GalleryBusy(OSError):
+    """The gallery lock could not be taken. An OSError, so the confirmed write ends in slice 1's write-failed path."""
+
+
+BUSY_MESSAGE = "圖庫目前無法變更，請稍後再試。沒有變更任何內容 (The gallery cannot be changed right now, please try again later. Nothing was changed.)"
+
+
+@contextlib.contextmanager
+def gallery_lock(folder):
+    """One lock for each gallery folder, held from the read of index.json to its replace (ruling G1): pack, delete and the confirmed write all
+    read the index and replace it whole, so two of them at once lose an update. It is a flock on the folder itself, taken on a handle of its own
+    each time, so it holds between processes and between the web server's workers alike; there is no lock file, because a gallery folder holds
+    only its figures and index.json. A folder that is not there is not locked: there is no index to lose. A lock that cannot be taken raises GalleryBusy."""
+    key = os.path.realpath(folder)
+    fd = None
+    if fcntl is not None and os.path.isdir(key):
+        try:
+            fd = os.open(key, os.O_RDONLY)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError as e:        # never go on without the lock (ruling K3): the operation is refused and changes nothing
+            if fd is not None:
+                os.close(fd)
+            raise GalleryBusy(e.errno or 0, "the gallery lock could not be taken") from None
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)        # closing releases the flock
+
+
 def _stage(folder, final_name, data, tag):
     temp = os.path.join(folder, ".tmp-%s-%s" % (tag, secrets.token_hex(4)))
     fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
-    with os.fdopen(fd, "wb") as f:
-        f.write(data)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+    except BaseException:       # a write that fails half way leaves no temporary file (ruling G4)
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
     return temp, os.path.join(folder, final_name)
 
 
 def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
     """Write the figures of a confirmed request. Everything is checked once more (names, bytes, the number in the gallery); JobRefused when
-    it no longer passes, any other error when the disk says no. On any failure nothing stays behind and index.json is as it was."""
+    it no longer passes, any other error when the disk says no. On any failure nothing stays behind and every file that was touched,
+    index.json included, has the bytes it had before. The names are matched without regard to case, and what would be replaced must be what the
+    screen said (bundle["replaces"]); otherwise nothing is written."""
     try:
         folder = run_folder(platform_path, caller_user_id, bundle["run_id"])
         figures = bundle["figures"]
@@ -332,14 +397,31 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
             built.append((f, data))
     except (FigureRefused, KeyError, TypeError, ValueError, binascii.Error) as e:
         raise jobs.JobRefused("核准時重新檢查未通過，沒有寫入任何圖：%s (the check at the time of the yes failed; nothing was written)" % e)
-    existing, problem = read_index(folder)
-    if len(set(existing) | {f["name"] for f, _ in built}) > MAX_PER_RUN:
-        raise jobs.JobRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
     for sub in (os.path.dirname(folder), folder):
         os.makedirs(sub, mode=0o700, exist_ok=True)
         _chmod(sub, 0o700)
+    with gallery_lock(folder):
+        _commit(folder, built, bundle, rid, now)
+
+
+def _commit(folder, built, bundle, rid, now):
+    """The part of write_confirmed that reads and replaces index.json; it runs with the gallery lock held."""
+    existing, problem = read_index(folder)
+    if len(set(existing) | {f["name"] for f, _ in built}) > MAX_PER_RUN:
+        raise jobs.JobRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
+    lower = {k.lower(): k for k in existing}
+    replacing = set()
+    for f, _ in built:
+        hit = lower.get(f["name"].lower())
+        if hit is not None and hit != f["name"]:
+            raise jobs.JobRefused("「%s」與圖庫裡的「%s」只差大小寫，沒有寫入任何圖，請用相同的檔名重新提出 (the name differs from \"%s\" only in case; nothing was written)" % (f["name"], hit, hit))
+        if hit is not None:
+            replacing.add(hit)
+    if sorted(replacing) != sorted(bundle.get("replaces", [])):
+        raise jobs.JobRefused("圖庫在申請送出後有變動，會被取代的圖與確認畫面上寫的不同，沒有寫入任何圖，請重新提出 "
+                              "(the gallery changed after the request was made: what would be replaced is not what the screen said; nothing was written)")
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
-    staged, created, replaced = [], [], []
+    staged, replaced, backups = [], [], {}
     index = {k: dict(v) for k, v in existing.items()}
     try:
         for f, data in built:
@@ -359,9 +441,13 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
             for key, suffix, field in (("code_file", ".code.txt", "code"), ("params_file", ".params.txt", "params")):
                 if old.get(key) and not f[field]:
                     stale.append(os.path.join(folder, f["name"] + suffix))
+        for path in [final for _, final in staged] + stale:        # what is there now, to put back if any step fails
+            try:
+                with open(path, "rb") as old_file:
+                    backups[path] = old_file.read()
+            except FileNotFoundError:
+                backups[path] = None
         for temp, final in staged:
-            if not os.path.exists(final):
-                created.append(final)
             os.replace(temp, final)
             _chmod(final, 0o600)
             replaced.append(temp)
@@ -377,12 +463,17 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
                     os.unlink(temp)
                 except OSError:
                     pass
-        for final in created:
-            if os.path.basename(final) != "index.json" or not existing:
-                try:
-                    os.unlink(final)
-                except OSError:
-                    pass
+        for path, old in backups.items():       # every file the write touched goes back to the bytes it had (or is removed when it was not there)
+            try:
+                if old is None:
+                    if os.path.exists(path):
+                        os.unlink(path)
+                else:
+                    with open(path, "wb") as restored:
+                        restored.write(old)
+                    _chmod(path, 0o600)
+            except OSError:
+                pass
         raise
 
 
@@ -479,16 +570,37 @@ def gallery_view(index_path, platform_path, run_id, *, caller, clock=time.time):
     return out
 
 
-def read_figure(index_path, platform_path, run_id, name, *, caller):
+PARTS = {"code": ("code_file", ".code.txt"), "params": ("params_file", ".params.txt")}
+
+
+def read_figure(index_path, platform_path, run_id, name, *, caller, part=None):
     """The bytes of one figure of the caller's own run: {found: True, name, type, mime, data}. Only a name that index.json holds is read (the
     name is compared with the index, never joined into a path by what the caller wrote); a run that is not the caller's, a name that is not
-    there and a file that is gone all give {found: False}."""
+    there and a file that is gone all give {found: False}. With part="code" or "params" (ruling G5) the answer is the stored text of that part as
+    plain text ({found, name: "<name>.code.txt", type: "text", mime, data}); a figure without that part, and any other part, give {found: False}."""
     folder, _ = _own_folder(index_path, platform_path, run_id, caller)
     if folder is None or not isinstance(name, str):
         return {"found": False, "message": NOT_YOURS}
     figures, _problem = read_index(folder)
     if name not in figures:
         return {"found": False, "message": NOT_YOURS}
+    if part:
+        if part not in PARTS:
+            return {"found": False, "message": NOT_YOURS}
+        key, suffix = PARTS[part]
+        entry = figures[name]
+        if entry.get(key) != name + suffix:      # the stored name is derived, never taken from the index as a path
+            return {"found": False, "message": NOT_YOURS}
+        try:
+            check_name(name)
+            path = os.path.join(folder, name + suffix)
+            if os.path.realpath(path) != os.path.join(os.path.realpath(folder), name + suffix):
+                raise FigureRefused("path")
+            with open(path, "rb") as f:
+                data = f.read()
+        except (FigureRefused, OSError):
+            return {"found": False, "message": NOT_YOURS}
+        return {"found": True, "name": name + suffix, "type": "text", "mime": "text/plain; charset=utf-8", "data": data}
     try:
         kind = check_name(name)
         path = os.path.join(folder, name)
@@ -516,11 +628,19 @@ def _clean_names(names):
     return out, None, None
 
 
-def pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time.time):
+def pack_figures(*a, **k):
+    """_pack_figures, except that a gallery lock that cannot be taken is refused with reason busy and nothing is changed (ruling K3)."""
+    try:
+        return _pack_figures(*a, **k)
+    except GalleryBusy:
+        return _refused("busy", BUSY_MESSAGE)
+
+
+def _pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time.time):
     """Put exactly the named figures into the delivery package: they get packed=true and packed_at, every other figure of the run is set back to
     packed=false (the package is the selection of this press; none at all is allowed and empties it). All or nothing: a name that is not in
     the gallery, too many names or an unreadable index refuse the whole call and index.json is not touched. {ok, found, count, names} or
-    {ok: False, found, reason, message}; reason is not_found, bad_name, too_many, unknown_name or write_failed."""
+    {ok: False, found, reason, message}; reason is not_found, bad_name, too_many, unknown_name, unreadable (index.json is damaged; checked before the names) or write_failed."""
     folder, _ = _own_folder(index_path, platform_path, run_id, caller)
     if folder is None:
         return _refused("not_found", NOT_YOURS, found=False)
@@ -529,46 +649,56 @@ def pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time
         if reason == "too_many":
             return _refused(reason, "一次最多選 %d 張圖，沒有變更任何內容 (at most %d figures at a time; nothing was changed)" % (MAX_PER_RUN, MAX_PER_RUN))
         return _refused(reason, "圖名不合規定，沒有變更任何內容 (a figure name is not valid; nothing was changed)", name=bad)
-    figures, problem = read_index(folder)
-    for n in chosen:
-        if n not in figures:
-            return _refused("unknown_name", "圖庫裡沒有「%s」，沒有變更任何內容 (the gallery has no figure \"%s\"; nothing was changed)" % (n, n), name=n)
-    if problem:
-        return _refused("write_failed", problem)
-    if not figures:
-        return {"ok": True, "found": True, "count": 0, "names": []}
-    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
-    updated = {k: dict(v, packed=k in chosen, packed_at=stamp if k in chosen else None) for k, v in figures.items()}
-    try:
-        _write_index(folder, updated)
-    except OSError:
-        return _refused("write_failed", "未能打包，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not pack; the gallery is unchanged. Try again later or tell the administrator)")
+    with gallery_lock(folder):
+        figures, problem = read_index(folder)
+        if problem:     # the damage is said before any name is looked at (ruling G2)
+            return _refused("unreadable", problem)
+        for n in chosen:
+            if n not in figures:
+                return _refused("unknown_name", "圖庫裡沒有「%s」，沒有變更任何內容 (the gallery has no figure \"%s\"; nothing was changed)" % (n, n), name=n)
+        if not figures:
+            return {"ok": True, "found": True, "count": 0, "names": []}
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
+        updated = {k: dict(v, packed=k in chosen, packed_at=stamp if k in chosen else None) for k, v in figures.items()}
+        try:
+            _write_index(folder, updated)
+        except OSError:
+            return _refused("write_failed", "未能打包，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not pack; the gallery is unchanged. Try again later or tell the administrator)")
     return {"ok": True, "found": True, "count": len(chosen), "names": chosen}
 
 
-def delete_figure(index_path, platform_path, run_id, name, *, caller):
+def delete_figure(*a, **k):
+    """_delete_figure, with the same refusal when the gallery lock cannot be taken (ruling K3)."""
+    try:
+        return _delete_figure(*a, **k)
+    except GalleryBusy:
+        return _refused("busy", BUSY_MESSAGE)
+
+
+def _delete_figure(index_path, platform_path, run_id, name, *, caller):
     """Remove one figure of the caller's own run: its image, its code and its parameters, and its entry in index.json (so it leaves the package
     too). {ok, found, name} or {ok: False, found, reason, message}. The index is written first, so a file that cannot be removed afterwards is
-    only a leftover that nothing lists. Only files inside the run's own gallery folder are ever removed."""
+    only a leftover (the files go inside the lock) that nothing lists. Only files inside the run's own gallery folder are ever removed."""
     folder, _ = _own_folder(index_path, platform_path, run_id, caller)
     if folder is None:
         return _refused("not_found", NOT_YOURS, found=False)
     chosen, reason, bad = _clean_names([name])
     if chosen is None:
         return _refused("bad_name", "圖名不合規定，沒有刪除任何內容 (a figure name is not valid; nothing was deleted)", name=bad)
-    figures, problem = read_index(folder)
-    if name not in figures:
-        return _refused("unknown_name", "圖庫裡沒有「%s」，沒有刪除任何內容 (the gallery has no figure \"%s\"; nothing was deleted)" % (name, name), name=name)
-    if problem:
-        return _refused("write_failed", problem)
-    rest = {k: v for k, v in figures.items() if k != name}
-    try:
-        _write_index(folder, rest)
-    except OSError:
-        return _refused("write_failed", "未能刪除，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not delete; the gallery is unchanged. Try again later or tell the administrator)")
-    for leaf in (name, name + ".code.txt", name + ".params.txt"):
+    with gallery_lock(folder):
+        figures, problem = read_index(folder)
+        if problem:
+            return _refused("unreadable", problem)
+        if name not in figures:
+            return _refused("unknown_name", "圖庫裡沒有「%s」，沒有刪除任何內容 (the gallery has no figure \"%s\"; nothing was deleted)" % (name, name), name=name)
+        rest = {k: v for k, v in figures.items() if k != name}
         try:
-            os.unlink(os.path.join(folder, leaf))
+            _write_index(folder, rest)
         except OSError:
-            pass
+            return _refused("write_failed", "未能刪除，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not delete; the gallery is unchanged. Try again later or tell the administrator)")
+        for leaf in (name, name + ".code.txt", name + ".params.txt"):       # still inside the lock (ruling K2): a same-named figure written next cannot lose its file
+            try:
+                os.unlink(os.path.join(folder, leaf))
+            except OSError:
+                pass
     return {"ok": True, "found": True, "name": name}

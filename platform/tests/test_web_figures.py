@@ -215,9 +215,12 @@ def test_finished_gallery_empty_line(w):
     assert package_row(page) == "— 無"
     folder = gallery(w, ann, rid)
     folder.mkdir(parents=True)
-    (folder / "index.json").write_text("{not json")                       # TC-009: a damaged index reads as an empty gallery
+    (folder / "index.json").write_text("{not json")                       # TC-009, as changed by ruling G2: a damaged index says so, it is not an empty gallery
     r = c.get(url(rid))
-    assert r.status_code == 200 and "圖庫為空" in r.text and "Traceback" not in r.text and str(folder) not in r.text
+    assert r.status_code == 200 and "圖庫暫時無法讀取" in gallery_part(r.text) and "圖庫為空" not in r.text and "Traceback" not in r.text and str(folder) not in r.text
+    en = c.get(url(rid, "&lang=en"))
+    assert en.status_code == 200 and "cannot be read right now" in gallery_part(en.text) and str(folder) not in en.text
+    assert "<img" not in r.text and 'type="checkbox"' not in r.text
 
 
 def test_pending_request_is_a_line_above_the_gallery(w):
@@ -672,7 +675,7 @@ def test_no_inline_style_or_script_in_gallery(w):
 def test_style_untouched(w):
     # TC-065
     from abf_platform import web_board
-    assert hashlib.sha256(web_board.STYLE.encode("utf-8")).hexdigest().startswith("719ce2ab")
+    assert hashlib.sha256(web_board.STYLE.encode("utf-8")).hexdigest().startswith("15f0b560")
     ann, c, rid = setup(w)
     page = c.get(url(rid)).text
     classes = set(re.findall(r'class="([^"]+)"', gallery_part(page)))
@@ -712,3 +715,102 @@ def test_finish_reads_only_packed_figures(w):
     root = Path(__file__).resolve().parents[2]
     doc = (root / "docs" / "PLATFORM.md").read_text(encoding="utf-8")
     assert "packed_only" in doc and "/run/figures/pack" in doc and "/run/figure/delete" in doc and "/run/figure" in doc
+
+
+def test_damaged_index_refuses_pack_and_delete_with_one_sentence(w):
+    # ruling G2: the damage is checked before the names, and the answer is the same sentence for every name list (never a 500, never a path)
+    ann, c, rid = setup(w, items=figs(("a.png",)))
+    page = c.get(url(rid)).text
+    tp, td = token(page, "/run/figures/pack"), token(page, "/run/figure/delete")
+    folder = gallery(w, ann, rid)
+    (folder / "index.json").write_text("{not json")
+    before = tree(folder)
+    seen = []
+    for r in (pack_post(c, rid, ["zz.png"], tok=tp), pack_post(c, rid, ["a.png"], tok=tp), pack_post(c, rid, [], tok=tp),
+              delete_post(c, rid, "zz.png", tok=td), delete_post(c, rid, "a.png", tok=td)):
+        assert r.status_code == 400, r.status_code
+        assert "圖庫暫時無法讀取" in r.text and str(folder) not in r.text and "Traceback" not in r.text
+        seen.append(re.search(r'<p class="bad state-failed">(.*?)</p>', r.text, re.S).group(1))
+        assert tree(folder) == before
+    assert len(set(seen)) == 1, seen
+    r = c.post("/run/figures/pack", data={"csrf": tp, "run": rid, "fig": [], "lang": "en"})
+    assert r.status_code == 400 and "cannot be read right now" in r.text
+
+
+def test_figure_csp_and_svg_opened_as_a_document(w):
+    # ruling G3: the figure policy forbids forms, a base address and framing; an SVG that the browser opens as a document is always an attachment
+    ann, c, rid = setup(w)
+    r = figure_get(c, rid, "a.png")
+    csp = r.headers["content-security-policy"]
+    assert "form-action 'none'" in csp and "base-uri 'none'" in csp and "frame-ancestors 'none'" in csp
+    assert "sandbox" in csp and "default-src 'none'" in csp
+    path = "/run/figure?run=%s&name=b.svg" % rid
+    doc = c.get(path, headers={"Sec-Fetch-Dest": "document"})
+    assert doc.status_code == 200 and doc.headers["content-disposition"] == 'attachment; filename="b.svg"' and doc.content == SVG
+    assert "form-action 'none'" in doc.headers["content-security-policy"]
+    assert "content-disposition" not in c.get(path, headers={"Sec-Fetch-Dest": "image"}).headers      # the <img> of the page still shows it
+    assert "content-disposition" not in c.get(path).headers                                           # no header at all: as before
+    png = c.get("/run/figure?run=%s&name=a.png" % rid, headers={"Sec-Fetch-Dest": "document"})
+    assert "content-disposition" not in png.headers
+
+
+def long_code(lines=1000, width=99):
+    return "".join(("L%04d " % i).ljust(width, "x") + "\n" for i in range(lines))        # about 100 KB, one numbered line each
+
+
+def test_finished_page_inlines_only_the_start_of_code_and_params(w):
+    # TC-004 as changed by ruling G5: the first part is complete, the rest can be downloaded; and a short text is still shown whole
+    big, small = long_code(), "# short\nprint(1)\n"
+    one_line = "k=" + "9" * 10000
+    ann, c, rid = setup(w, items=[fig("a.png", PNG, code=big, params=one_line), fig("b.png", PNG, code=small, params="seed=1"),
+                                  fig("c.png", PNG, code=big, params="seed=2")])
+    page = c.get(url(rid)).text
+    g = gallery_part(page)
+    assert len(page.encode("utf-8")) < 120_000, len(page)                       # not 2 x 100 KB of code
+    first = [x for x in re.findall(r"<pre>(.*?)</pre>", g, re.S) if "L0000" in x]
+    assert len(first) == 2
+    for pre in first:
+        text = htmllib.unescape(pre)
+        assert text.splitlines()[0].startswith("L0000") and "L0199" in text and "L0200" not in text      # 200 lines, whichever comes first with 20 KB
+        assert len(text.encode("utf-8")) <= 20 * 1024 and big.startswith(text)                             # the start, unaltered
+    assert g.count("可下載") + g.count("下載") >= 2
+    assert 'href="/run/figure?run=%s&amp;name=a.png&amp;part=code"' % rid in g and 'name=c.png&amp;part=code"' in g
+    assert "name=b.png&amp;part=" not in g and "# short\nprint(1)" in htmllib.unescape(g)                    # whole: no link, no sentence about the rest
+    assert g.count("僅顯示開頭") == 2
+    en = gallery_part(c.get(url(rid, "&lang=en")).text)
+    assert "part=code" in en and "first part" in en.lower() and not cjk(en.replace(" ", ""))
+    full = c.get("/run/figure?run=%s&name=a.png&part=code" % rid)
+    assert full.status_code == 200 and full.text == big
+    assert full.headers["content-type"].startswith("text/plain") and full.headers["content-disposition"] == 'attachment; filename="a.png.code.txt"'
+    assert full.headers["x-content-type-options"] == "nosniff" and full.headers["cache-control"] == "private, no-store"
+    assert "form-action 'none'" in full.headers["content-security-policy"] and "sandbox" in full.headers["content-security-policy"]
+    assert c.get("/run/figure?run=%s&name=a.png&part=params" % rid).text == one_line
+    assert c.get("/run/figure?run=%s&name=a.png&part=params&download=1" % rid).text == one_line
+
+
+def test_part_download_is_owner_only_and_answers_404_for_everything_else(w):
+    # ruling G5: the same owner check and the same one-line 404 as the figure itself
+    ann, c, rid = setup(w, items=[fig("a.png", PNG, code="print(1)\n", params=""), fig("b.png", PNG, code="", params="k=1")])
+    bob, cb, rid_b = world(w, "bob-done", who="bob")
+    anon = w.web()
+    r = anon.get("/run/figure?run=%s&name=a.png&part=code" % rid)
+    assert r.status_code in (302, 303) and "print(1)" not in r.text
+    ref = figure_get(cb, rid, "zz.png")
+    assert ref.status_code == 404
+    for run_id, name, part, client in ((rid, "a.png", "code", cb), (rid_b, "a.png", "code", cb), ("no-such-run", "a.png", "code", c),
+                                       (rid, "zz.png", "code", c), (rid, "a.png", "params", c), (rid, "b.png", "code", c),
+                                       (rid, "a.png", "index", c), (rid, "a.png", "../index.json", c), (rid, "a.png", "", c), (rid, "index.json", "code", c)):
+        got = client.get("/run/figure?run=%s&name=%s&part=%s" % (quote(run_id, safe=""), quote(name, safe=""), quote(part, safe="")))
+        if (name, part) == ("a.png", "") and client is c:
+            assert got.status_code == 200 and got.content == PNG            # an empty part is no part
+            continue
+        assert (got.status_code, got.text, got.headers["content-type"].split(";")[0]) == (ref.status_code, ref.text, ref.headers["content-type"].split(";")[0]), (run_id, name, part)
+    assert c.get("/run/figure?run=%s&name=a.png&part=code" % rid).text == "print(1)\n"
+    assert c.get("/run/figure?run=%s&name=b.png&part=params" % rid).text == "k=1"
+
+
+def test_part_download_link_is_not_inside_the_sentence(w):
+    # K1 (axe link-in-text-block, serious): the link to the rest of a long code text stands in a paragraph of its own, not inside the sentence
+    ann, c, rid = setup(w, items=[fig("a.png", PNG, code=long_code(), params="seed=1")])
+    g = gallery_part(c.get(url(rid)).text)
+    assert re.search(r'<p class="muted">[^<]*</p><p><a href="[^"]*part=code">', g), g[:3000]

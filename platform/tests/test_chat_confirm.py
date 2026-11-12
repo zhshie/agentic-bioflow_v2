@@ -401,7 +401,7 @@ def test_tcm_47_no_new_column_no_new_table(w):
     blob = "\n".join(" ".join((r[2] or "").split()) for r in rows).replace(", 'publish_figure'", "")      # mcp-publish-figure: the only change is the new confirmations kind
     assert hashlib.sha256(blob.encode("utf-8")).hexdigest() == BASE_SCHEMA_SHA256
     routes = sorted((getattr(r, "path", str(r)), tuple(sorted(getattr(r, "methods", None) or []))) for r in w.web().app.routes)
-    assert routes == sorted(BASE_ROUTES)
+    assert [r for r in routes if r[0] not in ("/run/figure", "/run/figure/delete", "/run/figures/pack")] == sorted(BASE_ROUTES)      # mcp-publish-figure-gallery adds these three (test_web_figures pins them)
 
 
 def test_tcm_48_schemas_gain_two_optional_fields_on_four_tools(w):

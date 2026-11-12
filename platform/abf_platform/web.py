@@ -73,7 +73,7 @@ from starlette.responses import HTMLResponse, PlainTextResponse, RedirectRespons
 from starlette.routing import Route
 
 from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
-from . import actions, oauth, store, web_board, web_cost, web_launch, web_preview, web_refusal, web_settings
+from . import actions, oauth, site_link, store, web_board, web_cost, web_launch, web_preview, web_refusal, web_settings
 from . import uploads_web, web_finished, web_upload
 from .actions.figures import delete_figure, gallery_view, pack_figures, read_figure      # the gallery of a run (read, pack, delete): the action layer's own module; the routes only call these
 
@@ -107,7 +107,7 @@ LAUNCH_HEADERS = dict(_HEADERS, **{      # /launch alone may show pictures, and 
 FINISHED_HEADERS = dict(_HEADERS, **{      # the finished stage of a succeeded run alone may show pictures, and only our own (the private gallery, mcp-publish-figure-gallery)
     "Content-Security-Policy": _HEADERS["Content-Security-Policy"].replace("style-src", "img-src 'self'; style-src", 1)})
 FIGURE_HEADERS = dict(_HEADERS, **{      # one figure of the gallery: a picture only, whatever the bytes are (sandbox, no script, no framing), never kept by a cache
-    "Cache-Control": "private, no-store", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'"})
+    "Cache-Control": "private, no-store", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"})
 FIGURE_404 = "找不到這張圖 (figure not found)"
 HOME = "/"                  # where a login with no (or a refused) `next` goes: a constant, so there is no open redirect
 
@@ -214,6 +214,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         user = store.web_session_user(tokens_path, sid, clock()) if sid else None
         # 012a: the development-mode banner of this request is that of this person only (set again for every request, never carried over)
         web_board.DEV_MODE.set(bool(user is not None and store.user_prefs(tokens_path, user["user_id"])["dev_mode"]))
+        # mcp-site-keepalive-disconnect-ux: the agents of this person that just said their site connection is closed (this request only)
+        site_link.SITE_DOWN_AGENTS.set(tuple(site_link.closed_agents(platform_path, user["user_id"], clock())) if user is not None else ())
         return (sid, user) if sid else (None, None)
 
     def csrf(sid, rid):
@@ -1113,11 +1115,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         got = await run_in_threadpool(lambda: read_figure(index_path, platform_path, request.query_params.get("run") or "",
-                                                                         request.query_params.get("name") or "", caller=caller))
+                                                                         request.query_params.get("name") or "", caller=caller,
+                                                                         part=request.query_params.get("part") or None))
         if not got.get("found"):
             return PlainTextResponse(FIGURE_404, status_code=404, headers=_HEADERS)
         headers = dict(FIGURE_HEADERS)
-        if request.query_params.get("download") == "1":
+        if request.query_params.get("download") == "1" or got.get("type") == "text" or (got.get("type") == "svg" and request.headers.get("sec-fetch-dest") == "document"):
             headers["Content-Disposition"] = 'attachment; filename="%s"' % got["name"]      # a name the gallery holds: letters, digits, dot, underscore, hyphen
         return Response(got["data"], media_type=got["mime"], headers=headers)
 

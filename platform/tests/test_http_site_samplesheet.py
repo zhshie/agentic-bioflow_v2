@@ -550,7 +550,7 @@ def test_tc057_no_table_or_column_changed(d):
         rows = con.execute("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name").fetchall()
     finally:
         con.close()
-    rows = [list(r[:2]) + [(r[2] or "").replace(", 'lint_pipeline'", "")] for r in rows]   # 017c2a: lint_pipeline joins the jobs CHECK list; the rest is the base digest
+    rows = [list(r[:2]) + [(r[2] or "").replace(", 'lint_pipeline'", "").replace(", 'publish_figure'", "")] for r in rows]   # 017c2a: lint_pipeline joins the jobs CHECK list; the rest is the base digest
     assert hashlib.sha256(json.dumps(rows).encode("utf-8")).hexdigest() == SCHEMA_SHA256
 
 
@@ -560,7 +560,7 @@ def test_tc058_tc059_tc060_no_upload_tool_no_site_job_no_folder_job(d):
     # TC-058, TC-059, TC-060
     tools, _ = d.w.mcp([])
     assert {t.name for t in tools} == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
-                                       "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"}
+                                       "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "publish_figure"}
     before = tree(d.uploads)
     jobs_before = [r["id"] for r in sql_rows(d.state, "SELECT id FROM jobs")]
     assert pending(by_text(d, d.a, site_cells(3)))

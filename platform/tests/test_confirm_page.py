@@ -302,6 +302,8 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
     # TC-G04, TC-G05, TC-G06 (011a adds GET /; 009i: the five routes stay; the consent page and the SDK's authorization-server routes are the only additions)
     c = w.web()
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
+    assert [r for r in routes if r[0] in ("/run/figure", "/run/figure/delete", "/run/figures/pack")] == [("/run/figure", ("GET", "HEAD")), ("/run/figure/delete", ("POST",)), ("/run/figures/pack", ("POST",))]      # mcp-publish-figure-gallery adds these three
+    routes = [r for r in routes if r[0] not in ("/run/figure", "/run/figure/delete", "/run/figures/pack")]
     assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
                       ("/act/{verb}", ("POST",)), ("/act/{verb}/edit", ("GET", "HEAD")),      # resume-edit-web: the page that changes a resume
                       ("/authorize", ("GET", "HEAD", "POST")),

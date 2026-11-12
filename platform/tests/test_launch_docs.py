@@ -29,7 +29,7 @@ def test_tc058_the_platform_guide_section_9_covers_every_part_of_launch_and_canc
                    "ABF_PLATFORM_LAUNCH_GRACE", "ABF_STATION_MIN_REMAINING", "slurm_account", "storage_root", "nf_relay.py"):
         assert needle in s, needle
     assert re.search(r"y or Y", s) and re.search(r"nothing (else )?answers|no flag|no environment variable", s, re.I)
-    assert re.search(r"8 hours|eight hours|8-hour", s)
+    assert re.search(r"keepalive_log.sh", s) and not re.search(r"8 hours|eight hours|8-hour", s)      # mcp-site-keepalive-disconnect-ux: the lifetime is measured, no longer promised as 8 hours
     assert re.search(r"same machine", s) and re.search(r"loopback", s)
     assert "fetch-records" in s and "paths and parameters" in s and re.search(r"(logs|records)[^.]*(sent|leave|go|travel|stored)[^.]*platform", s)
     assert re.search(r"revoked[^.]*complete", s) and re.search(r"14 days", s)

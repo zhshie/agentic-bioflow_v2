@@ -1,13 +1,14 @@
 usage: abf-platform [-h] [--version] [--json] [--debug]
-                    {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}
+                    {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records,studio-connect,fetch-results,publish-figure}
                     ...
 
 abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-
 cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http]
-| runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...]
+| runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...] | studio-connect
+--server URL | fetch-results RUN [--dir DIR] | publish-figure RUN FILE [--code FILE]
 
 positional arguments:
-  {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records}
+  {serve,web,token,agent-token,user,pat,oauth,ce,mcp,rebuild,runs,dataset,launch,resume,relaunch,cancel,forget,launches,fetch-records,studio-connect,fetch-results,publish-figure}
     serve               run the receiver for Nextflow's trace messages and the agents' requests
     web                 run the confirmation page where a person presses send (own process, this
                         machine only by default)
@@ -32,6 +33,12 @@ positional arguments:
                         question
     launches            list what was handed to agents: facts only, never a run's state
     fetch-records       read Nextflow's own logs of one run back (read only)
+    studio-connect      store the platform's address and your own token on this computer (run
+                        once)
+    fetch-results       pull the small result tables of one run to this computer and print the R
+                        code that loads them (read only)
+    publish-figure      propose one figure drawn on this computer to the gallery of a run; you
+                        press the button at the link it prints
 
 options:
   -h, --help            show this help message and exit

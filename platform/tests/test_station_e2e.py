@@ -555,7 +555,8 @@ def test_tc082_a_windows_shell_is_refused_by_naming_the_missing_capability(tmp_p
     tf.write_text(CANARY_TOKEN + "\n")
     tf.chmod(0o600)
     args = ["--platform", "http://127.0.0.1:9", "--token-file", str(tf), "--deployment", str(site.root)]
-    code = ("import sys; sys.platform = 'win32'; from abf_station import cli; sys.exit(cli.main(['run'] + %r))" % (args,))
+    # python 3.14's shutil does `import _winapi` at import time when sys.platform is win32; a stub keeps this test about the shell check
+    code = ("import sys, types; sys.modules.setdefault('_winapi', types.ModuleType('_winapi')); sys.platform = 'win32'; from abf_station import cli; sys.exit(cli.main(['run'] + %r))" % (args,))
     p1 = subprocess.run([sys.executable, "-c", code], env=site.agent_env(), cwd=str(site.cwd), capture_output=True,
                         text=True, timeout=30)
     fake_bin = tmp_path / "fake-uname"
@@ -804,7 +805,8 @@ def test_tc023_tc019_a_busy_agent_stays_online_and_a_silent_one_is_called_silent
 # reach: ssh through a fake ssh: TC-045, TC-046, TC-087
 # ---------------------------------------------------------------------------------------
 
-def test_tc045_tc046_tc087_ssh_site_failures_are_told_in_the_site_scripts_own_words(world, tmp_path):
+def test_tc045_tc046_tc087_ssh_site_failures_are_told_in_the_site_scripts_own_words(world, short_tmp):
+    tmp_path = short_tmp   # ssh ControlPath lives under the site folder; a unix socket path is limited to ~104 characters
     # TC-045, TC-046, TC-087
     s = FakeSite(tmp_path / "ssh-site", reach="ssh")
     agent = start_agent(world.plat, s, "agent-ssh", tmp_path, env=s.agent_env(ON_SITE_TIMEOUT=3))

@@ -125,6 +125,42 @@ def void(state_path, rid, reason):
     return bool(jobs.transaction(state_path, work))
 
 
+def _without_content(bundle):
+    """publish_figure: the bundle without the image bytes of its figures (name, type, size, sha256, caption, code, params and replaces stay)."""
+    return dict(bundle, figures=[{k: v for k, v in f.items() if k != "content_base64"} for f in bundle.get("figures", [])])
+
+
+def drop_figure_content(state_path, caller_user_id, clock=time.time):
+    """publish_figure: drop the image bytes from every request of this caller that is over (confirmed, void, or pending past its time) and still
+    holds them. Called when the same person makes the next request; there is no background work."""
+    now = clock()
+
+    def work(con):
+        rows = con.execute("SELECT id, bundle_json FROM confirmations WHERE kind = 'publish_figure' AND caller_user_id IS ? AND bundle_json LIKE '%content_base64%' "
+                           "AND (state IN ('confirmed', 'void') OR (state = 'pending' AND (expires_at IS NULL OR expires_at <= ?)))", (caller_user_id, now)).fetchall()
+        for r in rows:
+            try:
+                kept = json.dumps(_without_content(json.loads(r["bundle_json"])))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            con.execute("UPDATE confirmations SET bundle_json = ? WHERE id = ?", (kept, r["id"]))
+
+    jobs.transaction(state_path, work)
+
+
+def pending_figure_bytes(state_path, caller_user_id, clock=time.time, except_sha=None):
+    """publish_figure: the size in bytes of the requests of this caller that wait for a yes and are not past their time (the images are in them),
+    leaving out the one whose content hash is `except_sha` (asking for the same again is the same request). Only reads."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return 0
+    try:
+        return con.execute("SELECT COALESCE(SUM(LENGTH(bundle_json)), 0) FROM confirmations WHERE kind = 'publish_figure' AND state = 'pending' "
+                           "AND caller_user_id IS ? AND expires_at > ? AND sha256 IS NOT ?", (caller_user_id, clock(), except_sha)).fetchone()[0]
+    finally:
+        con.close()
+
+
 def _changed(row, expected_sha, expected_kind):
     """CHAT: whether the content now asked for is not the content of request `row` (the hash and the kind must both match)."""
     return expected_sha is None or expected_kind is None or row["sha256"] != expected_sha or row["kind"] != expected_kind
@@ -193,13 +229,15 @@ def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_
                 if writer is None:
                     raise RuntimeError("no writer")
                 writer(state_path, row["caller_user_id"], bundle, rid, now)
+                answer = ("written", None, None)
             except jobs.JobRefused as e:
                 con.execute("UPDATE confirmations SET state = 'void', void_reason = ? WHERE id = ?", (str(e)[:300], rid))
-                return "failed", str(e), None
+                answer = ("failed", str(e), None)
             except Exception:
                 con.execute("UPDATE confirmations SET state = 'void', void_reason = ? WHERE id = ?", ("寫入圖庫失敗 (could not write the gallery)", rid))
-                return "write_failed", "寫入圖庫失敗，沒有任何圖被存入 (could not write the gallery; no figure was stored)", None
-            return "written", None, None
+                answer = ("write_failed", "寫入圖庫失敗，沒有任何圖被存入 (could not write the gallery; no figure was stored)", None)
+            con.execute("UPDATE confirmations SET bundle_json = ? WHERE id = ?", (json.dumps(_without_content(bundle)), rid))      # written or not, the row keeps no image bytes
+            return answer
         job_kind = JOB_KIND[row["kind"]]
         con.execute("SAVEPOINT enqueue")
         try:

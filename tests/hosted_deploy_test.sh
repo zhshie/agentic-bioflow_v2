@@ -280,13 +280,13 @@ if [ -z "$miss" ]; then ok "TC-064 TESTING.md has the hosted-deploy steps"; else
 
 # ---------- US5 / constitution ----------
 extra=$(find "$D" -type f 2>/dev/null | sort | tr '\n' ' ')
-want_list="$(printf '%s\n' $D/Caddyfile.template $D/backup.sh $D/env.example $D/platform-upgrade.sh $D/systemd/abf-mcp.service.in $D/systemd/abf-serve.service.in $D/systemd/abf-web.service.in | sort | tr '\n' ' ')"
-if [ "$extra" = "$want_list" ]; then ok "TC-069 deploy/ holds exactly the six planned files"; else bad "TC-069 deploy/ contents" "$extra"; fi
-# TC-083: no tracked *.service / *.timer; deploy/systemd holds exactly three *.service.in
+want_list="$(printf '%s\n' $D/Caddyfile.template $D/backup.sh $D/env.example $D/platform-upgrade.sh $D/station.env.example $D/wsl/keep-wsl-running.ps1 $D/systemd/abf-station@.service.in $D/systemd/abf-mcp.service.in $D/systemd/abf-serve.service.in $D/systemd/abf-web.service.in | sort | tr '\n' ' ')"
+if [ "$extra" = "$want_list" ]; then ok "TC-069 deploy/ holds exactly the ten planned files"; else bad "TC-069 deploy/ contents" "$extra"; fi
+# TC-083: no tracked *.service / *.timer; deploy/systemd holds exactly four *.service.in
 if git rev-parse --git-dir >/dev/null 2>&1; then
   if git ls-files | grep -E '\.(service|timer)$' >/dev/null; then bad "TC-083 a tracked *.service or *.timer exists"; else
     sd=$(git ls-files "$D/systemd" | tr '\n' ' ')
-    [ "$(git ls-files "$D/systemd" | wc -l)" -eq 3 ] && [ -z "$(git ls-files "$D/systemd" | grep -v '\.service\.in$')" ] && ok "TC-083 units ship as three .service.in templates" || bad "TC-083 deploy/systemd contents" "$sd"
+    [ "$(git ls-files "$D/systemd" | wc -l)" -eq 4 ] && [ -z "$(git ls-files "$D/systemd" | grep -v '\.service\.in$')" ] && ok "TC-083 units ship as four .service.in templates" || bad "TC-083 deploy/systemd contents" "$sd"
   fi
 else skip "TC-083 templates" "no git"; fi
 # TC-084: 127.0.0.1:8080 only on comment lines of env.example

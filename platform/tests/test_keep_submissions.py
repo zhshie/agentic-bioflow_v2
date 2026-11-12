@@ -705,7 +705,7 @@ def test_tc094_tc095_tc104_eleven_tools_and_the_column_names_scan_still_catches_
                      "list_site_files", "list_used_pipelines", "my_usage", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
     saying_yes = {"yes", "y", "confirm", "confirmed", "confirmation", "confirmation_id", "approve", "approved", "kind", "command"}
     for t in tools:
-        if t.name in ("launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"):
+        if t.name in ("launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget", "publish_figure"):
             assert t.annotations.read_only_hint is False and not (set(t.input_schema.get("properties", {})) & saying_yes), t.name
         else:
             assert t.annotations.read_only_hint is (t.name != "get_run"), t.name      # ruling R2: get_run queues a read of the site for a lost run
@@ -761,7 +761,7 @@ def test_tc082_the_web_has_no_forget_route(w):
     c = w.web()
     w.login(c, "ann")
     paths = [getattr(r, "path", "") for r in c.app.routes]
-    assert not [p for p in paths if "forget" in p or "delete" in p]
+    assert not [p for p in paths if ("forget" in p or "delete" in p) and p != "/run/figure/delete"]      # the one delete route is the gallery's own (mcp-publish-figure-gallery): a figure of the owner, not a submission
     for url in ("/forget/run-one", "/runs/run-one/forget", "/c/%s/forget" % out["id"]):
         assert c.post(url, data={}).status_code in (404, 405)
     assert not cleared(w, out["id"])
@@ -771,7 +771,7 @@ def test_tc083_no_new_confirmation_kind_and_approve_knows_nothing_of_forget():
     # TC-083
     from abf_platform import confirm, store
     assert set(confirm.JOB_KIND) == {"launch", "cancel", "clean_work"}
-    assert "CHECK (kind IN ('launch', 'cancel', 'clean_work'))" in store.STATE_SCHEMA
+    assert "CHECK (kind IN ('launch', 'cancel', 'clean_work', 'publish_figure'))" in store.STATE_SCHEMA    # mcp-publish-figure: the one kind added, it queues no job
     assert "forget" not in inspect.getsource(confirm.approve)
 
 

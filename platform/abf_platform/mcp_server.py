@@ -200,11 +200,11 @@ def _add_write_tools(server, platform_path, index_path):
     @server.tool(name="launch", annotations=_WRITES,
                  description="Ask to launch a Nextflow run on a compute environment (to continue a failed run: resume or "
                              "relaunch). This does NOT start anything: it returns a summary (sent false), a page address. The person "
-                             "answers in their form, on that page or in the chat; you cannot answer for them. After that call "
+                             "answers in their form, on that page or in the chat; you cannot answer for them. Then call "
                              "launch again with the same arguments (plus request_id and the flag, after they answer). Samples: samplesheet "
-                             "(a CSV you uploaded) or samplesheet_text (the CSV, at most 1 MiB). "
+                             "(an uploaded CSV) or samplesheet_text (the CSV, at most 1 MiB). "
                              "Or name a dataset of yours (dataset, optionally dataset_version): its samplesheet is used. "
-                             "Or none, with profiles such as [\"test\"].")
+                             "Or none, with profiles such as [\"test\"]. 站台連線掉線時會被擋。")
     async def launch_tool(ctx: Context, pipeline: Annotated[str, Field(description="The pipeline to run: an nf-core name such as nf-core/rnaseq, or a pipeline the site already has. Use it with revision, which says which release or branch to run.")], revision: str, run_name: str, samplesheet: str | None = None,
                           samplesheet_text: str | None = None, ce_name: str | None = None,
                           params: Annotated[dict[str, Any] | None, Field(description="A flat mapping of pipeline parameters, e.g. {\"genome\": \"GRCh38\"}.")] = None,
@@ -227,7 +227,7 @@ def _add_write_tools(server, platform_path, index_path):
                              "your uploaded CSV) or samplesheet_text (the CSV, at most 1 MiB). This does NOT start anything: it checks "
                              "the pipeline again, writes a request and returns a summary; you cannot say yes for the person. When "
                              "the answer says sent is false, tell them what to do, then call launch_pipeline again with the same "
-                             "arguments to get the job number.")
+                             "arguments to get the job number. 站台連線掉線時會被擋。")
     async def launch_pipeline_tool(ctx: Context, pipeline_id: int, run_name: str, version: int | None = None,
                                    samplesheet: str | None = None, samplesheet_text: str | None = None, ce_name: str | None = None,
                                    params: dict[str, Any] | None = None) -> dict:
@@ -266,7 +266,7 @@ def _add_write_tools(server, platform_path, index_path):
                              "make a new launch). This only writes a request; it does not start anything until the person says "
                              "yes, in their own form or on the page this returns; you cannot say it for them. Then call resume again "
                              "with the same run_name for the job number, or, after they answered in this chat, with request_id and "
-                             "user_confirmed=true.")
+                             "user_confirmed=true. 站台連線掉線時會被擋。")
     async def resume_tool(ctx: Context, run_name: str, params: dict | None = None, extra_config: str | None = None,
                           request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
                           user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
@@ -280,7 +280,7 @@ def _add_write_tools(server, platform_path, index_path):
                              "only writes a request and shows what would run; it does not start anything until the person says yes, in "
                              "their own form or on the page this returns; you cannot say it for them. Then call relaunch again with the "
                              "same run_name for the job number, or, after they answered in this chat, with request_id and "
-                             "user_confirmed=true (never before they answer).")
+                             "user_confirmed=true (never before they answer). 站台連線掉線時會被擋。")
     async def relaunch_tool(ctx: Context, run_name: str,
                             request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
                             user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:

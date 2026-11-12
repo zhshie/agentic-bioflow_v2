@@ -1,0 +1,27 @@
+# Not supervisord or a hand-written restart script: systemd, which WSL can run, already restarts a crashed process and starts it at login.
+# abf-station run, the site agent of one lab's platform. One copy per agent: the name after the @ is the
+# agent's name (letters, digits, underscore, dot), e.g. abf-station@lab1 reads station-lab1.env.
+# Install: see docs/OPERATIONS.md, "Desktop platform in WSL". Replace <venv> with the folder (under your
+# home) of the virtual environment that has abf-platform installed. No token, password or key goes into
+# this file: the token is a file, and only the path of that file appears below (see deploy/station.env.example).
+[Unit]
+Description=abf-station agent %i
+After=abf-serve.service
+Wants=abf-serve.service
+
+[Service]
+EnvironmentFile=%h/.config/abf-platform/env
+EnvironmentFile=%h/.config/abf-platform/station-%i.env
+ExecStart=%h/<venv>/bin/abf-station run --platform http://127.0.0.1:8787 --token-file ${ABF_STATION_TOKEN_FILE} --deployment ${ABF_STATION_DEPLOYMENT} --plugin-root ${ABF_STATION_PLUGIN_ROOT}
+Restart=on-failure
+RestartSec=5
+# Exit status 2 is a refusal to start (a wrong setting, a token file that is not safe or is not accepted):
+# trying again every five seconds cannot fix it, so stay failed and let the person read the journal.
+# Exit status 3 is the same kind of stop.
+RestartPreventExitStatus=2 3
+# This stops the agent from gaining privileges through a setuid program; ssh is not setuid, so the agent still
+# runs ssh and still uses the shared connection socket under ~/.ssh/, and it still writes the deployment folder and /tmp.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

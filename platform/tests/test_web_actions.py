@@ -501,7 +501,7 @@ def test_tc051_tc056_nothing_out_of_scope_exists(rig):
     failed = run_of(rig, ann)
     c = login(rig, "ann")
     paths = {r.path for r in c.app.routes}
-    assert not [p for p in paths if re.search(r"cost|chat|forget|samplesheet|delete", p)]
+    assert not [p for p in paths if re.search(r"cost|chat|forget|samplesheet|delete", p) and p != "/run/figure/delete"]      # the one delete route is the gallery's own (a figure of the owner)
     assert sorted(p for p in paths if "upload" in p) == ["/upload", "/upload/{batch}"]      # web-upload-page ruling 17: the upload form and the progress page, nothing more
     for p in ("/cost", "/chat", "/forget", "/resume", "/rerun", "/relaunch", "/cancel", "/run/%s/resume" % failed):
         assert c.get(p).status_code == 404 and c.post(p).status_code in (404, 405), p

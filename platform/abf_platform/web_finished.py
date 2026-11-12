@@ -17,6 +17,8 @@ STRINGS = {
         "in_folder": "在輸出資料夾", "no_files": "無檔案", "no_multiqc": "該次未產生", "unread": "尚未讀取輸出", "see_outputs": "查看輸出",
         "download": "下載交付包", "dl_head": "下載結果檔", "dl_big": "大於 25 MB", "dl_more": "其餘檔案請至「%s」。",
         "g_title": "圖庫", "g_empty": "圖庫為空。可請自己的 LLM 以 MCP 工具 publish_figure 提出圖，經本人在確認頁按「送出」後存入。",
+        "g_broken": "圖庫暫時無法讀取。請稍後再試；若持續發生，請回報給平台管理者。",
+        "g_more": "僅顯示開頭的 200 行或 20 KB；其餘請下載全文。", "g_dl_code": "下載程式碼全文", "g_dl_params": "下載參數全文",
         "g_pending": "有存入圖庫的申請待您在確認頁按「送出」。", "g_pending_link": "前往確認頁",
         "g_label": "使用者與 LLM 產生", "g_packed": "已打包", "g_unpacked": "未打包", "g_download": "下載",
         "g_code": "檢視程式碼與參數", "g_code_h": "程式碼", "g_params_h": "參數", "g_pick": "選取 %s",
@@ -40,6 +42,9 @@ STRINGS = {
         "dl_head": "Download result files", "dl_big": "Over 25 MB", "dl_more": "Other files: see %s.",
         "g_title": "Figure gallery", "g_empty": "The gallery is empty. Ask your own LLM to propose figures with the MCP tool publish_figure; "
                    "they are stored after you press Send on the confirmation page.",
+        "g_broken": "The gallery cannot be read right now. Try again later; if it continues, tell the platform administrator.",
+        "g_more": "Only the first part is shown (up to 200 lines or 20 KB); download the full text for the rest.",
+        "g_dl_code": "Download the full code", "g_dl_params": "Download the full parameters",
         "g_pending": "A request to add figures to the gallery waits for you to press Send on the confirmation page.",
         "g_pending_link": "Open the confirmation page",
         "g_label": "Made by the user and an LLM", "g_packed": "Packed", "g_unpacked": "Not packed", "g_download": "Download",
@@ -175,6 +180,19 @@ def _hidden(**fields):
     return "".join('<input type="hidden" name="%s" value="%s">' % (k, _e(v)) for k, v in fields.items() if v is not None)
 
 
+INLINE_LINES = 200
+INLINE_BYTES = 20 * 1024
+
+
+def _clip(text):
+    """(the start of a stored text, whether there is more): at most INLINE_LINES lines or INLINE_BYTES bytes, whichever comes first, cut at a
+    whole character; the full text is what `GET /run/figure?...&part=` serves (ruling G5)."""
+    shown = "".join(text.splitlines(keepends=True)[:INLINE_LINES])
+    if len(shown.encode("utf-8")) > INLINE_BYTES:
+        shown = shown.encode("utf-8")[:INLINE_BYTES].decode("utf-8", "ignore")
+    return shown, shown != text
+
+
 def _figure(t, run, f, n):
     """One figure of the gallery: the picture (an <img> loaded from /run/figure), its words, its state, its tick box and its delete button.
     The button belongs to a delete form that sits outside the pack form (form=), so no form is inside another."""
@@ -186,10 +204,11 @@ def _figure(t, run, f, n):
     state = _state(True, t["g_packed"]) if f.get("packed") else _state(False, t["g_unpacked"])
     caption = "<p>%s</p>" % _e(f["caption"]) if f.get("caption") else ""
     parts = ""
-    if f.get("code"):
-        parts += '<p class="muted">%s</p><pre>%s</pre>' % (_e(t["g_code_h"]), _e(f["code"]))
-    if f.get("params"):
-        parts += '<p class="muted">%s</p><pre>%s</pre>' % (_e(t["g_params_h"]), _e(f["params"]))
+    for key, head, link in (("code", "g_code_h", "g_dl_code"), ("params", "g_params_h", "g_dl_params")):
+        if f.get(key):
+            shown, cut = _clip(f[key])
+            more = '<p class="muted">%s</p><p><a href="%s&amp;part=%s">%s</a></p>' % (_e(t["g_more"]), _e(base), key, _e(t[link])) if cut else ""
+            parts += '<p class="muted">%s</p><pre>%s</pre>%s' % (_e(t[head]), _e(shown), more)
     details = "<details><summary>%s</summary>%s</details>" % (_e(t["g_code"]), parts) if parts else ""
     return ('<li><figure><img src="%s" alt="%s" width="240" loading="lazy"><figcaption>'
             '<p><code>%s</code> <span class="muted">%s</span></p>%s<p class="muted">%s</p><p>%s</p>'
@@ -208,7 +227,9 @@ def _gallery(t, lang, run, gallery):
         note = ('<p role="status"><span class="sym">…</span> %s <a href="/c/%s">%s</a></p>'
                 % (_e(t["g_pending"]), _e(gallery["pending"]), _e(t["g_pending_link"])))
     figs = gallery.get("figures") or []
-    if not figs:
+    if gallery.get("error"):      # a damaged index.json is said so; it is not an empty gallery (ruling G2), and no path is shown
+        body = '<p class="bad state-failed" role="status"><span class="sym">✗</span> %s</p>' % _e(t["g_broken"])
+    elif not figs:
         body = '<p class="muted" role="status"><span>—</span> %s</p>' % _e(t["g_empty"])
     else:
         token = gallery.get("csrf") or {}
@@ -234,6 +255,8 @@ def refusal_page(lang, answer):
         line = t["gr_bad"] + " " + t["gr_none"]
     elif reason == "too_many":
         line = t["gr_many"] + " " + t["gr_none"]
+    elif reason == "unreadable":
+        line = t["g_broken"] + " " + t["gr_none"]
     else:
         line = t["gr_fail"]
     back = answer.get("back", "/")
