@@ -10,13 +10,13 @@
 
 - [x] 重跑（2026-11-11 21:30，stamp 20261111-2130-platform-mcp）：沿用既有 commit，補畫面證據與 keepalive 實演，再跑全套。
 
-## 畫面證據（2026-11-11 21:36，WSL 內 Playwright Chromium＋axe，`scripts/dev/ui_check.py` 的拋棄式平台，假資料）
+## 畫面證據（2026-11-12 11:06 重拍，zh 文字已改成「分析」；首次 2026-11-11 21:36，WSL 內 Playwright Chromium＋axe，`scripts/dev/ui_check.py` 的拋棄式平台，假資料）
 作法：`ui_check.start_platform` 起一個 /tmp 下的平台，使用者 alice，agent `agent-t` 自報 `site_link=closed`，截 `/`。
 截圖放在 repo 之外：`C:/Users/marvi/abf-ui-evidence/mcp-site-keepalive-disconnect-ux/`（同資料夾的 `shoot.py` 是產生它們的一次性腳本，`summary.md` 是 axe 結果）。
 
 | 檔名 | 語言／寬度 | 紅條上看到的字 |
 |---|---|---|
-| `board-1440-zh.png` | zh／1440 | ✗ 站台連線已掉：請在執行 agent「agent-t」那台機器的 WSL 終端機重新登入（貼上開連線指令並輸入 OTP）。已在跑的 run 不受影響；新的 run 在恢復前無法送出。 |
+| `board-1440-zh.png` | zh／1440 | ✗ 站台連線已掉：請在執行 agent「agent-t」那台機器的 WSL 終端機重新登入（貼上開連線指令並輸入 OTP）。已在跑的分析不受影響；新的分析在恢復前無法送出。 |
 | `board-390-zh.png` | zh／390 | 同上（折成三行） |
 | `board-1440-en.png` | en／1440 | ✗ The site connection is down. On the machine running agent "agent-t", log in again in its WSL terminal (paste the connect line, type the one-time code). Runs already going are not affected; new runs cannot be sent until it is back. |
 | `board-390-en.png` | en／390 | 同上（折行） |
@@ -27,13 +27,16 @@
 - axe：四個組合各有 1 個 critical `meta-refresh`（節點 `meta[http-equiv="refresh"]`）與 1 個 moderate；沒有任何一個指到 `.linkbar`。`meta-refresh` 是看板原有的自動重新整理標籤（base 9ae086b2 的 `web_board.py:956` 就有，本件 diff 沒碰；`docs/TESTING.md:1060` 寫明「note it, do not count it」；`docs/reports/cloud-burn-2026-11/UI2.md` 也記錄過同一項）。因此 `ui_check` 的總判定是 FAILED，原因與本件無關；是否算 TC-030 通過由審查者判定。
 - impeccable 偵測器（TC-029）沒有跑：本環境找不到該工具，留給審查者實跑。
 
-## keepalive_log.sh 實演（模擬：假的 `--check-master` 依序回 open、closed、open；`ABF_KEEPALIVE_ROUNDS=3 ABF_KEEPALIVE_INTERVAL=0`）
+## keepalive_log.sh 實演（模擬：假的 `--check-master` 依序回 open、closed、open；腳本連續呼叫三次，每次自行結束，2026-11-12 11:06）
 ```
-ts=2026-11-11T21:36:57+08:00 machine=DESKTOP-7J5L5BJ master=open rc=0
-ts=2026-11-11T21:36:57+08:00 machine=DESKTOP-7J5L5BJ master=closed rc=1
-ts=2026-11-11T21:36:57+08:00 machine=DESKTOP-7J5L5BJ event=closed lasted_min=0 last_open=2026-11-11T21:36:57+08:00
-ts=2026-11-11T21:36:57+08:00 machine=DESKTOP-7J5L5BJ master=open rc=0
-ts=2026-11-11T21:36:57+08:00 machine=DESKTOP-7J5L5BJ event=reopened
+call 1 exit=0
+call 2 exit=0
+call 3 exit=0
+ts=2026-11-12T11:06:34+08:00 machine=DESKTOP-7J5L5BJ master=open rc=0
+ts=2026-11-12T11:06:34+08:00 machine=DESKTOP-7J5L5BJ master=closed rc=1
+ts=2026-11-12T11:06:34+08:00 machine=DESKTOP-7J5L5BJ event=closed lasted_min=0 last_open=2026-11-12T11:06:34+08:00
+ts=2026-11-12T11:06:34+08:00 machine=DESKTOP-7J5L5BJ master=open rc=0
+ts=2026-11-12T11:06:34+08:00 machine=DESKTOP-7J5L5BJ event=reopened
 ```
 
 ## git diff --stat（9ae086b2..d5dd2533，不含 specs/）
@@ -92,3 +95,14 @@ ts=2026-11-11T21:36:57+08:00 machine=DESKTOP-7J5L5BJ event=reopened
 2. `site_link.py` 的 zh `linkbar_down` 換成 verifier 給的句子；重釘 `test_web_settings_ce_mobile.py` 的 STRINGS 雜湊與受影響的頁面雜湊；重拍 zh 截圖。
 3. PLATFORM.md、PITFALLS 第 61 條的用法改成「由人手動或既有排程呼叫一次」。
 4. 相關檔：`--only no_second_run_state`、`--only keepalive`、`--pytest tests/test_web_wording_sweep.py`、`test_site_disconnect_ux.py`、`test_keep_submissions.py`、`test_resume_edit_params_station.py`，再跑一次全套。
+
+## 2026-11-12 11:00 接手（stamp 20261112-1050-platform-mcp）：照 11-11 深夜與 11-12 裁決完成
+派工說「既有程式應已符合，只要確認綠」；實際上上一輪卡住時沒動程式（見上一節），所以這一輪照裁決與 f7de2c6a 的新 TC 做完：
+- [x] `scripts/keepalive_log.sh` 改成單次執行（TC-064～069）：呼叫一次 `--check-master`、追加一行就結束；上一次看到什麼從 log（含 `.1`）讀回，上一筆 open 這次 closed 寫 `event=closed lasted_min=… last_open=…`（從最後一次 closed 之後的第一筆 open 起算），上一筆 closed 這次 open 寫 `event=reopened`。沒有 while／sleep／nohup，沒有 INTERVAL／ROUNDS／ONCE 旋鈕；沒加進 `DAEMON_ALLOW`。ISO 時間轉秒用 bash 算術（`date -d` 是 GNU 專用，`portable_userland.sh` 不准）。
+- [x] `tests/keepalive_log_test.sh` 改寫成連續呼叫（34 項），原有每個 TC 的斷言都保留或換成單次版的等價斷言；新增「分鐘數是從 log 算的」「輪替後狀態仍接得上」「腳本無迴圈字樣」「不在 DAEMON_ALLOW」。
+- [x] zh 紅條與擋送出訊息的「run」改「分析」（TC-009、TC-034）：`site_link.py` 兩處；en 不變。
+- [x] 釘值：`test_web_settings_ce_mobile.py` 的 zh `STRINGS` 雜湊重釘（只有那一句變了）。頁面雜湊不受影響（沒掉線時不輸出紅條）。
+- [x] 文件（TC-073、TC-075）：PLATFORM.md 與 PITFALLS 第 61 條的用法改成「由人手動或既有排程呼叫一次 `bash scripts/keepalive_log.sh`」，沒有 nohup、不說常駐。
+- [x] zh／en × 1440／390 截圖重拍、keepalive 實演重跑（見上面兩節）。
+- 上一節列的兩個卡點（DAEMON 閘、用字閘）因此都解掉：`no_second_run_state_test.sh`、`test_keep_submissions.py`、`test_resume_edit_params_station.py`、`test_web_wording_sweep.py` 已綠。
+- 全套結果見本輪 executor 報告與 `executor-status`。

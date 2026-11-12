@@ -171,7 +171,7 @@ bash scripts/on_site.sh --check-reach
 #   ssh -o ControlMaster=auto -o ControlPath=<path> -o ControlPersist=yes -o ServerAliveInterval=60 -o ServerAliveCountMax=10 <user@host> true
 ```
 
-Run that printed line yourself; `ControlPersist=yes` has no idle timeout and `ServerAliveCountMax=10` puts up with about 10 minutes of network break; how long the site keeps the connection is measured, not promised: start `nohup bash scripts/keepalive_log.sh >/dev/null 2>&1 &` in the same WSL terminal and read `event=closed lasted_min=` in `~/.abf/keepalive.log` later. Then start the agent:
+Run that printed line yourself; `ControlPersist=yes` has no idle timeout and `ServerAliveCountMax=10` puts up with about 10 minutes of network break; how long the site keeps the connection is measured, not promised: call `bash scripts/keepalive_log.sh` once by hand in the same WSL terminal, or from a schedule you already have (one call is one check and one line, and then it ends), and read `event=closed lasted_min=` in `~/.abf/keepalive.log` later. Then start the agent:
 
 ```bash
 abf-station run --platform http://127.0.0.1:8787 --token-file ~/.config/abf/agent.token --deployment <your root>

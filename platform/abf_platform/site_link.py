@@ -10,7 +10,7 @@ from . import agents, jobs
 SITE_DOWN_AGENTS = contextvars.ContextVar("abf_site_down_agents", default=())
 
 BAR_ZH = ("站台連線已掉：請在執行 agent「%s」那台機器的 WSL 終端機重新登入（貼上開連線指令並輸入 OTP）。"
-          "已在跑的 run 不受影響；新的 run 在恢復前無法送出。")
+          "已在跑的分析不受影響；新的分析在恢復前無法送出。")
 BAR_EN = ('The site connection is down. On the machine running agent "%s", log in again in its WSL terminal (paste the connect line, '
           'type the one-time code). Runs already going are not affected; new runs cannot be sent until it is back.')
 
@@ -25,7 +25,7 @@ def down_message(agent):
     """The sentence a refused launch carries: it starts with jobs.SITE_DOWN, names the agent and the WSL terminal in its first sentence,
     and stays under the 300 characters confirm keeps."""
     return ("%s: 連線已掉，請在執行 agent「%s」那台機器的 WSL 終端機重新登入，再重新送出。"
-            "已在跑的 run 不受影響 (runs already going are not affected)" % (jobs.SITE_DOWN, str(agent)[:64]))
+            "已在跑的分析不受影響 (runs already going are not affected)" % (jobs.SITE_DOWN, str(agent)[:64]))
 
 
 def bar_html(names, lang):

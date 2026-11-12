@@ -11,3 +11,6 @@ ts	phase	decision	why	evidence	result
 2026-11-11T23:25	repin	重釘 BASE_STYLE、上傳頁雜湊、len(STYLE)、web_board.STRINGS 雜湊	新增 .linkbar 規則與 linkbar_down 字串的必然結果；計畫只點名 STYLE_SHA256，請審查者確認	platform/tests/test_web_nano4_path.py:249	三支測試綠
 2026-11-11T23:30	blocker	不改 zh 紅條文字、不把字串移出 STRINGS、不改用字測試	計畫與 TC-009 逐字規定的文字含 run，用字閘不准；兩者衝突要裁決	test_web_wording_sweep.py::test_banned_words_cover_every_zh_string_table	BLOCKED，待裁決
 2026-11-12T00:50	blocker	不照 11-11 深夜裁決動工：測試案例還是 0c6820fb 的舊版，與裁決互相矛盾	TC-009 仍逐字要求含 run 的 zh 文字；TC-068／069／073 仍要求 600 秒間隔、背景迴圈與 nohup 用法；裁決 2 寫明由 verifier 重寫 TC，executor 不能改 TC 也不猜新字串	specs/mcp-site-keepalive-disconnect-ux/test-case.md:32	BLOCKED，待 verifier 改 TC
+2026-11-12T11:00	red-green	照 11-11 深夜裁決動工，雖然派工說既有程式應已符合	上一輪卡住時沒動程式；TC 已在 f7de2c6a 改成與裁決一致，矛盾已消除	6c26aa8d	RED 4 支 pytest 紅、shell 測試逾時（舊迴圈）
+2026-11-12T11:05	green	keepalive_log.sh 單次執行，上一次狀態從 log 讀回；ISO 轉秒用 bash 算術而不是 date -d	裁決禁止常駐迴圈；portable_userland.sh 不准 date -d	scripts/keepalive_log.sh:30	keepalive_log_test 34 項、no_second_run_state、portable_userland 綠
+2026-11-12T11:06	repin	重釘 test_web_settings_ce_mobile.py 的 zh STRINGS 雜湊	zh 紅條文字依裁決由 run 改為分析，字串表雜湊必然改變	platform/tests/test_web_settings_ce_mobile.py	該檔 10 綠；wording sweep 19 綠
