@@ -17,7 +17,7 @@ from test_web_board import login, seed
 
 ROOT = Path(__file__).resolve().parents[2]
 ZH = ("站台連線已掉：請在執行 agent「%s」那台機器的 WSL 終端機重新登入（貼上開連線指令並輸入 OTP）。"
-      "已在跑的 run 不受影響；新的 run 在恢復前無法送出。")
+      "已在跑的分析不受影響；新的分析在恢復前無法送出。")       # lead ruling 2026-11-11: 分析, never the Latin word
 EN = ('The site connection is down. On the machine running agent "%s", log in again in its WSL terminal (paste the connect line, '
       'type the one-time code). Runs already going are not affected; new runs cannot be sent until it is back.')
 AGENT = "agent-t"
@@ -234,7 +234,8 @@ def test_launch_refused_names_agent_and_wsl(w):
     rid, e = refused(w, ann)
     m = str(e)
     assert e.status == "failed" and m.startswith(jobs.SITE_DOWN) and AGENT in m and "WSL" in m and len(m) <= 300
-    assert "已在跑的 run 不受影響" in m
+    assert "連線已掉，請在執行 agent「%s」那台機器的 WSL 終端機重新登入，再重新送出" % AGENT in m
+    assert "已在跑的分析不受影響" in m and "runs already going are not affected" in m and "的 run" not in m
     assert w.sql("SELECT state FROM confirmations WHERE id = ?", (rid,))[0][0] == "void"
     assert w.jobs("launch_nextflow") == []
     assert not re.search(r"Traceback|SELECT|/home/|token", m)
@@ -384,9 +385,13 @@ def test_scripts_do_not_promise_survival():
 def test_docs_follow_the_new_line():
     # TC-073, TC-074, TC-075
     plat = (ROOT / "docs" / "PLATFORM.md").read_text(encoding="utf-8")
-    assert "nohup bash scripts/keepalive_log.sh >/dev/null 2>&1 &" in plat and "ControlPersist=yes" in plat
+    assert "bash scripts/keepalive_log.sh" in plat and "ControlPersist=yes" in plat
+    assert "ControlPersist=8h keeps the connection for the day" not in plat and "at most 8 hours" not in plat
+    # lead ruling 2026-11-11: one call, one check; a person or an existing schedule calls it, nothing stays resident
+    assert not [ln for ln in plat.splitlines() if "keepalive_log" in ln and re.search(r"nohup|daemon|in the background|常駐", ln)]
     assert "8h" not in (ROOT / "docs" / "SITE_ADAPTER.md").read_text(encoding="utf-8")
     pit = (ROOT / "docs" / "PITFALLS.md").read_text(encoding="utf-8")
     entry = pit[pit.index("**61."):]
-    for key in ("Symptom:", "Root cause:", "Check:", "Touches:", "keepalive_log.sh"):
+    for key in ("Symptom:", "Root cause:", "Check:", "Touches:", "keepalive_log.sh", "event=closed lasted_min"):
         assert key in entry
+    assert "nohup" not in entry
