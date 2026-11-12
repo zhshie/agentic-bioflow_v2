@@ -168,10 +168,10 @@ The agent refuses to start when the file is missing or empty, when anyone but yo
 
 ```bash
 bash scripts/on_site.sh --check-reach
-#   ssh -o ControlMaster=auto -o ControlPath=<path> -o ControlPersist=8h -o ServerAliveInterval=60 <user@host> true
+#   ssh -o ControlMaster=auto -o ControlPath=<path> -o ControlPersist=yes -o ServerAliveInterval=60 -o ServerAliveCountMax=10 <user@host> true
 ```
 
-Run that printed line yourself; `ControlPersist=8h` keeps the connection for the day. Then start the agent:
+Run that printed line yourself; `ControlPersist=yes` has no idle timeout and `ServerAliveCountMax=10` puts up with about 10 minutes of network break; how long the site keeps the connection is measured, not promised: call `bash scripts/keepalive_log.sh` once by hand in the same WSL terminal, or from a schedule you already have (one call is one check and one line, and then it ends), and read `event=closed lasted_min=` in `~/.abf/keepalive.log` later. Then start the agent:
 
 ```bash
 abf-station run --platform http://127.0.0.1:8787 --token-file ~/.config/abf/agent.token --deployment <your root>
@@ -688,7 +688,7 @@ The head job runs on a compute node, which cannot reach your machine. The route 
 - **The relay's rule is narrow and fails closed.** It answers a plain-HTTP request in absolute form to exactly `127.0.0.1:<that port>` and nothing else on loopback; only the paths `/trace/...` and `/user-info` (the query string does not count); never CONNECT; and it closes the connection after the answer, so a second request on the same connection never reaches the platform. A missing, unreadable or malformed port file means no. A relay process started before this rule exists answers 403; the launch then says `請重啟 relay：bash scripts/egress_ctl.sh restart`.
 - **The platform and the agent must be on the same machine** (the agent's `--platform` is `http://127.0.0.1:<port>`): the reverse forward ends at the agent's loopback. Otherwise the command refuses before it asks.
 - **Before the files are written, every hop is probed** on the login node with no token: first straight to the forward, then through the relay the way the head job will go. A pass is an HTTP 401 whose header `X-ABF-Platform` carries this platform's instance id (a random id kept in `platform.db`, the same after a restart). Each failure names the hop and its fix: no shared connection (open it in WSL), tunnel closed, relay not running, relay out of date, platform not answering, or some other program on that port.
-- `abf-station unforward --deployment <root>` cancels the forward and removes both port files. Nothing does that for you: not a run ending, not a cancel. The forward ends with the shared connection (at most 8 hours, `ControlPersist`); a run that is still going then keeps running, its live progress stops and shows `lost` after three minutes of silence, and the records bring it right (below). Nothing rebuilds the forward by itself.
+- `abf-station unforward --deployment <root>` cancels the forward and removes both port files. Nothing does that for you: not a run ending, not a cancel. The forward ends with the shared connection (its lifetime is not promised; `scripts/keepalive_log.sh` measures it); a run that is still going then keeps running, its live progress stops and shows `lost` after three minutes of silence, and the records bring it right (below). Nothing rebuilds the forward by itself.
 
 ### The run token
 
@@ -932,6 +932,82 @@ Settings that only the tests change: `ABF_PLATFORM_DEADLINE_LINT_PIPELINE` (defa
 ## A refused launch shows why (refusal-visibility)
 
 When the site turns a launch back because there is no open connection (`reason=no-master`), its answer carries one more key, `open_command`: the line `scripts/on_site.sh` itself printed, word for word. `jobs.clean_result` keeps it only if it is a strict `[wsl.exe -e ]ssh -o k=v ... <user@host> true` line of at most 600 characters whose host equals the compute environment's `hostName`; anything else is dropped. The confirmation page `/c/<id>` of a refused or errored job, and the board `/` for an hour after the newest refusal, show one block (`<section id="refusal">`): the reason, the platform host the person must use, and the line in a `<pre>`. There is no button, form, link or script in it, and the page never says 已送出 for such a job. Other refusals show their first sentence only, with no login line. The block is read only; nothing is queued or changed by looking at it.
+
+## Commands on your own computer (cli-fetch-publish-figure)
+
+Two commands run on the computer where a person works (the one that has RStudio), not on the computer that runs the platform. They talk to the platform
+the way an AI assistant does: they are MCP clients of the platform's public address (`https://<host>/mcp`), with the person's own personal token, and they
+call the same read tools (`run_outputs`, `read_run_file`, and `list_compute_envs` for one hint). The platform runs no script for them, and they open no
+database of the platform, so a computer that has only the package and a token can use them. The platform decides whose run it is and which folders of
+the site may be read; the commands do not repeat those checks.
+
+```
+abf-platform studio-connect --server https://platform.example     # once: keep the address and the token on this computer
+abf-platform fetch-results run1                                   # pull the small result tables of one run into ~/abf-results/run1
+abf-platform fetch-results run1 --dir results-run1                # or into a folder of your choice
+```
+
+### studio-connect
+
+`studio-connect --server <address>` asks for the token at a hidden prompt, or reads one line of standard input with `--token-stdin`. There is no
+`--token VALUE` option on purpose: a value on the command line lands in the shell history and the process list. The administrator issues the token with
+`abf-platform pat new --user <name>` (see docs/OPERATIONS.md); it never expires until `pat revoke`.
+
+- The address must be `https://host` with no path. Plain `http://` is accepted only for this computer itself (`http://127.0.0.1:<port>` or
+  `http://localhost:<port>`), because anything else would send the token in clear text.
+- Before it stores anything it connects once and lists the platform's tools, so a wrong token or a wrong address is found at once. `--no-check`
+  stores without connecting (for an offline computer).
+- Running it again replaces the earlier settings and says so (the Chinese message says 已覆蓋).
+- The token is never printed, never written to a log, and never part of a message, of the `--json` output or of the R code.
+
+The settings file is `~/.abf/studio.json`, or the file named by `ABF_STUDIO_CONFIG`:
+
+```
+{"server": "https://platform.example", "token": "abf_pat_<your-token>"}
+```
+
+It is written through a temporary file and one replace, in a folder of mode 0700, with mode 0600. On a system whose mode bits mean something, a settings
+file that other users can read is refused with `chmod 600 <path>`. On Windows the bits mean nothing, so nothing is refused there, and the command says
+once that the file lives in the personal folder and must not be put in a folder that a cloud-sync service copies. The environment variable `ABF_PAT`,
+when it is set, is used as the token instead of the one in the file (for unattended use); the address still comes from the file.
+
+### fetch-results
+
+`fetch-results <run>` writes the small result tables of one run into one folder on this computer (default `~/abf-results/<run>`, or `--dir`), prints
+the absolute path of the folder first, and ends with a summary (fetched n, skipped m, with the reason of each skip) and the R code to paste into the
+RStudio Console. It only reads. It is not `fetch-records`, which asks the agent to bring Nextflow's own logs to the platform for `rebuild`.
+
+- What is fetched: files whose extension is `.tsv .csv .txt .md .json` (any case) up to the single-file limit of 25 MB (the constant
+  `jobs.RUN_FILE_MAX_BYTES`), at most 200 files, three levels of the results folder, and 100 MB in all (`MAX_TOTAL_BYTES`). The pages of one file are
+  joined and written only when the last page has come; an existing file is replaced and the command says so.
+- What is not fetched: web reports and binary files are not fetched. A web report (`.html`) has to be opened in a browser that is logged in to the
+  platform; a binary file (`.gz`, `.bam`, `.fastq`, `.png` and the like) is not sent through the tools at all. Each is listed as skipped with its
+  reason. A file above 25 MB is listed by name and size and not downloaded. When a limit leaves something out, the summary says that not everything was
+  fetched.
+- The tools never wait for the site: an answer `loading` is asked again every 2 seconds, and a listing or a file that is still loading after 120
+  seconds is reported as not fetched.
+- What the site refuses is shown with the reason the platform gave, and the other files are still fetched. A site connection that is not open is told
+  apart from a refused path (the platform is reachable, the connection to the compute site is not), with the state the platform knows of that
+  connection when it says one. Nothing is written outside the chosen folder: a path with `..`, an absolute path, a part that starts with a dot, or a
+  link in the folder is skipped.
+- The R code is one line for each ASV or counts table (`read.delim(file.path("<folder>", "<file>"), check.names = FALSE, row.names = 1)`, `read.csv` for
+  a `.csv`), or for the first five tables when there is none, and it holds no token, no password and no host name.
+
+### Exit codes and messages
+
+| Code | Meaning |
+|---|---|
+| 0 | everything asked was fetched (deliberate skips of web reports and binary files do not count against it) |
+| 1 | something was not fetched (a refusal of the site, a failed file, a deadline, a limit, a file above 25 MB), the run is not found (one sentence for a run that does not exist and for somebody else's), or the site connection is not open |
+| 2 | not set up: no settings file (run `studio-connect`), a settings file that others can read, a settings file that cannot be used, or an address or token that cannot be used |
+| 3 | no connection: the token is wrong or revoked, the platform refused the session, this computer is offline, or the public address does not answer (the platform machine is off, or Tailscale Funnel or the MCP service is not running) |
+
+Each message says what happened and what to do, with no stack, no path inside the platform and no SQL. For a public address that does not answer the
+command tries again at most twice, two seconds apart, and one call waits at most 30 seconds. The messages are Chinese unless the locale (`LC_ALL`,
+`LC_MESSAGES` or `LANG`) starts with `en`. With `--json` the commands give one JSON object like the others (`{ok, command, data, output}`; a failure is
+`{ok: false, error: {what, why, next}}` on stderr); the token is never in it.
+
+The page of a succeeded run (stage `downstream`) shows the two commands in place of the old `jupyter lab` and `docker run` lines.
 
 ## What it does not do
 

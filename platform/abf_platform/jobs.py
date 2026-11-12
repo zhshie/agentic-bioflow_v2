@@ -1079,6 +1079,12 @@ def enqueue_confirmed(con, ce_name, kind, bundle, confirmation_id, now, seconds,
         raise JobRefused("the content is for agent %r, not for the agent of %s (%s)" % (
             str(bundle.get("agent"))[:64], ce_name, row["agent"]))
     if kind == "launch_nextflow":
+        # mcp-site-keepalive-disconnect-ux: the agent just said the site connection is closed, so nothing would be sent; say so now, with what to do
+        from . import agents as _agents
+        if _agents.site_link_of(con.execute("SELECT * FROM agents WHERE name = ?", (row["agent"],)).fetchone(),
+                                _agents.status_of(con.execute("SELECT last_seen_at FROM agents WHERE name = ?", (row["agent"],)).fetchone()[0], now, offline_after))[0] == "closed":
+            from . import site_link as _site_link
+            raise JobRefused(_site_link.down_message(row["agent"]))
         problem = name_problem(con, run_name, now, caller_id)
         if problem:
             raise JobRefused(problem)

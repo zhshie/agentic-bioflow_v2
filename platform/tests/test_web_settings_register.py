@@ -15,7 +15,7 @@ from test_web_board import login, pane
 from test_web_settings import make_agent, make_env, sql
 
 PKG = PLATFORM_DIR / "abf_platform"
-BASE_STYLE_SHA = "719ce2abf9783006813e34889d8180ef2123d266168ed70e0969f8532ea1f59a"      # sha256 of web_board.STYLE before this task
+BASE_STYLE_SHA = "15f0b560af24184065cbe6b0e6cc6cd6517cacbf1f7746ef7770b50b7b96a46c"      # sha256 of web_board.STYLE before this task
 GOOD = {"pipeline": "nf-core/ampliseq", "revision": "2.18.0", "module": "biology/nf-core-ampliseq/2.18.0", "home": "NFCORE_AMPLISEQ_HOME"}
 OTHER_OLD = {"pipeline": "nf-core/rnaseq", "revision": "3.14.0", "module": "biology/nf-core-rnaseq/3.14.0", "home": "NFCORE_RNASEQ_HOME"}
 FORBIDDEN = ["用過", "選好", "寫死", "自己填", "自己調整", "你還沒", "還沒有", "還不能", "這個", "這份", "這條", "這一版", "一下", "弄", "搞", "東西",

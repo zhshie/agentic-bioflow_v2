@@ -29,7 +29,7 @@ t "ssh with no site_host is refused"         2 "site_host"
 
 printf '#!/bin/bash\nexit 0\n' > "$TMP/ssh"; chmod +x "$TMP/ssh"
 settings 'reach: ssh' 'site_host: me@example.org'
-t "ssh closes the master and prints the reconnect line" 0 "ControlPersist=8h"
+t "ssh closes the master and prints the reconnect line" 0 "ControlPersist=yes"
 t "and names the host"                                  0 "me@example.org"
 t "and carries ServerAliveInterval=60 (N9-3)"            0 "ServerAliveInterval=60"
 
