@@ -1216,6 +1216,20 @@ Automatic tests: `platform/tests/test_studio_remote.py`, `test_studio_cli.py`, `
 
 **The ledger** (`specs/cli-fetch-publish-figure/ledger.md`) must hold: `git diff --stat origin/v3...HEAD`; the new constants (`MAX_TOTAL_BYTES`, `MAX_FILES`, `MAX_DEPTH`, `POLL_SECONDS`, `DEADLINE_SECONDS` in studio_cli; `CALL_TIMEOUT`, `RETRIES`, `RETRY_DELAY` in studio_remote); the version of the `mcp` package and the functions of its client that the commands use; the `ls -l` line of the settings file; and which of the four manual cases were done where.
 
+## cli-fetch-publish-figure, slice 2 (publish-figure): the maintainer checks on his own computer
+
+Automatic tests: `platform/tests/test_studio_publish.py` (with a real server for TC-063, TC-065, TC-066), `test_studio_docs.py`, `test_web_downstream.py`. One case cannot be automatic: TC-069. It needs the computer where RStudio is (not the one that runs the platform), already set up with `studio-connect` as in the slice 1 section above, the platform's confirmation page set to a public address (`abf-platform web --public-url`, docs/OPERATIONS.md), and one run of yours that has SUCCEEDED.
+
+**TC-069, the link.**
+1. In RStudio draw one figure and save it as `fig.png`; save the code that drew it as `plot.R` and its parameters as `params.json` (UTF-8 text).
+2. `abf-platform publish-figure <run id> fig.png --code plot.R --params params.json --caption "a short line"`. It must print the file name and size, the sentence that the figure is not saved yet and that you have to open the link and press the button, one link, and the sentence that the figure will not be added to the delivery bundle. It ends at once with exit code 0, and it never says the figure is saved.
+3. The link must open on **this** computer (it is not 127.0.0.1 and not a host that only the platform machine knows). If it does not, the platform's public address for the confirmation page is not set: see docs/OPERATIONS.md, "The link of `publish-figure`".
+4. Do this **before** you press anything: open the run's figure gallery on the web page (or ask your AI assistant to list the figures of the run); the figure must **not** be there.
+5. Open the link, log in as yourself, read what the page asks, press the button. **After** it: the figure is in the private gallery with its caption, its code and its parameters, and it is **not** in the delivery bundle (the bundle's tick list does not have it ticked).
+6. Run the same command again with a different run you do not own (or a made-up run id): one sentence that the run was not found, exit code 1, nothing in the gallery.
+
+Write in the ledger (`specs/cli-fetch-publish-figure/ledger.md`): the three output lines of step 2 (the link with its token-looking part, if any, cut), what you saw at steps 4 and 5, and which computer it was done on. If only the platform's own computer was available, say "cross-computer not verified" and still use the public address, never `http://127.0.0.1`.
+
 ## The red "site connection is down" bar (mcp-site-keepalive-disconnect-ux, TC-032): the maintainer looks at it
 
 No code needed. You need the platform's web page open in a browser and one agent that is running (the one on your WSL machine).

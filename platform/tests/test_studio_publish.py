@@ -332,11 +332,10 @@ def test_tc065_tc066_a_pending_request_writes_nothing_and_the_persons_yes_at_the
     before = counts(server)
     rc, out, err = remote_main(["publish-figure", server["run"], str(d / "fig.png"), "--code", str(d / "plot.R"), "--params", str(d / "params.json"),
                                 "--caption", "圖說"], capsys)
-    assert rc == 1 or rc == 0
     assert rc == 0, (out, err)
-    link = [ln for ln in out.splitlines() if "/c/" in ln]
-    assert len(link) == 1 and link[0].strip().endswith(link[0].strip().split("/c/")[-1])
-    rid = link[0].strip().split("/c/")[-1]
+    link = [ln.strip() for ln in out.splitlines() if "/c/" in ln]
+    assert len(link) == 1                       # exactly one link, on its own line, as the platform gave it
+    rid = link[0].split("/c/")[-1].split("?")[0]
     after = counts(server)
     assert after["confirmations"] == before["confirmations"] + 1 and after["jobs"] == before["jobs"]      # a request, no job
     assert gallery_of(server, alice(server))["figures"] == []                                            # nothing written yet (TC-065)
@@ -345,7 +344,7 @@ def test_tc065_tc066_a_pending_request_writes_nothing_and_the_persons_yes_at_the
     actions.approve(server["plat"].dir / "platform.db", rid, confirmed_by=actions.PAGE, caller=alice(server))
     got = gallery_of(server, alice(server))["figures"]
     assert [f["name"] for f in got] == ["fig.png"] and got[0]["packed"] is False and got[0]["caption"] == "圖說"
-    assert gallery_of(server, alice(server)) and actions.list_figures(server["plat"].index, server["plat"].dir / "platform.db", server["run"],
+    assert actions.list_figures(server["plat"].index, server["plat"].dir / "platform.db", server["run"],
                                                                       caller=alice(server), packed_only=True)["figures"] == []
     assert counts(server)["jobs"] == before["jobs"]
 
@@ -361,8 +360,7 @@ def test_tc063_somebody_elses_run_and_a_missing_run_get_the_same_sentence_and_no
     assert rc1 == rc2 == 1 and "找不到" in out1 + err1 and "run not found" in (out1 + err1)
     assert (out1 + err1).replace(server["run"], "ID") == (out2 + err2).replace("no-such-run-0000", "ID")
     assert counts(server) == before
-    from abf_platform import actions
-    assert [f for f in gallery_of(server, alice(server))["figures"] if f["name"] != "fig.png"] == []
+    assert [f for f in gallery_of(server, alice(server))["figures"] if f["name"] != "fig.png"] == []      # nothing of bob's was added
     assert server["bob"] not in out1 + err1
 
 
