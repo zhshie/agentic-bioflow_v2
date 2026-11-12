@@ -821,6 +821,6 @@ def test_tc048_get_run_stays_a_query_that_needs_no_yes(rig):
     new = rig.sql("SELECT kind FROM jobs ORDER BY id")[before:]
     assert len(new) <= 1 and all(r["kind"] == "fetch_run_records" for r in new), [r["kind"] for r in new]
     from abf_platform.actions import chat_tools
-    assert "get_run" not in chat_tools.REQUEST_TOOLS and chat_tools.REQUEST_TOOLS == {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget", "publish_figure"}
+    assert "get_run" not in chat_tools.REQUEST_TOOLS and chat_tools.REQUEST_TOOLS == {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"}
     names = {s["name"] for s in asyncio.run(chat_tools.tool_specs(str(rig.index), str(rig.state)))}
     assert "get_run" in names
