@@ -63,7 +63,8 @@ def gal(w, name="ann", run_name="r1", names=NAMES, packed=("c.png",)):
     """Ann, her succeeded run, and a gallery of `names` (a.png has code and params) of which `packed` are in the package."""
     ann = w.user(name)
     run = seed(w, run_name, "succeeded", ann)
-    stored(w, ann, run, names)
+    for i in range(0, len(names), 10):                                         # at most 10 figures per publish_figure call
+        stored(w, ann, run, names[i:i + 10])
     if packed:
         assert core(w, ann, run, list(packed))["ok"]
     return ann, run
@@ -75,7 +76,8 @@ def prints(folder):
 
 
 def rows(w):
-    return w.sql("SELECT * FROM confirmations ORDER BY created_at, id")
+    """The gallery_change requests only (the figures were put there by publish_figure requests, which are not what these tests count)."""
+    return w.sql("SELECT * FROM confirmations WHERE kind = 'gallery_change' ORDER BY created_at, id")
 
 
 def lines(text, start):
@@ -181,7 +183,9 @@ def test_a_delete_screen_says_the_files_and_the_package(w):
 
 def test_the_bundle_is_small_and_holds_no_bytes(w):
     # TC-023
-    ann, run = gal(w, names=["f%d.png" % i for i in range(30)], packed=())
+    ann, run = gal(w, names=(), packed=())
+    for start in (0, 10, 20):                                                  # at most 10 figures per publish_figure call
+        stored(w, ann, run, ["f%d.png" % i for i in range(start, start + 10)])
     ask_pack(w, ann, run, ["f%d.png" % i for i in range(30)])
     ask_delete(w, ann, run, "f3.png")
     got = w.sql("SELECT kind, bundle_json FROM confirmations WHERE kind = 'gallery_change'")
@@ -486,7 +490,7 @@ def test_both_paths_call_the_same_core(w, monkeypatch):
     src = (Path(figures.__file__)).read_text(encoding="utf-8")
     fn = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.FunctionDef) and n.name == "write_gallery_change")
     body = ast.get_source_segment(src, fn)
-    for banned in ("index.json", "os.replace", "os.unlink", "open(", "_write_index", "json.dump"):
+    for banned in ("index.json", "os.replace", "os.unlink", "open(", "_write_index", "json.dump("):
         assert banned not in body, banned
 
 

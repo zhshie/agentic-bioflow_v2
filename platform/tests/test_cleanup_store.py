@@ -555,9 +555,12 @@ def _publish_era(path):
     from abf_platform import store
     ddl = (store._CONFIRMATIONS_TABLE % {"name": "confirmations"}).replace(", 'gallery_change'", "")
     assert "'gallery_change'" not in ddl and "'publish_figure'" in ddl
-    jobs = store._JOBS_TABLE % {"name": "jobs"}
-    make_old(path, confirmations=ddl, jobs=jobs, conf_rows=False, job_rows=False, launch_rows=False)
+    store.connect_state(path).close()                      # every table as it is now ...
     raw = sqlite3.connect(str(path))
+    raw.execute("PRAGMA foreign_keys = OFF")
+    raw.execute("DROP TABLE confirmations")                # ... except the confirmations table, which is as slice 1 made it
+    raw.execute(ddl)
+    raw.commit()
     raw.execute("INSERT INTO confirmations (id, sha256, kind, created_at, caller_user_id, state, channel, confirmed_at, expires_at, bundle_json, screen_text) "
                 "VALUES ('pf1', 's9', 'publish_figure', 20.0, 7, 'confirmed', 'PAGE', 21.0, 99.0, '{\"run_name\": \"r1\", \"figures\": [{\"name\": \"a.png\"}]}', 'shown')")
     raw.commit()
@@ -591,7 +594,7 @@ def test_a_slice_one_database_is_rebuilt_to_take_gallery_change_and_its_row_is_u
     after = _schema_rows(db)
     changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
     assert changed == {"confirmations"}
-    assert after["confirmations"][3] == before["confirmations"][3].replace("'publish_figure')", "'publish_figure', 'gallery_change')")
+    assert after["confirmations"][3].replace('"confirmations"', 'confirmations') == before["confirmations"][3].replace("'publish_figure')", "'publish_figure', 'gallery_change')")      # the rename quotes the table name
     assert after["jobs"] == before["jobs"]
     from abf_platform import confirm
     assert "gallery_change" not in confirm.JOB_KIND and "gallery_change" not in confirm.JOB_KIND.values()

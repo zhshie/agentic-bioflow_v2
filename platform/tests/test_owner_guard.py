@@ -125,7 +125,7 @@ def test_the_scan_list_leaves_the_terminal_and_the_cost_code_out():
 # tool name -> the action that serves it (same name unless listed): the write tools only ask, through request_*
 TOOL_ACTION = {"launch": "request_launch", "cancel": "request_cancel", "forget": "request_forget",
                "resume": "request_resume", "relaunch": "request_relaunch", "launch_pipeline": "request_pipeline_launch",
-               "delete_figure", "pack_figures", "publish_figure": "request_publish_figure"}
+               "publish_figure": "request_publish_figure", "pack_figures": "request_pack_figures", "delete_figure": "request_delete_figure"}
 
 # actions with a `caller` that no tool is named after, each with the reason
 NO_TOOL = {

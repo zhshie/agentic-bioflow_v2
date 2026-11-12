@@ -68,7 +68,10 @@ def test_a_no_in_the_form_voids_and_changes_nothing(w):
 
 def test_nobody_to_ask_is_no_success_and_leaves_no_request(w):
     # TC-005, TC-047
+    import shutil
+    from abf_platform import store
     ann, run = gal(w)
+    shutil.copytree(gallery(w, ann, run), store.figures_root(w.ip.state_db) / "local" / run)       # the gallery a stdio client would see: nobody's, so nobody can say yes
     before = prints(gallery(w, ann, run))
     out = tool(w, "pack_figures", pack_args(run), caller=None)
     assert out["state"] != "ok" and "沒有人可以" in out["message"]
@@ -155,7 +158,7 @@ def test_publish_figure_keeps_its_own_writer(w):
             rid = tool(w, "publish_figure", args, caller=ann)["request_id"]
             assert tool(w, "publish_figure", dict(args, request_id=rid, user_confirmed=True), caller=ann)["state"] == "ok"
         assert name in index_of(w, ann, run)
-    assert sorted(r["channel"] for r in rows(w)) == ["CHAT", "ELICITED", "PAGE"]
+    assert sorted(r["channel"] for r in w.sql("SELECT * FROM confirmations")) == ["CHAT", "ELICITED", "PAGE"]
 
 
 # ---- US3: forged, wrong, replayed, expired -----------------------------------------------------------------------------------------------------

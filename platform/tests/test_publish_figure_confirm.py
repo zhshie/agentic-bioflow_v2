@@ -719,7 +719,7 @@ def test_documents_describe_the_tool(w):
     platform_md = (repo / "docs" / "PLATFORM.md").read_text(encoding="utf-8")
     testing_md = (repo / "docs" / "TESTING.md").read_text(encoding="utf-8")
     changelog = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert "Twenty-three tools" in platform_md and "publish_figure" in platform_md and "NO_JOB_KINDS" in platform_md and "index.json" in platform_md
+    assert "Twenty-five tools" in platform_md and "publish_figure" in platform_md and "NO_JOB_KINDS" in platform_md and "index.json" in platform_md
     i = platform_md.index("`publish_figure` (mcp-publish-figure, slice 1)")
     para = platform_md[i:i + 4000].split("\n", 1)[0]
     assert "confirmation" in para or "presses 送出" in para

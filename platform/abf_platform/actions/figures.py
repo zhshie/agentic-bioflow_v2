@@ -20,6 +20,7 @@ import json
 import os
 import re
 import secrets
+import threading
 import time
 import unicodedata
 
@@ -256,7 +257,9 @@ def _screen(run_name, figures, existing, lang="zh"):
 
 
 def screen_for_page(bundle, replaces, lang):
-    """The screen text of a stored request in `lang`, for the confirmation page."""
+    """The screen text of a stored request in `lang`, for the confirmation page (a gallery_change request, which has an `action`, has its own)."""
+    if bundle.get("action") in ("pack", "delete"):
+        return gallery_screen(bundle, lang)
     return _screen(bundle["run_name"], bundle["figures"], set(replaces or ()), lang)
 
 
@@ -334,6 +337,9 @@ def _chmod(path, mode):
         pass
 
 
+_held = threading.local()        # the gallery folders whose lock this thread holds
+
+
 class GalleryBusy(OSError):
     """The gallery lock could not be taken. An OSError, so the confirmed write ends in slice 1's write-failed path."""
 
@@ -348,6 +354,10 @@ def gallery_lock(folder):
     each time, so it holds between processes and between the web server's workers alike; there is no lock file, because a gallery folder holds
     only its figures and index.json. A folder that is not there is not locked: there is no index to lose. A lock that cannot be taken raises GalleryBusy."""
     key = os.path.realpath(folder)
+    held = _held.__dict__.setdefault("keys", set())
+    if key in held:        # this very thread holds it already (a confirmed pack or delete: the check and the write are one hold, mcp-gallery-actions R4)
+        yield
+        return
     fd = None
     if fcntl is not None and os.path.isdir(key):
         try:
@@ -357,9 +367,11 @@ def gallery_lock(folder):
             if fd is not None:
                 os.close(fd)
             raise GalleryBusy(e.errno or 0, "the gallery lock could not be taken") from None
+    held.add(key)
     try:
         yield
     finally:
+        held.discard(key)
         if fd is not None:
             os.close(fd)        # closing releases the flock
 
@@ -636,12 +648,13 @@ def pack_figures(*a, **k):
         return _refused("busy", BUSY_MESSAGE)
 
 
-def _pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time.time):
+def _pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time.time, _folder=None):
     """Put exactly the named figures into the delivery package: they get packed=true and packed_at, every other figure of the run is set back to
     packed=false (the package is the selection of this press; none at all is allowed and empties it). All or nothing: a name that is not in
     the gallery, too many names or an unreadable index refuse the whole call and index.json is not touched. {ok, found, count, names} or
-    {ok: False, found, reason, message}; reason is not_found, bad_name, too_many, unknown_name, unreadable (index.json is damaged; checked before the names) or write_failed."""
-    folder, _ = _own_folder(index_path, platform_path, run_id, caller)
+    {ok: False, found, reason, message}; reason is not_found, bad_name, too_many, unknown_name, unreadable (index.json is damaged; checked before the names) or write_failed.
+    `_folder` (the confirmed write of gallery_change, which has checked the owner itself) is the gallery folder to use instead of looking the run up."""
+    folder = _folder if _folder is not None else _own_folder(index_path, platform_path, run_id, caller)[0]
     if folder is None:
         return _refused("not_found", NOT_YOURS, found=False)
     chosen, reason, bad = _clean_names(names)
@@ -675,11 +688,12 @@ def delete_figure(*a, **k):
         return _refused("busy", BUSY_MESSAGE)
 
 
-def _delete_figure(index_path, platform_path, run_id, name, *, caller):
+def _delete_figure(index_path, platform_path, run_id, name, *, caller, _folder=None):
     """Remove one figure of the caller's own run: its image, its code and its parameters, and its entry in index.json (so it leaves the package
     too). {ok, found, name} or {ok: False, found, reason, message}. The index is written first, so a file that cannot be removed afterwards is
-    only a leftover (the files go inside the lock) that nothing lists. Only files inside the run's own gallery folder are ever removed."""
-    folder, _ = _own_folder(index_path, platform_path, run_id, caller)
+    only a leftover (the files go inside the lock) that nothing lists. Only files inside the run's own gallery folder are ever removed.
+    `_folder` is as for _pack_figures."""
+    folder = _folder if _folder is not None else _own_folder(index_path, platform_path, run_id, caller)[0]
     if folder is None:
         return _refused("not_found", NOT_YOURS, found=False)
     chosen, reason, bad = _clean_names([name])
@@ -702,3 +716,219 @@ def _delete_figure(index_path, platform_path, run_id, name, *, caller):
             except OSError:
                 pass
     return {"ok": True, "found": True, "name": name}
+
+
+# ---- pack and delete through the confirmation channel (mcp-gallery-actions, slice 3) ----------------------------------------------------------
+# The user's own LLM may ask to pack or delete figures of its owner's gallery; the person's yes (kind gallery_change, which queues no job) is what
+# changes it. The request holds the names and what would happen, and the gallery as it was when the person was asked (every figure's name,
+# created time, the request that stored it, and whether it is packed). At the yes the gallery is read again under its lock; if it is not as it was
+# shown, nothing is written. The write itself is slice 2's pack_figures / delete_figure, called inside that same hold of the lock.
+
+CHANGED_MESSAGE = ("圖庫已變動，與當初給本人看的不同，沒有變更任何內容，請重新提出 (the gallery has changed since the question was asked; nothing was changed, "
+                   "please propose again)")
+UNREADABLE_MESSAGE = "圖庫目前暫時無法讀取，沒有變更任何內容，請聯絡平台管理者 (the gallery cannot be read right now; nothing was changed, tell the platform administrator)"
+GONE_MESSAGE = "找不到這個分析的圖庫，沒有變更任何內容，請確認分析後重新提出 (the gallery of this run was not found; nothing was changed, check the run and propose again)"
+ONE_AT_A_TIME = "一次只能刪除一張圖，請分開提出 (delete one figure at a time; propose each separately)"
+NO_CHANGE = "沒有需要變更：圖庫已是這個狀態，沒有建立任何申請 (nothing to change: the gallery is already like that, so no request was made)"
+
+
+def _snapshot(figures):
+    """The gallery as the person is asked about it: each figure's name, when it was stored, the request that stored it and whether it is packed.
+    A same-named replacement has another created time or request id, so it counts as a change; packed_at is left out (packing the same set again is no change)."""
+    return [[k, v.get("created") or "", v.get("request_id") or "", v.get("packed") is True] for k, v in sorted(figures.items())]
+
+
+def _pack_effect(figures, chosen):
+    now = sorted(k for k, v in figures.items() if v.get("packed") is True)
+    keep = sorted(n for n in chosen if n in now)
+    return {"add": sorted(n for n in chosen if n not in now), "remove": [k for k in now if k not in chosen], "keep_packed": keep,
+            "keep_unpacked": sorted(k for k in figures if k not in chosen and k not in now), "result": sorted(chosen)}
+
+
+def _delete_effect(figures, name):
+    entry = figures[name]
+    files = [name] + [name + suffix for key, suffix in (("code_file", ".code.txt"), ("params_file", ".params.txt")) if entry.get(key) == name + suffix]
+    return {"name": name, "in_package": entry.get("packed") is True, "files": files}
+
+
+def _effect_of(bundle, figures):
+    if bundle["action"] == "pack":
+        return _pack_effect(figures, bundle["names"])
+    return _delete_effect(figures, bundle["name"])
+
+
+def _join(names, en):
+    return (", " if en else "、").join(names)
+
+
+def gallery_screen(bundle, lang="zh"):
+    """The text the person reads before the yes for a gallery_change request, in Chinese (the stored screen) or in English (the page in English).
+    The same names, in the same lines, on every channel."""
+    en = lang == "en"
+    e = bundle["effect"]
+    if bundle["action"] == "pack":
+        add, rem, keep, still, result = e["add"], e["remove"], e["keep_packed"], e["keep_unpacked"], e["result"]
+        if en:
+            out = ["== Confirm the delivery package ==", "Run: %s" % bundle["run_name"], "Added to the package: %s" % (_join(add, True) or "none")]
+            tail = (" (stays in the gallery and can be packed again later)" if len(rem) == 1 else " (they stay in the gallery and can be packed again later)") if rem else ""
+            out += ["Removed from the package: %s%s" % (_join(rem, True) or "none", tail),
+                    "Unchanged, in the package: %s" % (_join(keep, True) or "none"), "Unchanged, not in the package: %s" % (_join(still, True) or "none"),
+                    "The package will hold %d figure%s%s" % (len(result), "" if len(result) == 1 else "s", ": " + _join(result, True) if result else "")]
+            if not result and rem:
+                out.append("Note: The delivery package will be emptied. The figures now in it (%s) will leave the package and stay in the gallery." % _join(rem, True))
+            return "\n".join(out) + "\n"
+        out = ["== 打包確認 (confirm the delivery package) ==", "分析：%s" % bundle["run_name"], "加入交付包：%s" % (_join(add, False) or "無"),
+               "移出交付包：%s%s" % (_join(rem, False) or "無", "（仍留在圖庫，之後可以再打包）" if rem else ""),
+               "不變（已在交付包內）：%s" % (_join(keep, False) or "無"), "不變（未打包）：%s" % (_join(still, False) or "無"),
+               "打包後交付包：%d 張%s" % (len(result), "（%s）" % _join(result, False) if result else "")]
+        if not result and rem:
+            out.append("注意：交付包將被清空，目前包內的 %s 都會移出，但仍留在圖庫，之後可以再打包。" % _join(rem, False))
+        return "\n".join(out) + "\n"
+    name, files = e["name"], e["files"]
+    if en:
+        listed = [f for f in files if f != name]
+        what = "Will delete %s" % name
+        if len(listed) == 2:
+            what += ", its code file %s and its parameter file %s" % (listed[0], listed[1])
+        elif listed:
+            what += " and its %s %s" % ("code file" if listed[0].endswith(".code.txt") else "parameter file", listed[0])
+        else:
+            what = "Will delete the figure file %s" % name
+        return "\n".join(["== Confirm deleting a figure ==", "Run: %s" % bundle["run_name"], "Figure to delete: %s" % name, what,
+                          ("%s is currently in the delivery package and will be removed from it too" if e["in_package"] else "%s is not in the delivery package") % name,
+                          "After this the gallery no longer has %s." % name]) + "\n"
+    parts = ["圖檔 %s" % name] + [("程式碼檔 %s" if f.endswith(".code.txt") else "參數檔 %s") % f for f in files if f != name]
+    return "\n".join(["== 刪除確認 (confirm deleting a figure) ==", "分析：%s" % bundle["run_name"], "要刪除：%s" % name, "會一併刪除：%s" % "、".join(parts),
+                      "目前在交付包內：%s" % ("是（刪除後會一併移出交付包）" if e["in_package"] else "否"), "刪除後圖庫裡不再有 %s。" % name]) + "\n"
+
+
+def _check_asked(name):
+    """check_name, with the next step said: a name that cannot be a figure of this gallery is refused before any request."""
+    try:
+        check_name(name)
+    except FigureRefused as e:
+        raise FigureRefused("%s；請修正後重新提出 (fix the name and propose again)" % e)
+
+
+async def _request_change(action, platform_path, *, run_id, arg, caller, person, clock, remote, index_path, request_id, user_confirmed):
+    """The one request function behind both tools. Writes nothing: a pending request (kind gallery_change) is made for the change and the person is
+    asked. {state: pending|ok|refused|unchanged, request_id, url, summary, message}. A run that is not the caller's and one that is not there answer alike;
+    a name that is not valid or not in the gallery refuses the whole call before a request exists; a change that would change nothing makes no request."""
+    from . import _ask, _caller_id, platform_path_for
+    plat = platform_path_for(index_path, platform_path)
+    tool = "pack_figures" if action == "pack" else "delete_figure"
+
+    def refused(reason):
+        return {"ok": False, "sent": False, "state": "refused", "request_id": None, "url": None, "reason": reason, "message": reason}
+    view = _owned_run(index_path, platform_path, run_id, caller)
+    if view is None:
+        return refused("找不到 run「%s」。請用 list_runs 查自己的 run 編號後再送 (run not found: %s; use list_runs to see your own run ids)" % (str(run_id)[:80], str(run_id)[:80]))
+    try:
+        if action == "pack":
+            names, reason, bad = _clean_names(arg)
+            if names is None:
+                raise FigureRefused("一次最多選 %d 張圖，請分次提出 (at most %d figures at a time; propose again with fewer)" % (MAX_PER_RUN, MAX_PER_RUN) if reason == "too_many" else
+                                    "圖名不合規定：names 必須是圖名的清單，每個名稱只能用英數字、點、底線與連字號，請修正後重新提出 (a figure name is not valid: names must be a list of figure names; fix and propose again)")
+            for n in names:
+                _check_asked(n)
+            key = "names"
+            asked = sorted(names)
+        else:
+            if isinstance(arg, (list, tuple, set, frozenset)) or (isinstance(arg, str) and re.search(r"[\s,;]", arg.strip())):
+                raise FigureRefused(ONE_AT_A_TIME)
+            if _clean_names([arg])[0] is None:
+                raise FigureRefused("圖名不合規定：name 必須是一個圖名，請修正後重新提出 (a figure name is not valid: name must be one figure name; fix and propose again)")
+            _check_asked(arg)
+            key, asked = "name", arg
+        folder = run_folder(plat, _caller_id(caller), run_id)
+        figures, problem = read_index(folder)
+        if problem:
+            raise FigureRefused(UNREADABLE_MESSAGE)
+        stored = confirm.facts(plat, request_id) if isinstance(request_id, str) and user_confirmed else None
+        if stored and stored.get("what") == "gallery_change" and stored.get("action") == action and stored.get("run_id") == run_id and stored.get(key) == asked:
+            bundle = {k: stored[k] for k in ("action", "run_id", "run_name", key, "effect", "snapshot")}      # a call that carries the yes: what the screen said, not what the gallery says now
+        else:
+            for n in (asked if action == "pack" else [asked]):
+                if n not in figures:
+                    raise FigureRefused("圖庫裡沒有「%s」，沒有變更任何內容；請確認圖名後重新提出 (the gallery has no figure \"%s\"; nothing was changed, check the name and propose again)" % (n, n))
+            bundle = {"action": action, "run_id": run_id, "run_name": view["name"], key: asked, "snapshot": _snapshot(figures)}
+            bundle["effect"] = _effect_of(bundle, figures)
+            if action == "pack" and not bundle["effect"]["add"] and not bundle["effect"]["remove"]:
+                return {"ok": True, "sent": False, "state": "unchanged", "request_id": None, "url": None, "message": NO_CHANGE}
+    except FigureRefused as e:
+        return refused(str(e))
+    text = gallery_screen(bundle, "zh")
+
+    def done(rid):
+        e = bundle["effect"]
+        msg = ("已打包：交付包現有 %d 張 (the delivery package now holds %d figures)" % (len(e["result"]), len(e["result"])) if action == "pack" else
+               "已刪除 %s (deleted %s)" % (e["name"], e["name"]))
+        return {"ok": True, "sent": True, "state": "ok", "request_id": rid, "url": None, "message": msg}
+    got = await _ask(plat, "gallery_change", None, bundle, text, "打包" if action == "pack" else "刪除", caller, person, clock, remote, tool=tool,
+                     request_id=request_id, user_confirmed=user_confirmed, done=done)
+    if got.get("state") == "ok":
+        return got
+    if got.get("state") == "pending":
+        url, rid = got["confirmation_url"], got["id"]
+        out = {"ok": True, "sent": False, "state": "pending", "request_id": rid, "url": url, "summary": text,
+               "message": "還沒變更 (nothing is changed yet)。請本人打開這個網址、用自己的帳號登入、看過內容後按送出：%s ——按了之後才會變更圖庫，不必再呼叫一次。"
+                          "或者，把內容給本人看，本人在聊天裡親口回覆同意之後，用同樣的參數加上 request_id=%s 與 user_confirmed=true 再呼叫 %s 一次；"
+                          "在本人回覆之前不可自己填 true。 (open the address, log in as yourself and press the button; or, once the person has answered yes in the "
+                          "chat, call %s again with the same arguments plus request_id=%s and user_confirmed=true; never set it true before they answer)"
+                          % (url, rid, tool, tool, rid)}
+        if got.get("message", "").startswith("⚠"):
+            out["message"] = got["message"].split("還沒送出")[0] + out["message"]
+        return out
+    return refused(got.get("message") or "未送出 (not sent)")
+
+
+async def request_pack_figures(platform_path, *, run_id, names, caller=None, person=None, clock=time.time, remote=False, index_path=None,
+                               request_id=None, user_confirmed=False):
+    """Propose that the delivery package of the caller's own run is exactly the figures `names` (none at all empties it). Nothing is changed until a person's yes."""
+    return await _request_change("pack", platform_path, run_id=run_id, arg=names, caller=caller, person=person, clock=clock, remote=remote,
+                                 index_path=index_path, request_id=request_id, user_confirmed=user_confirmed)
+
+
+async def request_delete_figure(platform_path, *, run_id, name, caller=None, person=None, clock=time.time, remote=False, index_path=None,
+                                request_id=None, user_confirmed=False):
+    """Propose that one figure of the caller's own run is deleted with its code and parameters. Nothing is changed until a person's yes."""
+    return await _request_change("delete", platform_path, run_id=run_id, arg=name, caller=caller, person=person, clock=clock, remote=remote,
+                                 index_path=index_path, request_id=request_id, user_confirmed=user_confirmed)
+
+
+def write_gallery_change(platform_path, caller_user_id, bundle, rid, now):
+    """The write of a confirmed gallery_change request (called by confirm.approve after the person's yes). The owner is checked again, then, in ONE hold
+    of the gallery lock, the gallery is read again and compared with what the person was shown; only when it is the same is slice 2's pack_figures or
+    delete_figure called. Anything else is jobs.JobRefused with the reason (the request is void and nothing changed)."""
+    try:
+        action, run_id, run_name, shown = bundle["action"], bundle["run_id"], bundle["run_name"], json.loads(json.dumps(bundle["snapshot"]))
+        if action not in ("pack", "delete"):
+            raise KeyError(action)
+        if caller_user_id is not None and run_name not in jobs.owned_run_names(platform_path, caller_user_id):
+            raise FigureRefused(NOT_YOURS)
+        folder = run_folder(platform_path, caller_user_id, run_id)
+    except FigureRefused:
+        raise jobs.JobRefused(GONE_MESSAGE)
+    except (KeyError, TypeError, ValueError):
+        raise jobs.JobRefused("申請的內容不完整，沒有變更任何內容，請重新提出 (the request is incomplete; nothing was changed, propose again)")
+    if not os.path.isdir(folder):
+        raise jobs.JobRefused(GONE_MESSAGE)
+    try:
+        with gallery_lock(folder):
+            figures, problem = read_index(folder)
+            if problem:
+                raise jobs.JobRefused(UNREADABLE_MESSAGE)
+            try:
+                same = _snapshot(figures) == shown and _effect_of(bundle, figures) == json.loads(json.dumps(bundle["effect"]))
+            except (KeyError, TypeError, ValueError):
+                same = False
+            if not same:
+                raise jobs.JobRefused(CHANGED_MESSAGE)
+            if action == "pack":
+                got = pack_figures(None, platform_path, run_id, bundle["names"], caller=None, clock=lambda: now, _folder=folder)
+            else:
+                got = delete_figure(None, platform_path, run_id, bundle["name"], caller=None, _folder=folder)
+    except GalleryBusy:
+        raise jobs.JobRefused(BUSY_MESSAGE)
+    if not got.get("ok"):
+        raise jobs.JobRefused(got.get("message") or CHANGED_MESSAGE)

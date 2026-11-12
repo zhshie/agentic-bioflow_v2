@@ -98,11 +98,12 @@ def test_the_yes_on_the_page_writes_and_the_success_page_says_what_was_done(w):
     ann, run = gal(w)
     rid = ask_pack(w, ann, run, ["a.png", "b.png"])["request_id"]
     c = logged_in(w, "ann", w.web(clock=w.clock))
-    done = post(c, rid)
+    token = csrf_of(c.get("/c/" + rid).text)
+    done = post(c, rid, token=token)
     assert done.status_code == 200 and packed_of(w, ann, run) == ["a.png", "b.png"]
     assert "交付包現有 2 張：a.png、b.png" in done.text and "工作編號" not in done.text and "href=" in done.text
     after = prints(gallery(w, ann, run))
-    again = post(c, rid)
+    again = post(c, rid, token=token)
     assert again.status_code == 200 and "交付包現有 2 張" in again.text and prints(gallery(w, ann, run)) == after
     did = ask_delete(w, ann, run, "a.png")["request_id"]
     en = post(c, did, "en")
