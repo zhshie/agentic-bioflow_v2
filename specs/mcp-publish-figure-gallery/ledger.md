@@ -36,14 +36,18 @@ CSRF purposes: `figpack:<run id>` and `figdel:<run id>`. Names per press: 30 (= 
 
 Filled in below at the end of the run (suite counts, UI checks, what is unverified).
 
-### UI checks (TC-072, TC-073, TC-074)
+### UI checks (TC-072, TC-073, TC-074), rerun after the K fixes (2026-11-13)
 
-Driver: a throwaway script outside the repository (it reuses `scripts/dev/ui_check.py`'s `start_platform`; `ui_check.py` itself has no finished-stage page). Playwright, Chromium and axe-playwright-python were available in WSL. 12 screenshots (empty, three unpacked incl. one SVG and a 74-character file name, packed; 1440 and 390; zh and en) are in WSL `/tmp/ui-shots-gallery/` with `summary.md`.
+The first set (12 screenshots in WSL `/tmp/ui-shots-gallery/`, taken before the fix rounds) is **stale**; ignore it and its summary.
 
-- Images: all load (0 broken). TC-073: no horizontal overflow at 390 in any state (0 px).
-- axe, pages with figures (unpacked, packed): 0 serious, 0 critical; 1 moderate `landmark-unique` on `.side` (the board's own left column, not this slice).
-- axe, **empty gallery page: 1 critical `meta-refresh`**. That is the finished page's existing 15-second `<meta refresh>`, pinned by `test_fs11_constraints_hold`, which this slice keeps while the gallery is empty (see decision 2). So TC-072's "no critical" is **not met for the empty state**; it is met for the states with figures. Removing the refresh on every finished page needs that pinned test changed: for the maintainer.
-- TC-074 (impeccable detector): see the report; run on the saved HTML files if the tool ran, else UNVERIFIED.
+Driver: a throwaway script outside the repository that reuses `scripts/dev/ui_check.py`'s `start_platform` (a throwaway platform on a free port with its data in a temp folder; never ports 8787-8789 and never `~/.local/share/abf-platform`). Playwright, Chromium and axe-playwright-python ran in WSL. Gallery files were written straight into the throwaway data folder (four figures: two PNG, one SVG, one with a 74-character name and 400 lines of code).
+
+- Images: WSL `/tmp/ui-shots-gallery-2/` (outside the repository), 20 PNG screenshots, each full page, plus the 20 matching `.html` files and `summary.md`. Name: `finished-<state>-<width>-<lang>.png`, widths 1440 and 390, `zh` and `en`. States: `1-empty` (empty gallery), `2-unpacked` (four figures, none packed), `3-packed` (two of the four packed), `4-damaged-index` (index.json is not JSON: the G2 notice), `5-long-code` (the code is longer than the inline limit: the "only the first part is shown, download the full text" sentence and its link, details opened).
+- No horizontal scroll at 390 (and none at 1440): 0 px in all 20. Images in the states with figures: 4 each, 0 broken.
+- axe, per page: `2-unpacked`, `3-packed`, `5-long-code`: 0 critical, 0 serious, 1 moderate `landmark-unique` (`.side`, the board's own left column, not this slice). `1-empty` and `4-damaged-index`: 1 critical `meta-refresh` (plus the same moderate).
+- **Reported separately, not introduced by this slice:** the `meta-refresh` critical on the empty gallery page (and on the damaged-index page, which also lists no figure and so keeps the refresh) is the finished page's existing 15-second refresh pinned by `test_fs11`; accepted by the lead's ruling.
+- Found and fixed in this run: the first rerun showed a **serious** `link-in-text-block` on `5-long-code` (the download link sat inside the sentence and differed from the text by colour only). The link now stands in its own paragraph (`web_finished.py`); `test_part_download_link_is_not_inside_the_sentence`. After the fix the state has 0 serious.
+- TC-074 (the impeccable detector run on the 20 saved HTML files): exit 0 on all; 0 anti-patterns where it printed a result (16 files print "0 anti-patterns found" with advisories; two files, `finished-3-packed-1440-en` and `finished-3-packed-390-en`, printed nothing and exited 0).
 - TC-075, TC-076, TC-094, TC-095 are for the maintainer (manual); not done by the executor.
 
 ## Fix round after the adversarial review (lead's rulings G1-G5, 2026-11-13)
@@ -58,3 +62,10 @@ Slice 1's fix round (rulings F1-F8, branch `fable/mcp-publish-figure`) was merge
 - The 15-second refresh of an empty gallery (`test_fs11`) is kept.
 - SYNC outside the plan's file list, forced by the plan's own route: `test_keep_submissions.py::test_tc082_the_web_has_no_forget_route` refused any route path containing `delete`; it now names `/run/figure/delete` as the one allowed (the gallery's own delete of a figure). It still refuses every forget route and every other delete route.
 - SYNC after the first CI run (all outside the plan's file list, each forced by the plan's three routes): the route-table pins in `test_results_files.py`, `test_web_downstream.py`, `test_owner_binding.py`, `test_confirm_page.py`, `test_dataset_cli.py`, `test_cleanup_offer.py`, `test_chat_confirm.py`, `test_k8s_launch.py` and the `delete` word in `test_web_actions.py` now list or set aside `/run/figure`, `/run/figure/delete` and `/run/figures/pack`, by adding, not deleting. The gallery lock is a plain `flock` (no thread primitive), because `test_scope.py`, `test_cleanup_confirm.py` and the cloud-upload source scans forbid the word `threading` in any platform source.
+
+## Fix round K1-K4 (lead's rulings after acceptance, 2026-11-13)
+
+- **K2** `delete_figure` removes the files inside the lock (`_delete_figure`). Test `test_delete_removes_files_inside_the_lock` (a same-named confirmed write is started just before the first unlink; failed first: the new `x.png` was gone while the index listed it).
+- **K3** `gallery_lock` raises `GalleryBusy` (an `OSError`) when the flock cannot be taken, instead of going on without it. `pack_figures` and `delete_figure` (thin wrappers around `_pack_figures` and `_delete_figure`) answer `{ok: False, reason: "busy"}` with one sentence in zh and en and change nothing; `write_confirmed` lets the error out, so `confirm.approve` voids the confirmation through slice 1's write-failed path. Test `test_no_lock_means_no_change`.
+- **K4** the G1 line above no longer says "thread lock plus flock": it is a flock only.
+- **K1** see the UI section above.
