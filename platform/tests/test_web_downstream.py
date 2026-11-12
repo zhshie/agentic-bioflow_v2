@@ -88,10 +88,11 @@ def test_downstream_succeeded_shows_section_not_placeholder(w):
     assert re.search(r'<input type="url"[^>]*name="studio"[^>]*value=""', form) and "開啟連結" in form
     assert "csrf" not in form.lower()
     assert 'role="alert"' not in zh and "target=" not in zh
-    # cli-fetch-publish-figure slice 1 (TC-048, TC-049, TC-053): the two commands replace the jupyter and docker lines
+    # cli-fetch-publish-figure slice 1 (TC-048, TC-049): the commands replace the jupyter and docker lines; slice 2 (TC-054): the third line
     assert "abf-platform studio-connect --server &lt;平台網址&gt;" in zh and "abf-platform fetch-results %s" % rid in zh
+    assert "abf-platform publish-figure %s &lt;圖檔&gt;" % rid in zh
     assert "平台不執行腳本" in zh and "請在自己的電腦執行下列指令" in zh
-    assert "jupyter lab" not in zh and "docker run" not in zh and "rocker/rstudio" not in zh and "publish-figure" not in zh
+    assert "jupyter lab" not in zh and "docker run" not in zh and "rocker/rstudio" not in zh
     assert "0.0.0.0" not in zh and "-p 8787:8787" not in zh
     assert not re.search(r"<iframe|<img|<script|建議分析|終端機|啟動</button>|停止", card)
     # TC-005: the folder cannot be read yet
@@ -109,7 +110,8 @@ def test_downstream_succeeded_shows_section_not_placeholder(w):
     assert no_cjk(en) and '<span class="later">' not in en_card and "Coming later" not in en_card
     assert 'name="lang" value="en"' in en and 'type="url"' in en and 'name="studio"' in en and "Open link" in en
     assert "abf-platform fetch-results %s" % rid in en and "abf-platform studio-connect --server &lt;platform address&gt;" in en and "<code>%s/results</code>" % FOLDER in en
-    assert "jupyter" not in en and "rocker" not in en and "publish-figure" not in en and "The platform does not run scripts" in en
+    assert "abf-platform publish-figure %s &lt;image file&gt;" % rid in en      # TC-054
+    assert "jupyter" not in en and "rocker" not in en and "The platform does not run scripts" in en
 
 
 def test_downstream_nonsucceeded_keeps_placeholder(w):
@@ -120,7 +122,7 @@ def test_downstream_nonsucceeded_keeps_placeholder(w):
     for rid in ids:
         zh = mid(c.get(url(rid)).text)
         assert '<span class="later">之後開放</span>' in zh and 'name="studio"' not in zh and "jupyter" not in zh
-        assert "fetch-results" not in zh and "studio-connect" not in zh      # TC-052
+        assert "fetch-results" not in zh and "studio-connect" not in zh and "publish-figure" not in zh      # TC-052
         en = mid(c.get(url(rid, lang=True)).text)
         assert '<span class="later">Coming later</span>' in en and 'name="studio"' not in en and no_cjk(en)
 
@@ -283,7 +285,7 @@ def test_wording_in_command_block(w, lang):
     page = mid(c.get(url(rid, None, lang)).text)
     blocks = " ".join(re.findall(r'<pre class="reason">(.*?)</pre>', page, re.S))
     assert "studio-connect" in blocks and "fetch-results" in blocks and "jupyter" not in blocks and "rocker" not in blocks      # TC-049
-    assert len(blocks.strip().splitlines()) == 2      # slice 1: the two commands, not the third
+    assert "publish-figure" in blocks and len(blocks.strip().splitlines()) == 3      # slice 2 (TC-054): the third line, which slice 1 pinned as absent
     for word in ("password", "token", "AKIA", "sk-", "nchc", "ln01", "sbatch", "srun"):
         assert word.lower() not in blocks.lower()
     rest = LOGIN_NODE_SENTENCE.sub("", page)      # the one sentence that says "not on the NCHC login node" is the only place the name may stand
@@ -298,7 +300,7 @@ def test_downstream_commands_escape_run_id(lang):
     from abf_platform import web_downstream as d
     page = d.render_downstream(lang, {"id": 'x<b>"y&z'}, None, None, "t")
     assert "<b>" not in page and 'x"y' not in page
-    assert "abf-platform fetch-results x&lt;b&gt;&quot;y&amp;z" in page
+    assert "abf-platform fetch-results x&lt;b&gt;&quot;y&amp;z" in page and "abf-platform publish-figure x&lt;b&gt;&quot;y&amp;z" in page      # TC-054
     if lang == "en":
         assert no_cjk(page)
 

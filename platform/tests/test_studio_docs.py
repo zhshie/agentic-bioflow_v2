@@ -39,7 +39,7 @@ def test_tc074_the_platform_guide_describes_the_two_commands_the_settings_file_a
         assert re.search(r"(?<![0-9])%s (means|is|:|=)" % code, s) or re.search(r"\bexit %s\b|\| %s \|" % (code, code), s), code
     assert re.search(r"not (a )?(sent|fetched)[^.]*(html|binary)|(html|binary)[^.]*not (sent|fetched)", s, re.I) and "25 MB" in s and "100 MB" in s
     assert re.search(r"cloud[- ]sync", s, re.I) and re.search(r"never (printed|logged)|is not printed", s)
-    assert "publish-figure" not in s.replace("cli-fetch-publish-figure", "")      # the command is slice 2 (the feature's own name is in the heading)
+    assert "publish-figure" in s.replace("cli-fetch-publish-figure", "")      # slice 2 (TC-077): the command is described too
     assert not FAKE.search(s)
 
 
@@ -50,7 +50,7 @@ def test_tc074_the_example_lines_parse_and_are_not_taken_for_launch_examples():
     parser = cli.build_parser()
     checked = 0
     for ln in body.splitlines():
-        m = re.match(r"^\s*(?:\$ )?abf-platform ((?:studio-connect|fetch-results)\b[^#<>|]*?)\s*(#.*)?$", ln)
+        m = re.match(r"^\s*(?:\$ )?abf-platform ((?:studio-connect|fetch-results|publish-figure)\b[^#<>|]*?)\s*(#.*)?$", ln)
         if not m:
             continue
         try:
