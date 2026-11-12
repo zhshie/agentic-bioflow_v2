@@ -204,6 +204,22 @@ README 規則只看檔案路徑，本案範圍不含保護路徑，機械推定�
 6. 計畫 35 KB 超過 25 KB 上限：接受此一次（遠端模式不可拆）；executor 只需讀「範圍」「作法」「失敗先行測試」「完成標準」與「裁決」。
 7. 完成標準「必須在非桌機的電腦上手動走通並做三項負面操作」維持——使用者的 RStudio 在自己的電腦。
 
+## 裁決（lead，2026-11-12 晚，維護者回「同意」；本段優先於上文任何相反的字句）
+
+1. **發佈圖要經本人確認（取代「維護者原話 4」與作法 5 中「不走確認頁、不建立 confirmations 列」的字句）。** 維護者 2026-11-12 對 `mcp-publish-figure` 選 B：未經本人確認不得寫入；同日對本件回「同意」：「RStudio 發佈圖時，要你點一次確認連結」。因此 `publish-figure`：
+   - 呼叫的是 `mcp-publish-figure` 合併後的工具形狀 `publish_figure(run_id, figures=[{filename, content_base64, code?, params?, caption?}])`，一次一張圖。**CLI 永不傳 `user_confirmed`，也不傳 `request_id`**（測試以替身斷言這兩個鍵不在引數內，並以原始碼掃描釘住 `user_confirmed` 字樣不出現在 `studio_cli.py`／`studio_remote.py`）。
+   - 工具回「待確認」時：印圖名、大小、「尚未存入；請本人在瀏覽器開啟下列連結並按送出」與工具回的確認連結（原樣，不自行組網址），結束碼 0。不輪詢、不等待、不代按。訊息不得說「已存入」。
+   - 工具回拒絕（大小、型別、圖庫已滿、非自己的 run 等）時：原樣印 reason，結束碼 1。
+   - 訊息仍須含「不會加入交付包」之意（圖進私有圖庫，打包由本人在網頁勾選）。
+   - 上限常數引用 `figures.MAX_BUNDLE_BYTES`、`MAX_CODE_BYTES`、`MAX_PARAMS_BYTES`、`MAX_CAPTION_CHARS`（以合併版為準）。
+   - 「失敗先行測試」中 `test_publish_figure_calls_publish_figure_tool` 改為斷言 `figures` 清單的單一項目與上述訊息；`test_publish_figure_end_to_end_private_not_packed` 改為：發佈後 `confirmations` 多一列待確認、圖庫仍空；經確認頁核准後圖庫才有該圖且 `packed_only=True` 為空。
+2. **分兩片交付：**
+   - 第 1 片（現在就做，不依賴任何未合併的東西）：`studio_remote.py`、`studio-connect`、`fetch-results`、R 載入碼、下游頁指令區中 `studio-connect` 與 `fetch-results` 兩行、文件、相關既有測試同步。下游頁此片**不印** `publish-figure` 那一行，也不註冊 `publish-figure` 指令。
+   - 第 2 片（`mcp-publish-figure` 合進 v3 之後）：`publish-figure` 指令、下游頁第三行、其測試與文件。
+   verifier 出題時每條案例標明屬第 1 片或第 2 片；第 1 片的驗收不得因第 2 片未做而 FAIL。
+3. 風險維持 L；合併前對抗審照舊。「在非桌機的電腦手動走通」維持為完成標準，由維護者在自己的電腦親手試。
+4. 其餘（取檔規則、權杖保存、錯誤分類、被釘住不得改的檔、不做清單）不變。
+
 ## 專長守則（backend）
 
 ### executor
