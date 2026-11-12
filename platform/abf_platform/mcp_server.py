@@ -1,8 +1,8 @@
 # Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers fifteen read-only tools, and is built on the official Python mcp SDK.
 """MCP server: fifteen read-only tools: list_runs, list_compute_envs, get_compute_env, list_agents,
 list_site_files, list_used_pipelines, my_usage, run_outputs, read_run_file, read_task_log, and the five canvas reads find_module, describe_module,
-list_pipelines, get_pipeline, get_validation; and six tools that ask a person:
-launch, launch_pipeline, cancel, forget, resume, relaunch.
+list_pipelines, get_pipeline, get_validation; and seven tools that ask a person:
+launch, launch_pipeline, cancel, forget, resume, relaunch, publish_figure.
 
 get_run is the one query that is not marked read-only: for a lost run it queues one read of the site (ruling R2). The fifteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
@@ -36,6 +36,7 @@ _READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempo
 # get_run: asks no one's yes, but a lost run makes it queue one read of the site and write that job to platform.db (ruling R2), so not read-only
 _QUERY = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 _WRITES = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
+_PUBLISH = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)   # publish_figure: same name replaces, so the same call twice leaves the same gallery
 _STOPS = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False)
 
 
@@ -286,6 +287,20 @@ def _add_write_tools(server, platform_path, index_path):
         return await actions.request_relaunch(platform_path, run_name=run_name, caller=_caller(ctx), person=actions.person_at(ctx),
                                               remote=_remote(ctx), index_path=index_path, request_id=request_id,
                                               user_confirmed=user_confirmed)
+
+    @server.tool(name="publish_figure", annotations=_PUBLISH,
+                 description="Propose figures for the private gallery of one of your own runs (run_id). Each of figures has filename (letters, digits, "
+                             ". _ -; png, svg, jpg or jpeg), content_base64, optional code, params (plain text) and caption (200 characters at "
+                             "most). 10 per call, 5 MB together, 30 per run; same name replaces. Nothing is written until "
+                             "the person says yes on the page this returns; you cannot say it for them: only after they answered in this chat "
+                             "call again with request_id and user_confirmed=true. Not in the delivery package. SVG with scripts or "
+                             "external links is refused.")
+    async def publish_figure_tool(ctx: Context, run_id: str, figures: list[dict],
+                                  request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
+                                  user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
+        return await actions.request_publish_figure(platform_path, run_id=run_id, figures=figures, caller=_caller(ctx),
+                                                    person=actions.person_at(ctx), remote=_remote(ctx), index_path=index_path,
+                                                    request_id=request_id, user_confirmed=user_confirmed)
 
 
 def _whole_file(name):

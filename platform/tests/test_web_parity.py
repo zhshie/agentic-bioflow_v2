@@ -24,6 +24,8 @@ WEB_VIA_REQUEST = {"launch": "request_launch", "cancel": "request_cancel", "resu
 # The PAGE confirmation channel is web-only by design: the MCP side uses the form channel and request_launch/request_cancel.
 WEB_ONLY = {
     "run_usage": "the cost row of the run page (cost-page-by-environment): one run of the caller, in its environment's unit; a read, not an MCP tool",
+    "list_figures": "mcp-publish-figure: reads the caller's own private gallery of one run; the gallery page is slice 2",
+    "screen_for_page": "mcp-publish-figure: the confirmation page shows the publish_figure screen in the page's language",
     "describe_request": "the confirmation page shows one pending request to the person it was made for",
     "approve": "the button of the confirmation page: the PAGE channel's yes",
     "platform_path_for": "the page finds platform.db from the index path, the way every entry does",
@@ -61,7 +63,7 @@ OWED = {"get_compute_env": "012a", "list_agents": "012a", "list_site_files": "01
 OWED_BEFORE_012B = {"list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "read_task_log", "launch", "cancel", "forget"}
 # Helpers, classes and constants that no web route or tool exposes by name. 009i: ConnectorCaller, form_is_trusted (MCP side only).
 # v3 (keep-submissions, resume/relaunch): request_forget, request_resume, request_relaunch are what the tools forget, resume, relaunch call; forget_check and keep_screen are helpers; the FORGET_* and RUN_NOT_FOUND words are constants.
-INTERNAL = {"offer_cleanup", "offer_cleanups", "request_pipeline_launch", "request_launch", "request_cancel", "request_forget", "request_resume", "request_relaunch", "find_approved", "void_request",
+INTERNAL = {"offer_cleanup", "offer_cleanups", "request_pipeline_launch", "request_launch", "request_cancel", "request_publish_figure", "request_forget","request_resume", "request_relaunch", "find_approved", "void_request",
             "person_at", "caller_area", "confined_samplesheet", "read_confined_samplesheet", "forget_check", "keep_screen",
             "Caller", "ConnectorCaller", "form_is_trusted", "NotApproved", "PAGE", "ELICITED", "CHAT", "TERMINAL", "DEFAULT_WEB_BASE",
             "FORGETTABLE", "FORGET_ALREADY", "FORGET_NO_FORM", "FORGET_STARTING", "FORGET_WAIT_SECONDS", "RUN_NOT_FOUND",

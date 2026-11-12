@@ -1509,10 +1509,11 @@ def _chat_refusal(status, tool):
 
 
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None, request_id=None,
-               user_confirmed=False):
+               user_confirmed=False, done=None):
     """The yes of a person for a bundle that is built and checked: through the form, else by the page, else (CHAT) the person's own
     reply in the chat, relayed by the AI with the request id and user_confirmed=true on a second call; never by the caller itself.
-    `kind` is the kind of confirmation; `tool` is the name the person knows it by (resume, relaunch), the kind when none is given."""
+    `kind` is the kind of confirmation; `tool` is the name the person knows it by (resume, relaunch), the kind when none is given.
+    `done` (publish_figure): a request that queues no job; once a person's yes was taken, `done(request id)` is the answer instead of a job number."""
     caller_id = _caller_id(caller)
     form = person is not None and person.can_ask() and form_is_trusted(caller)
     tool = tool or kind
@@ -1521,14 +1522,17 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
             return _no("未送出：user_confirmed=true 要同時帶 request_id（第一次呼叫回的申請編號）。%s。" % _CHAT_NEXT)
         try:
             _, job_id = confirm.approve(platform_path, request_id, CHAT.name, caller_id, clock,
-                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind)
+                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=_figures.write_confirmed)
         except confirm.NotApproved as e:
             if e.status == "already":
-                return _queued(request_id, e.job_id, what)
+                return done(request_id) if done else _queued(request_id, e.job_id, what)
             return _no(_chat_refusal(e.status, tool))
-        return _queued(request_id, job_id, what)
+        return done(request_id) if done else _queued(request_id, job_id, what)
     nobody =("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單）。請改用終端機指令 `abf-platform %s`，或用帶權杖的 HTTP 連線 "
               "(no one can say yes here: use the terminal command, or HTTP with a token)" % tool)
+    if done is not None:
+        nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單），無法確認，沒有存入任何圖。請改用 abf-platform 的帶權杖 HTTP 連線 (http) "
+                  "(no one can say yes here, so nothing was stored: use HTTP with a token)")
     if caller is None and not form:
         return _no(nobody)
     try:
@@ -1542,12 +1546,12 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
                 confirm.void(platform_path, rid, why)
                 return _no("未送出：%s (not sent)" % why)
             try:
-                _, job_id = confirm.approve(platform_path, rid, ELICITED.name, caller_id, clock)
+                _, job_id = confirm.approve(platform_path, rid, ELICITED.name, caller_id, clock, writer=_figures.write_confirmed)
             except confirm.NotApproved as e:
                 if e.status == "already":
-                    return _queued(rid, e.job_id, what)
+                    return done(rid) if done else _queued(rid, e.job_id, what)
                 return _no("未送出：%s。請從 AI 重新送出 (nothing was queued; send it again from the AI)" % e)
-            return _queued(rid, job_id, what)
+            return done(rid) if done else _queued(rid, job_id, what)
         if caller is None:         # the client claims forms but this call cannot show one, and there is nobody to log in
             confirm.void(platform_path, rid, why)
             return _no(nobody)
@@ -1902,7 +1906,8 @@ def approve(platform_path, request_id, *, confirmed_by, caller=None, clock=time.
     the user who made it (PAGE). Returns (request id, job id); NotApproved when nothing was queued."""
     if not (confirmed_by is ELICITED or confirmed_by is PAGE):
         raise jobs.JobRefused("no human confirmation channel")
-    return confirm.approve(platform_path, request_id, confirmed_by.name, _caller_id(caller), clock, deadline_seconds, offline_after)
+    return confirm.approve(platform_path, request_id, confirmed_by.name, _caller_id(caller), clock, deadline_seconds, offline_after,
+                           writer=_figures.write_confirmed)
 
 
 def find_approved(platform_path, kind, bundle, *, caller=None, clock=time.time):
@@ -2019,6 +2024,7 @@ async def request_forget(platform_path, index_path, *, run_name, caller=None, pe
 # ---- web uploads (web-upload-page): the page receives the bytes into the platform host; these two judge, queue and read -----------------------------
 
 from . import uploads as _uploads
+from . import figures as _figures       # publish_figure: the private gallery of a run (actions/figures.py); written only after a person's yes
 
 
 def start_upload_batch(platform_path, tokens_path, caller, **kw):
@@ -2057,3 +2063,10 @@ def remove_pipeline_registration(platform_path, *, ce, pipeline, revision, confi
     """Mark a registration removed, only after a person's yes (actions/registrations.py)."""
     _require_human(confirmed_by)
     return _registrations.remove_pipeline_registration(platform_path, ce=ce, pipeline=pipeline, revision=revision, confirmed_by=confirmed_by, caller=caller)
+
+
+# ---- publish_figure (mcp-publish-figure, slice 1): figures proposed by the user's own model, stored only after the person's yes ------------------
+
+request_publish_figure = _figures.request_publish_figure
+list_figures = _figures.list_figures
+screen_for_page = _figures.screen_for_page
