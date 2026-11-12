@@ -1,18 +1,23 @@
 # Nothing existing: nothing else in this package writes files on a user's own computer or builds R code; fetch-records brings Nextflow's logs to the platform for the index, not result tables to a person.
-"""The commands that run on a user's own computer: `studio-connect` stores the platform's address and the user's own token, and `fetch-results` pulls the
-small result tables of one run into a folder on this computer and prints the R code that loads them in RStudio.
+"""The commands that run on a user's own computer: `studio-connect` stores the platform's address and the user's own token, `fetch-results` pulls the
+small result tables of one run into a folder on this computer and prints the R code that loads them in RStudio, and `publish-figure` proposes a figure
+drawn there to the gallery of the run (the person, not this command, says yes, at the link the platform gives).
 
-Everything comes through `studio_remote` (the MCP tools run_outputs and read_run_file, and list_compute_envs for a hint); the platform decides
+Everything comes through `studio_remote` (the MCP tools run_outputs and read_run_file, list_compute_envs for a hint, and publish_figure); the platform decides
 what a person may see, and which folders of the site may be read, so nothing of that is judged here. The commands read the platform and write
 only to the folder the user chose; they start no program, run no R, and open no database of the platform."""
 import asyncio
+import base64
 import os
 import re
+import stat
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 from . import cliout, studio_remote
+from .actions.figures import MAX_BUNDLE_BYTES, MAX_CAPTION_CHARS, MAX_CODE_BYTES, MAX_PARAMS_BYTES
 from .jobs import RUN_FILE_MAX_BYTES
 
 POLL_SECONDS = 2.0            # a tool that answers `loading` is asked again after this many seconds
@@ -27,6 +32,7 @@ COMMAND_DEADLINE_SECONDS = 900.0   # the whole command, listing and reading, wha
 TABLE_SUFFIXES = (".tsv", ".csv", ".txt", ".md", ".json")
 HTML_SUFFIXES = (".html", ".htm")
 LIST_LIMIT = 50               # lines of one kind that are printed one by one
+PUBLISH_DEADLINE_SECONDS = 120.0   # the whole of publish-figure, whatever the connection allows each try
 
 STRINGS = {
     "zh": {
@@ -73,6 +79,26 @@ STRINGS = {
         "fail_pages": "讀了 {limit} 頁仍未讀完",
         "fail_total": "整個指令已達 {seconds} 秒的總期限而停止",
         "dirs_limit": "另有 {n} 個資料夾因已列出 {limit} 個的上限而未列出。",
+        "pub_figure": "圖：{name}（{size} 位元組）",
+        "pub_pending": "尚未存入；請本人在瀏覽器開啟下列連結並按送出：",
+        "pub_bundle_note": "圖存入後會在私有圖庫，只有本人看得到，不會加入交付包；要不要打包，由本人在網頁勾選。",
+        "pub_saved": "已存入私有圖庫：{name}（{size} 位元組）。這張圖不會加入交付包；要不要打包，由本人在網頁勾選。",
+        "pub_refused": "未送出：{reason}",
+        "pub_no_file": "無法讀取 {what} {path}（{why}）。請確認路徑正確且為一般檔案。",
+        "pub_why_missing": "找不到或沒有讀取權限",
+        "pub_why_not_file": "不是一般檔案",
+        "pub_why_utf8": "不是 UTF-8 文字",
+        "pub_why_nul": "含有 NUL 字元，不是純文字",
+        "pub_what_figure": "圖檔",
+        "pub_what_code": "code 檔案",
+        "pub_what_params": "params 檔案",
+        "pub_too_big": "{what} {path} 大於上限 {limit} 位元組，未送出。",
+        "pub_too_big_figure": "圖檔 {path} 大於單次送出的合計上限 {limit} 位元組，未送出。請縮小圖檔後再試。",
+        "pub_caption_long": "caption 大於上限 {limit} 字元，未送出。請縮短說明後再試。",
+        "pub_caption_line": "caption 不可含換行或控制字元，只能是單行文字，未送出。",
+        "pub_bad_text": "{what} 含有無法編碼為 UTF-8 的字元，未送出。",
+        "pub_bad_name": "圖檔的檔名含有無法編碼為 UTF-8 的字元，未送出。請改用一般的檔名。",
+        "pub_deadline": "整個指令已達 {seconds} 秒的總期限而停止，圖尚未送出或結果不明。請稍後再試。",
     },
     "en": {
         "folder_line": "Results folder: {path}",
@@ -118,6 +144,26 @@ STRINGS = {
         "fail_pages": "not read to the end within {limit} pages",
         "fail_total": "the whole command was stopped at its total limit of {seconds} seconds",
         "dirs_limit": "{n} more folders are not listed because of the limit of {limit} folders listed.",
+        "pub_figure": "Figure: {name} ({size} bytes)",
+        "pub_pending": "Not saved yet: the person must open the link below in a browser and press Send:",
+        "pub_bundle_note": "Once saved the figure is in the private gallery that only the person sees, and it will not be added to the delivery bundle; the person ticks it on the web page if it is to go in.",
+        "pub_saved": "Saved in the private gallery: {name} ({size} bytes). The figure will not be added to the delivery bundle; the person ticks it on the web page if it is to go in.",
+        "pub_refused": "Not sent: {reason}",
+        "pub_no_file": "The {what} {path} cannot be read ({why}). Make sure the path is right and is a regular file.",
+        "pub_why_missing": "not found, or no permission to read it",
+        "pub_why_not_file": "not a regular file",
+        "pub_why_utf8": "not UTF-8 text",
+        "pub_why_nul": "has a NUL character, so it is not plain text",
+        "pub_what_figure": "figure file",
+        "pub_what_code": "code file",
+        "pub_what_params": "params file",
+        "pub_too_big": "The {what} {path} is over the limit of {limit} bytes; nothing was sent.",
+        "pub_too_big_figure": "The figure file {path} is over the limit of {limit} bytes for one send; nothing was sent. Make the file smaller and try again.",
+        "pub_caption_long": "The caption is over the limit of {limit} characters; nothing was sent. Shorten it and try again.",
+        "pub_caption_line": "The caption must be one line of text with no line break or control character; nothing was sent.",
+        "pub_bad_text": "The {what} has a character that cannot be encoded as UTF-8; nothing was sent.",
+        "pub_bad_name": "The file name of the figure has a character that cannot be encoded as UTF-8; nothing was sent. Use a plain file name.",
+        "pub_deadline": "The whole command was stopped at its total limit of {seconds} seconds; the figure was not sent or the outcome is not known. Try again later.",
     },
 }
 
@@ -540,6 +586,125 @@ def cmd_studio_connect(args):
     return 0
 
 
+# ---- publish-figure ---------------------------------------------------------------------------------------------------------------------------
+
+class _Local(Exception):
+    """Something on this computer that stops the figure before anything is sent; the message is the sentence to show."""
+
+
+def _read_local(path, limit, what, too_big):
+    """The bytes of a regular file of at most `limit` bytes (never more than limit + 1 read), or _Local saying which file and why."""
+    shown = studio_remote.clean_text(str(path))
+    try:
+        st = os.stat(path)
+        if not stat.S_ISREG(st.st_mode):
+            raise _Local(_t("pub_no_file", what=_t(what), path=shown, why=_t("pub_why_not_file")))
+        if st.st_size > limit:
+            raise _Local(_t(too_big, what=_t(what), path=shown, limit=limit))
+        with open(path, "rb") as f:
+            data = f.read(limit + 1)
+    except OSError:
+        raise _Local(_t("pub_no_file", what=_t(what), path=shown, why=_t("pub_why_missing"))) from None
+    if len(data) > limit:
+        raise _Local(_t(too_big, what=_t(what), path=shown, limit=limit))
+    return data
+
+
+def _read_text(path, limit, what):
+    """The UTF-8 text of a code or params file (strict: a file that is not UTF-8 is refused, and so is one with a NUL); the limit counts bytes."""
+    data = _read_local(path, limit, what, "pub_too_big")
+    shown = studio_remote.clean_text(str(path))
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise _Local(_t("pub_no_file", what=_t(what), path=shown, why=_t("pub_why_utf8"))) from None
+    if chr(0) in text:
+        raise _Local(_t("pub_no_file", what=_t(what), path=shown, why=_t("pub_why_nul")))
+    return text
+
+
+def _caption_problem(caption):
+    """The reason a caption cannot be sent, or None: one line of at most MAX_CAPTION_CHARS characters that can be encoded as UTF-8."""
+    try:
+        caption.encode("utf-8")
+    except UnicodeEncodeError:
+        return _t("pub_bad_text", what="caption")
+    if any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in caption):
+        return _t("pub_caption_line")
+    if len(caption) > MAX_CAPTION_CHARS:
+        return _t("pub_caption_long", limit=MAX_CAPTION_CHARS)
+    return None
+
+
+def _figure_item(args):
+    """(the one figure of the call, the bytes of the image), or _Local. Only what can be told here is checked, with the limits of the platform's own
+    gallery module; the file name, the type and the content are judged by the platform, whose reason is shown as it is."""
+    name = Path(args.figure).name
+    try:
+        name.encode("utf-8")
+    except UnicodeEncodeError:
+        raise _Local(_t("pub_bad_name")) from None
+    data = _read_local(args.figure, MAX_BUNDLE_BYTES, "pub_what_figure", "pub_too_big_figure")
+    encoded = base64.b64encode(data).decode("ascii")
+    if len(encoded) > MAX_BUNDLE_BYTES:
+        raise _Local(_t("pub_too_big_figure", what="", path=studio_remote.clean_text(str(args.figure)), limit=MAX_BUNDLE_BYTES))
+    item = {"filename": name, "content_base64": encoded}
+    if args.code:
+        item["code"] = _read_text(args.code, MAX_CODE_BYTES, "pub_what_code")
+    if args.params:
+        item["params"] = _read_text(args.params, MAX_PARAMS_BYTES, "pub_what_params")
+    if args.caption is not None:
+        problem = _caption_problem(args.caption)
+        if problem:
+            raise _Local(problem)
+        item["caption"] = args.caption
+    return item, len(data)
+
+
+async def _publish(run_id, item, size):
+    """One call of publish_figure, once: no wait, no second call, nothing sent that stands for the person's yes. The platform answers `pending` with the
+    link where the person says yes (printed as given, never opened), `refused` with a reason, or (when the platform's own form was answered) `ok`."""
+    async def go():
+        async with studio_remote.open_session() as session:
+            return await session.call_tool("publish_figure", {"run_id": run_id, "figures": [item]})
+    try:
+        answer = await asyncio.wait_for(go(), PUBLISH_DEADLINE_SECONDS)
+    except asyncio.TimeoutError:
+        _bad(_t("pub_deadline", seconds=PUBLISH_DEADLINE_SECONDS))
+        return 1
+    answer = answer if isinstance(answer, dict) else {}
+    state, url, reason = answer.get("state"), answer.get("url"), answer.get("reason")
+    name = item["filename"]
+    if state == "pending" and isinstance(url, str) and url.strip():
+        cliout.say(_t("pub_figure", name=name, size=size))
+        cliout.say(_t("pub_pending"))
+        cliout.say(studio_remote.clean_text(url.strip()))
+        cliout.say(_t("pub_bundle_note"))
+        cliout.set_data({"state": "pending", "figure": name, "size": size, "confirmation_url": url.strip()})
+        return 0
+    if state == "ok":
+        cliout.say(_t("pub_saved", name=name, size=size))
+        cliout.set_data({"state": "ok", "figure": name, "size": size})
+        return 0
+    if state == "refused" and isinstance(reason, str) and reason.strip():
+        _bad(_t("pub_refused", reason=reason))
+        return 1
+    _bad(studio_remote.tr("bad_answer"))
+    return 1
+
+
+def cmd_publish_figure(args):
+    try:
+        item, size = _figure_item(args)
+    except _Local as e:
+        _bad(str(e))
+        return 1
+    try:
+        return asyncio.run(_publish(args.run, item, size))
+    except studio_remote.StudioError as e:
+        return _fail(e)
+
+
 # ---- the command line -----------------------------------------------------------------------------------------------------------------------
 
 def _no_unknown_options(parser):
@@ -579,3 +744,18 @@ def add_commands(sub):
     f.add_argument("--dir", help="the folder on this computer to put the files in (default: ~/abf-results/<run>)")
     f.set_defaults(func=cmd_fetch_results)
     _no_unknown_options(f)
+
+    p = sub.add_parser("publish-figure", allow_abbrev=False,
+                       help="propose one figure drawn on this computer to the gallery of a run; you press the button at the link it prints",
+                       description="Propose one figure (a PNG, SVG or JPEG file, with the code and the parameters that made it when you give them) to the "
+                                   "gallery of one of your runs. Nothing is stored by this command: the platform gives a link, you open it in a browser, "
+                                   "look at what is asked and press the button; until then the gallery is unchanged. A stored figure is private to you "
+                                   "and is not added to the delivery bundle. Exit code: 0 the link was printed, 1 the figure was not sent, "
+                                   "2 not set up (run studio-connect), 3 no connection.")
+    p.add_argument("run", help="the run id")
+    p.add_argument("figure", help="the image file on this computer")
+    p.add_argument("--code", help="a text file with the code that drew the figure (UTF-8)")
+    p.add_argument("--params", help="a text file with the parameters of that code (UTF-8)")
+    p.add_argument("--caption", help="one line of text under the figure")
+    p.set_defaults(func=cmd_publish_figure)
+    _no_unknown_options(p)

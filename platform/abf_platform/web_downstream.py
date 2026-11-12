@@ -87,7 +87,8 @@ def _folder(t, lang, run, outputs, board):
 
 def _commands(t, lang, run):
     server = "<platform address>" if lang == "en" else "<平台網址>"
-    lines = "abf-platform studio-connect --server %s\nabf-platform fetch-results %s" % (server, run["id"])
+    figure = "<image file>" if lang == "en" else "<圖檔>"
+    lines = "abf-platform studio-connect --server %s\nabf-platform fetch-results %s\nabf-platform publish-figure %s %s" % (server, run["id"], run["id"], figure)
     return '<p>%s</p><pre class="reason">%s</pre><p class="muted">%s</p>' % (_e(t["commands_note"]), _e(lines), _e(t["placeholder_note"]))
 
 
