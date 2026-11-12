@@ -37,15 +37,19 @@ CHECK_NAMES = ["credential_name", "credential_file", "credential_shape", "az", "
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="permission bits")
 
 
-@pytest.fixture
-def ip(tmp_path, monkeypatch):
+def _make_ip(base, monkeypatch):
     monkeypatch.delenv("ABF_STATION_AZURE_CREDENTIALS", raising=False)
-    box = Inproc(tmp_path, monkeypatch)
-    box.tmp = tmp_path
-    box.settings = tmp_path / "deploy" / "config" / "env.yaml"
+    box = Inproc(base, monkeypatch)
+    box.tmp = base
+    box.settings = base / "deploy" / "config" / "env.yaml"
     box.settings.parent.mkdir(parents=True)
     box.settings.write_text("reach: local\n")
     return box
+
+
+@pytest.fixture
+def ip(tmp_path, monkeypatch):
+    return _make_ip(tmp_path, monkeypatch)
 
 
 # ---- helpers ---------------------------------------------------------------------------------------------------------
@@ -372,8 +376,9 @@ def test_a_missing_credential_name_is_a_failure(ip, monkeypatch):
     assert c["credential_name"][0] == "fail" and c["credential_shape"][0] == "unchecked"
 
 
-def test_a_missing_credential_file_says_where_to_put_it(ip, monkeypatch):
-    # TC-044, TC-045
+def test_a_missing_credential_file_says_where_to_put_it(short_tmp, monkeypatch):
+    # TC-044, TC-045 (its own short folder: the detail is clipped at 300 characters, so a longer tmp_path hid "chmod 600")
+    ip = _make_ip(short_tmp, monkeypatch)
     from abf_station import azure_preflight
     runner = fake_az(monkeypatch)
     register_agent(ip)
