@@ -64,3 +64,18 @@ P5 排程工作明設：執行時間不設上限、用電池也啟動、換電�
 P6 照建議：兩個 `EnvironmentFile` 都不加 `-`；env 檔的 `PATH` 要寫完整；用 `%i`；agent 名字只用英數、底線、點。
 P7 linger 與保活工作兩者都要，文件照實寫可能需要 sudo、`systemd=true` 需要新版 WSL（`wsl --update`）、沒有人登入 Windows 時不會啟動。這幾點實際行為是人工項。
 P8 照建議。
+
+## 裁決（lead，2026-11-13，驗收不通過之後的修正輪）
+
+驗收：unit 與腳本的形狀都過，但文件照字面做會把維護者卡在唯一能用的機器上。以下全部要修（D1–D8 是文件，D9 是腳本），每項都要有 `tests/desktop_systemd_test.sh` 的檢查釘住。
+
+D1 裝 unit 那一步先 `mkdir -p ~/.config/systemd/user ~/.config/abf-platform`。
+D2 「從手動啟動換過來」寫明真實情況與順序：`wsl --shutdown` 本身就會停掉所有手動起的平台行程；重開後、啟用服務前，用一個指令確認沒有殘留（列出行程，不是砍行程），有殘留才給出停止它們的確切指令。不得寫「按 Ctrl+C 或關掉終端機」。
+D3 新增「退回手動啟動」一小段：停用並移除四個服務、把 `/etc/wsl.conf` 的 `systemd=true` 拿掉、`wsl --shutdown`、用原本的方式啟動（指向既有的升級／啟動說明所在處）；並說明保活工作要一併 `-Remove`。
+D4 多個 agent：寫明「每個 agent 各一份 `station-<名字>.env`、各 enable 一次」，舉兩個 agent 的例子；可沿用既有的權杖檔（檔名不必等於實例名）；實例名只用英數、底線、點，不能含 `-`。
+D5 國網重新連線：給出確切作法（`scripts/reset_master.sh` 或 setup 流程中開共用連線的那一步，以 repo 實際存在者為準），並說明要本人輸入 OTP。
+D6 env 檔要放什麼，照程式實際讀的寫，不得舉會誤導的例子：平台三個服務讀哪些變數；agent 需要哪些（共用連線、部署資料夾之外，Google Batch 的 agent 需要 Java 17／`JAVA_HOME`、nextflow 與 gcloud 在 `PATH`、`ABF_STATION_GCP_CREDENTIALS`、`ABF_STATION_UPLOADS`，以 `docs/OPERATIONS.md` 既有說明與程式為準）。寫一句：手動啟動時這些來自 `~/.bashrc`，systemd 不讀它，所以先把 `~/.bashrc` 裡 export 的每一項對照一遍。`deploy/station.env.example` 的註解同步補上。
+D7 每個 `cp deploy/...` 之前寫明先 `cd` 到 repo。`docs/TESTING.md`：TC-018 教他怎麼一次看四個服務的行程編號前後有沒有變；TC-030 給出確切指令（手動再起一份 web，預期看到連接埠被占用的錯誤）；TC-013 寫明每個指令要看到什麼。
+D8 不得寫「hidden window」這類不實的話。照 D9 的實際行為寫。
+D9 保活工作不得讓使用者每次登入看到一個不能關的黑視窗。排程工作的動作改為 `powershell.exe -NoProfile -WindowStyle Hidden -Command "& wsl.exe [-d <distro>] --exec /bin/sleep infinity"`（視窗可能閃一下就消失）。這修訂 TC-004 的「動作是 wsl.exe」為「動作是經隱藏視窗的 powershell 啟動 wsl.exe，最終執行的仍恰為 `wsl.exe [-d <distro>] --exec /bin/sleep infinity`」。是否真的不留視窗屬人工項，文件與 TESTING 照實寫「若仍看到視窗，請最小化不要關，並回報」。
+另：文件補一句——若公司政策禁止 `-ExecutionPolicy Bypass`，把腳本複製到 Windows 資料夾後以滑鼠右鍵「用 PowerShell 執行」，或回報。
