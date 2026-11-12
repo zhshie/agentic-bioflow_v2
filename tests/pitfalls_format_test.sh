@@ -90,8 +90,8 @@ else bad "TC-002 every entry has the four fields" "$(wc -l <<<"$e2") problems"; 
 
 # TC-003 entry count
 miss=""; for i in $(seq 1 59); do grep -q "^ENTRY	$i[a-z0-9]*$" <<<"$parsed" || miss="$miss $i"; done
-if [ "$n_entries" -eq 96 ] && [ -z "$miss" ]; then ok "TC-003 entry count 96, numbers 1..59 present"
-else bad "TC-003 entry count" "entries=$n_entries (want 96), missing numbers:$miss"; fi
+if [ "$n_entries" -eq 97 ] && [ -z "$miss" ]; then ok "TC-003 entry count 97, numbers 1..59 present"
+else bad "TC-003 entry count" "entries=$n_entries (want 97), missing numbers:$miss"; fi
 
 # TC-004 Check honest
 e4=$(grep 'Check has neither' <<<"$errs")
@@ -101,7 +101,7 @@ else bad "TC-004 check field is honest" "${e4//$'\n'/ }$pm"; fi
 
 # TC-005 touches greppable
 nt=$(tr -d '\r' < "$P" | grep -c '^Touches: *[^ ]')
-if [ "$nt" -eq "$n_entries" ] && [ "$n_entries" -eq 96 ]; then ok "TC-005 Touches lines = entries = 96"
+if [ "$nt" -eq "$n_entries" ] && [ "$n_entries" -eq 97 ]; then ok "TC-005 Touches lines = entries = 97"
 else bad "TC-005 Touches lines = entries" "touches=$nt entries=$n_entries"; fi
 ptxt=$(tr -d '\r' < "$P"); ltxt=$(tr -d '\r' < "$L")
 if grep -q '^Touches:.*prepare_launch' <<<"$ptxt"; then ok "TC-005 grep prepare_launch finds an entry"; else bad "TC-005 grep prepare_launch finds an entry"; fi
