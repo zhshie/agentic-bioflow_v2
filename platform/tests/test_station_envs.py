@@ -377,7 +377,7 @@ def test_tc071_exactly_six_read_only_tools_over_stdio_and_http(tmp_path):
         stop_proc(proc)
     want = ["get_compute_env", "get_run", "list_agents", "list_compute_envs", "list_runs", "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]
     for ts in (tools, tools_http):
-        assert sorted(t.name for t in ts) == sorted(want + ["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"])    # 009e: plus resume and relaunch
+        assert sorted(t.name for t in ts) == sorted(want + ["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "publish_figure"])    # mcp-publish-figure: plus publish_figure; 009e: plus resume and relaunch
         for t in [t for t in ts if t.name in want]:
             # TC-049: get_run alone is no longer read-only (ruling R2: a lost run queues one site read); every other tool still is
             assert t.annotations is not None and t.annotations.read_only_hint is (t.name != "get_run")
@@ -428,7 +428,7 @@ def test_tc063_no_door_takes_a_job_kind_or_a_command(tmp_path, monkeypatch):
     assert not (words & {"command", "cmd", "script", "kind", "shell", "args", "exec", "submit", "enqueue"}), words
     top_level = set(next(a for a in cli.build_parser()._actions if isinstance(getattr(a, "choices", None), dict)).choices)
     assert top_level == {"serve", "token", "agent-token", "ce", "dataset", "mcp", "rebuild", "launch", "cancel", "fetch-records",
-                         "launches", "user", "pat", "web", "runs", "oauth", "resume", "relaunch", "forget", "publish_figure"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs` (assign); 009i: plus `oauth`; 009e: plus `resume`, `relaunch`  # dataset-cli-launch: plus `dataset`
+                         "launches", "user", "pat", "web", "runs", "oauth", "resume", "relaunch", "forget"}, top_level     # 009c: plus `web`, the confirmation page; 116b: plus `runs` (assign); 009i: plus `oauth`; 009e: plus `resume`, `relaunch`  # dataset-cli-launch: plus `dataset`
     assert [(trail, w) for trail, w in seen if w in ("launch", "cancel")] == [([], "launch"), ([], "cancel")]
     assert {"ce", "agent-token", "serve", "token", "mcp", "rebuild"} <= words
 

@@ -303,7 +303,7 @@ def test_confirm_page_for_publish_figure(w):
     other = logged_in(w, "bob")
     assert other.post("/c/" + got["request_id"], data={"csrf": csrf_of(zh)}).status_code == 403
     assert c.post("/c/" + got["request_id"], data={"csrf": "wrong"}).status_code == 403
-    assert rows(w)[-1]["state"] == "pending"
+    assert [r for r in rows(w) if r["id"] == got["request_id"]][0]["state"] == "pending"
     done = c.post("/c/" + got["request_id"], data={"csrf": csrf_of(zh)})
     assert done.status_code == 200 and "已存入圖庫 2 張。" in done.text and "工作編號" not in done.text and "href" in done.text
     c2 = logged_in(w, "ann")

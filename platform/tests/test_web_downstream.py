@@ -226,7 +226,7 @@ def test_no_new_route_no_new_action(w):
     assert sorted((r.path, tuple(sorted(r.methods or []))) for r in app.routes) == ROUTES_V3
     names = sorted(n for n in dir(actions) if not n.startswith("_") and callable(getattr(actions, n))
                    and getattr(getattr(actions, n), "__module__", "").startswith("abf_platform.actions"))
-    assert names == ACTIONS_V3
+    assert names == sorted(ACTIONS_V3 + ["list_figures", "request_publish_figure", "screen_for_page"])    # mcp-publish-figure adds these three
 
 
 def test_style_untouched_and_csp_same(w):
