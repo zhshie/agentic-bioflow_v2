@@ -290,4 +290,21 @@ if [ -n "$l_sd" ] && [ -n "$l_dr" ] && [ -n "$l_cps" ] && [ -n "$l_sed" ] && [ -
 # E5: no hard-coded venv folder in the sed line; a command that finds it
 if ! printf '%s\n' "$sec" | grep -E 'sed -i' | grep -F 'abf-venv' >/dev/null && hasre "$sec" 'venv folder' && hasre "$sec" '[Ff]ind'; then ok "E5 the sed line has no hard-coded venv name; a command finds it"; else bad "E5 sed hard-codes the venv folder"; fi
 
+# ---------- ruling F (third acceptance): last wording fixes ----------
+# F1: check the WSL version first, no version number stated as fact
+s1=$(printf '%s\n' "$sec" | awk '/^1\. \*\*/{on=1;next} /^2\. \*\*/{on=0} on')
+if has "$s1" 'wsl --version' && has "$s1" 'wsl --update' && hasre "$s1" 'before step 2'; then ok "F1 step 1: run wsl --version first, wsl --update before step 2 if it errors"; else bad "F1 step 1 wsl --version / wsl --update before step 2"; fi
+if ! has "$sec" '0.67' && ! printf '%s\n' "$tsec" | grep -F '0.67' >/dev/null; then ok "F1 no minimum WSL version number stated"; else bad "F1 a WSL version number is still stated"; fi
+s7=$(printf '%s\n' "$sec" | awk '/^7\. \*\*/{on=1} /^8\. \*\*/{on=0} on'); s8=$(printf '%s\n' "$sec" | awk '/^8\. \*\*/{on=1} /^9\. \*\*/{on=0} on')
+if has "$s7" 'Going back to starting by hand' && has "$s8" 'Going back to starting by hand'; then ok "F1 steps 7 and 8 failure lines point to Going back to starting by hand"; else bad "F1 steps 7/8 point to Going back to starting by hand"; fi
+# F2: step 6 compares --token-file and --deployment with the env file
+s6=$(printf '%s\n' "$sec" | awk '/^6\. \*\*/{on=1} /^7\. \*\*/{on=0} on')
+if has "$s6" '--token-file' && has "$s6" '--deployment' && has "$s6" 'station-<name>.env' && hasre "$s6" 'flags|not environment variables'; then ok "F2 step 6: --token-file and --deployment compared with station-<name>.env"; else bad "F2 step 6 compare --token-file/--deployment"; fi
+# F3: going back names the saved file and the PLATFORM.md sections
+gb=$(printf '%s\n' "$sec" | awk '/^\*\*Going back to starting by hand/{on=1} /^\*\*Opening the National/{on=0} on')
+if ! has "$gb" 'as you did' && has "$gb" '~/abf-before-switch.txt' && hasre "$gb" 'abf-platform web' && hasre "$gb" 'abf-platform mcp' && hasre "$gb" 'docs/PLATFORM.md'; then ok "F3 going back: saved command lines file and PLATFORM.md pointers for web and mcp"; else bad "F3 going back names ~/abf-before-switch.txt and PLATFORM.md for web/mcp"; fi
+# F4: wording
+if ! has "$s7" 'open Ubuntu again' && hasre "$s7" 'Start menu'; then ok "F4 step 7: open Ubuntu from the Start menu"; else bad "F4 step 7 Start menu wording"; fi
+if ! printf '%s\n' "$tsec" | grep -F 'one-minute' >/dev/null && printf '%s\n' "$tsec" | grep -F "few minutes' stop" >/dev/null; then ok "F4 TESTING: a few minutes' stop"; else bad "F4 TESTING still says one-minute"; fi
+
 [ "$fails" -eq 0 ]
