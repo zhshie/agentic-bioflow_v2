@@ -14,7 +14,7 @@ PAGE = 12          # characters per page of the fake read_run_file (the real one
 
 class FakeSite:
     def __init__(self, files=None, sizes=None, page=PAGE, binary=(), errors=None, loading=0, forever_loading=(), outputs=None,
-                 found=True, fail_page2=(), envs=None, env_error=False, compute_env="lab-a"):
+                 found=True, fail_page2=(), envs=None, env_error=False, compute_env="lab-a", publish=None):
         self.files = dict(files or {})            # relative path -> str
         self.sizes = dict(sizes or {})            # relative path -> size to report (default: the length in bytes)
         self.page, self.binary, self.errors = page, set(binary), dict(errors or {})
@@ -23,6 +23,7 @@ class FakeSite:
         self.outputs = outputs                    # a whole run_outputs answer to give at the root, instead of the tree
         self.found, self.fail_page2 = found, set(fail_page2)
         self.envs, self.env_error, self.compute_env = envs, env_error, compute_env
+        self.publish = publish                    # the answer publish_figure gives (a dict, or a function of its arguments); slice 2
         self.calls = []
         self._loaded = {}
 
@@ -84,6 +85,10 @@ class FakeSite:
             raise RuntimeError("list failed")
         return {"compute_envs": self.envs if self.envs is not None else []}
 
+    def publish_figure(self, args):
+        answer = self.publish
+        return answer(args) if callable(answer) else answer
+
     def handle(self, name, args):
         self.calls.append((name, dict(args)))
         fn = getattr(self, name, None)
@@ -103,7 +108,7 @@ class FakeSession:
         return self.site.handle(name, args)
 
     async def tool_names(self):
-        return ["run_outputs", "read_run_file", "list_compute_envs"]
+        return ["run_outputs", "read_run_file", "list_compute_envs", "publish_figure"]
 
 
 def patch_session(monkeypatch, site):

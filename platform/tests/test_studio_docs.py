@@ -39,7 +39,7 @@ def test_tc074_the_platform_guide_describes_the_two_commands_the_settings_file_a
         assert re.search(r"(?<![0-9])%s (means|is|:|=)" % code, s) or re.search(r"\bexit %s\b|\| %s \|" % (code, code), s), code
     assert re.search(r"not (a )?(sent|fetched)[^.]*(html|binary)|(html|binary)[^.]*not (sent|fetched)", s, re.I) and "25 MB" in s and "100 MB" in s
     assert re.search(r"cloud[- ]sync", s, re.I) and re.search(r"never (printed|logged)|is not printed", s)
-    assert "publish-figure" not in s.replace("cli-fetch-publish-figure", "")      # the command is slice 2 (the feature's own name is in the heading)
+    assert "publish-figure" in s.replace("cli-fetch-publish-figure", "")      # slice 2 (TC-077): the command is described too
     assert not FAKE.search(s)
 
 
@@ -50,7 +50,7 @@ def test_tc074_the_example_lines_parse_and_are_not_taken_for_launch_examples():
     parser = cli.build_parser()
     checked = 0
     for ln in body.splitlines():
-        m = re.match(r"^\s*(?:\$ )?abf-platform ((?:studio-connect|fetch-results)\b[^#<>|]*?)\s*(#.*)?$", ln)
+        m = re.match(r"^\s*(?:\$ )?abf-platform ((?:studio-connect|fetch-results|publish-figure)\b[^#<>|]*?)\s*(#.*)?$", ln)
         if not m:
             continue
         try:
@@ -97,3 +97,19 @@ def test_tc076_the_manual_steps_are_written_and_the_ledger_fields_are_listed():
         assert tc in s, tc
     assert re.search(r"not (on )?the (desktop|platform machine)|another computer|second computer", s, re.I)
     assert not FAKE.search(s)
+
+
+def test_tc077_the_guides_describe_publish_figure_the_link_the_person_presses_and_the_manual_step():
+    # TC-077 (slice 2)
+    s = flat(section(read("PLATFORM.md"), "### publish-figure"))
+    for needle in ("abf-platform publish-figure", "--code", "--params", "--caption", "publish_figure", "link", "private gallery", "delivery bundle",
+                   "MAX_BUNDLE_BYTES", "MAX_CODE_BYTES", "MAX_PARAMS_BYTES", "MAX_CAPTION_CHARS"):
+        assert needle in s, needle
+    assert re.search(r"never (sends|presses|opens)|does not (press|open|poll|wait)", s) and re.search(r"person[^.]*(presses|opens|says yes)", s)
+    assert not FAKE.search(s)
+    t = flat(section(read("TESTING.md"), "## cli-fetch-publish-figure, slice 2 (publish-figure): the maintainer checks on his own computer"))
+    for needle in ("TC-069", "publish-figure", "--code", "--params", "not 127.0.0.1", "before", "private gallery", "delivery bundle", "ledger"):
+        assert needle in t, needle
+    assert not FAKE.search(t)
+    head = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split("\n## ", 2)[1]
+    assert "cli-fetch-publish-figure (slice 2)" in head and "publish-figure" in head

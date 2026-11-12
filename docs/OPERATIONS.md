@@ -78,6 +78,11 @@ docs/PLATFORM.md, "Commands on your own computer".
    `pip install ./platform` (a virtual environment is advised), which gives them `abf-platform`. The repository is private: ask its owner to give the
    person read access (a collaborator on the repository, or a read-only deploy key) before they clone it. There is no separate download yet.
 
+4. **The link of `publish-figure`.** When a person proposes a figure, the command prints the address of the platform's confirmation page and does not
+   open it; the person opens it and presses the button. The platform builds that address from the public address of the confirmation page
+   (`abf-platform web --public-url https://<your-domain>`). If it is not set, the link only opens on the machine that runs the platform and
+   the person cannot use it from their own computer: set it to the same public address.
+
 On Windows the settings file is `%USERPROFILE%\.abf\studio.json`. It holds the token in clear text, so it must not be in a folder that a cloud-sync
 service copies (OneDrive, Dropbox and the like); the command says so once when it stores the file. If the public address does not answer, the person sees
 that it does not, with the address: check that the machine, Caddy, `abf-mcp` and Funnel are running (section 3).

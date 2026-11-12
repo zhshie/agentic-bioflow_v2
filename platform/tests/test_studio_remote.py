@@ -114,7 +114,8 @@ def server(tmp_path_factory):
     proc = start_cli(["mcp", "--http", "--port", str(port)], pkg_env(ABF_PLATFORM_DB=plat.index), tmp / "mcp.log")
     try:
         wait_port(port, proc=proc)
-        yield {"url": "http://127.0.0.1:%d" % port, "alice": t_alice, "bob": t_bob, "revoked": t_revoked, "run": runs[0]["id"], "tokens": tokens}
+        yield {"url": "http://127.0.0.1:%d" % port, "alice": t_alice, "bob": t_bob, "revoked": t_revoked, "run": runs[0]["id"], "tokens": tokens,
+               "plat": plat, "alice_id": alice}      # slice 2: the platform folder and the first user, for the tests that look at the tables
     finally:
         stop_proc(proc)
 
@@ -559,8 +560,10 @@ def test_tc083_the_new_modules_import_nothing_forbidden():
     # TC-083
     for name in ("studio_cli.py", "studio_remote.py"):
         for root, mod, names in _imports(PKG / name):
-            assert root not in FORBIDDEN_IMPORTS or (root == "figures"), (name, mod)
-            assert "figures" not in mod.split("."), (name, mod)
+            assert root not in FORBIDDEN_IMPORTS or mod.lstrip(".") == "actions.figures", (name, mod)
+            if "figures" in mod.split("."):       # slice 2 (TC-083): the limits of the gallery, constants only, and only in studio_cli
+                assert name == "studio_cli.py" and mod.lstrip(".") == "actions.figures" and names and all(n.startswith("MAX_") for n in names), (name, mod, names)
+                continue
             assert "store" not in mod.split(".") and "actions" not in mod.split("."), (name, mod)
             if "jobs" in mod.split("."):      # the one exception: a constant, and only in studio_cli
                 assert name == "studio_cli.py" and names == ["RUN_FILE_MAX_BYTES"], (name, mod, names)
@@ -584,7 +587,7 @@ def test_tc085_the_tools_the_commands_call_exist_on_the_server_and_are_the_slice
             index = {"call_tool": 0, "_ask": 1}.get(fn)      # call_tool(name, args) and the polling helper _ask(session, name, args)
             if index is not None and len(n.args) > index and isinstance(n.args[index], ast.Constant):
                 called.add(n.args[index].value)
-    assert called == {"run_outputs", "read_run_file", "list_compute_envs"}, called
+    assert called == {"run_outputs", "read_run_file", "list_compute_envs", "publish_figure"}, called      # slice 2 adds publish_figure
     tools, _ = mcp_http_call(server["url"] + "/mcp", [], token=server["alice"])
     assert called <= {t.name for t in tools}
     text = (PKG / "studio_cli.py").read_text(encoding="utf-8")
