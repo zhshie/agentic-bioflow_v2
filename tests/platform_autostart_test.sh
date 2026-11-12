@@ -312,7 +312,7 @@ case_t035() { new_case t035; local m="MARK$RANDOM"
 
 case_t040() { new_case t040; mkfake a; mkfake b; mkfake c; wl "a $C/bin/a" "b $C/bin/b" "c $C/bin/c"; start_sup --list "$LIST"; wait_for 10 all_up a b c
     runsup --status
-    local okl=1 n; for n in a b c; do printf '%s\n' "$OUT" | grep -E "^$n: 在跑" | grep -q "行程編號 $(curpid $n) .*上次啟動 [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8}.*重啟次數 0" || okl=0; done
+    local okl=1 n; for n in a b c; do printf '%s\n' "$OUT" | grep -E "^$n: 在跑" | grep -qE "行程編號 $(curpid $n) .*上次啟動 [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8}.*重啟次數 0" || okl=0; done
     if [ "$RC" -eq 0 ] && [ "$okl" -eq 1 ]; then ok "TC-040 --status: one line per name with 在跑, pid, last start, restart count 0; exit 0"; else bad "TC-040 status lines" "rc=$RC $OUT"; fi
     # TC-043: status does not start or write anything
     local snap1 snap2 ls1 ls2; snap1=$(find "$ST" | sort | tr '\n' ' '); ls1=$(slog | wc -l); local pa=$(curpid a) sa=$(starts a)
@@ -523,7 +523,7 @@ git_cases() {
     local out; out=$(printf '%s\n' "$names" | grep -vE '^(deploy/wsl/|docs/OPERATIONS\.md$|docs/TESTING\.md$|CHANGELOG\.md$|specs/platform-autostart/|tests/platform_autostart_test\.sh$|tests/hosted_deploy_test\.sh$)' || true)
     if [ -z "$out" ]; then ok "TC-112 only the planned files changed (nothing in platform/, hooks/, .github/, the constitution, plugin.json)"; else bad "TC-112 unplanned files" "$out"; fi
     local d; d=$(git diff -U0 origin/v3...HEAD -- tests/hosted_deploy_test.sh | grep -E '^[-+][^-+]')
-    if [ "$(printf '%s\n' "$d" | grep -c '^-')" -eq 1 ] && [ "$(printf '%s\n' "$d" | grep -c '^+')" -eq 1 ] && printf '%s\n' "$d" | grep '^+' | grep -q 'deploy/wsl/abf-supervise.sh'; then ok "TC-123 hosted_deploy_test.sh differs only by the TC-069 list line"; else bad "TC-123 hosted_deploy diff" "$d"; fi
+    if [ "$(printf '%s\n' "$d" | grep -c '^-')" -eq 1 ] && [ "$(printf '%s\n' "$d" | grep -c '^+')" -eq 1 ] && printf '%s\n' "$d" | grep '^+' | grep -q 'wsl/abf-supervise.sh'; then ok "TC-123 hosted_deploy_test.sh differs only by the TC-069 list line"; else bad "TC-123 hosted_deploy diff" "$d"; fi
 }
 
 nested_cases() { # TC-122 / 124 / 126: the neighbours that must stay green (the full suite runs them again)
