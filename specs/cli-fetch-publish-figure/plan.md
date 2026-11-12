@@ -220,6 +220,19 @@ README 規則只看檔案路徑，本案範圍不含保護路徑，機械推定�
 3. 風險維持 L；合併前對抗審照舊。「在非桌機的電腦手動走通」維持為完成標準，由維護者在自己的電腦親手試。
 4. 其餘（取檔規則、權杖保存、錯誤分類、被釘住不得改的檔、不做清單）不變。
 
+## 裁決（lead，2026-11-12 深夜，回應 verifier 出題時的 P1 至 P10；與 test-case.md 的暫定寫法一致）
+
+1. （P1）`.html` 依副檔名略過，**不**為了取網址去呼叫 `read_run_file`；訊息只說「須用瀏覽器登入平台下載」，不印網址。作法 3 中「印工具回的網址說明」一句作廢。
+2. （P2）只有刻意略過（非白名單副檔名、`.html`、伺服端回 `kind: binary`）時結束碼 0；`run_outputs` 回 `unavailable`／`error`、任一檔取檔失敗、逾期、超過總量上限時結束碼 1。
+3. （P3）深度 3、檔案數 200 由 CLI 自己擋；超出時摘要必須說還有未列出的檔，不得宣稱全部取得。
+4. （P4）`studio_cli` 只准 `from abf_platform.jobs import RUN_FILE_MAX_BYTES` 這種常數 import，且 import 後不得開任何資料庫（TC-082 證明）。第 1 片不得 import `figures`。若 import `jobs` 會連帶開資料庫或 import 被禁的模組而無法滿足 TC-082／TC-083，executor 停手回報，不自行改 `jobs.py`。
+5. （P6）站台連線沒開的判斷看原因文字（"No open connection to the site"）與 code `site_unreachable`／`agent_offline`，不能只看 `code == refused`。
+6. （P7）確認連結的網址是平台設定的事（`web --public-url`），CLI 原樣印、不提示、不改寫；第 2 片驗收時由 TC-069 實機確認。
+7. （P8）第 2 片：CLI 不印工具回的整段 `message`，只印自己的句子與 `url`。
+8. （TC-002）`--token` 不存在；argparse 拒絕時的錯誤輸出不得含使用者打的值，接受自訂錯誤處理。
+9. （P10）新指令的 `--help` 文字不得含 launch、submit、cancel 三個字（`test_station_envs.py` tc084）。
+10. 行號偏差（P9）以 origin/v3 實際內容為準。
+
 ## 專長守則（backend）
 
 ### executor
