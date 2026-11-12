@@ -1216,6 +1216,20 @@ Automatic tests: `platform/tests/test_studio_remote.py`, `test_studio_cli.py`, `
 
 **The ledger** (`specs/cli-fetch-publish-figure/ledger.md`) must hold: `git diff --stat origin/v3...HEAD`; the new constants (`MAX_TOTAL_BYTES`, `MAX_FILES`, `MAX_DEPTH`, `POLL_SECONDS`, `DEADLINE_SECONDS` in studio_cli; `CALL_TIMEOUT`, `RETRIES`, `RETRY_DELAY` in studio_remote); the version of the `mcp` package and the functions of its client that the commands use; the `ls -l` line of the settings file; and which of the four manual cases were done where.
 
+## The red "site connection is down" bar (mcp-site-keepalive-disconnect-ux, TC-032): the maintainer looks at it
+
+No code needed. You need the platform's web page open in a browser and one agent that is running (the one on your WSL machine).
+
+1. Make the connection drop on purpose: in the WSL terminal where you logged in to the site, close the connection (or wait until it drops by itself). Wait about a minute for the agent to notice and report it.
+2. Open the platform's web page and log in (the board is the first page; also open "設定" and the new-analysis page). In English, add `?lang=en` to the address.
+3. What you should see, on every page, directly under the dark top bar and above the page itself: a pale red bar across the whole width, with a red cross and red text. In Chinese it reads 「站台連線已掉：請在執行 agent「<agent name>」那台機器的 WSL 終端機重新登入（貼上開連線指令並輸入 OTP）。已在跑的分析不受影響；新的分析在恢復前無法送出。」 In English it reads "The site connection is down. On the machine running agent "<agent name>", log in again in its WSL terminal (paste the connect line, type the one-time code). Runs already going are not affected; new runs cannot be sent until it is back." It must name your agent and say which terminal to go to, and it must say that runs already going are not affected.
+4. Make the window narrow (about phone width, 390 px): the bar is still there, the text wraps onto more lines, and the page does not scroll sideways.
+5. When it must NOT appear: while the connection is open; for an agent that is switched off (the page then shows no bar at all, because the platform does not know the state); and for someone else's agent (log in as another user).
+6. Log in again in the WSL terminal as the bar says, wait about a minute, reload: the bar is gone.
+7. While the bar is up, ask for a new run and say yes: the answer must be a refusal that names the same agent and the WSL terminal, and nothing is started.
+
+Pass: you saw the bar in step 3 and 4, did not see it in step 5, and it went away in step 6. Answer 好 or 不好 for the colours and the wording; a 不好 opens a new fix, it does not undo this feature. Screenshots from a throwaway platform with an online agent reporting a closed link are in `specs/mcp-site-keepalive-disconnect-ux/screenshots/`.
+
 ## 桌機自動啟動 (platform-autostart): the maintainer checks eight things on the desktop
 
 自動測試是 `tests/platform_autostart_test.sh`（假行程、暫存資料夾，不碰你的桌機）。下面八條只有你在自己的桌機上、約好時間才做；這個 PR 不會去碰你的桌機。`<script>` 指 `deploy/wsl/abf-supervise.sh` 在 WSL 裡的完整路徑，`<distro>` 與 `<user>` 是你的 WSL 發行版與使用者名稱。每條的「看到什麼」就是通過的標準。
