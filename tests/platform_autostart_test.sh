@@ -780,6 +780,29 @@ msg_cases() { # TC-095: every refusal message says what happened and a next step
 }
 
 # =================================================================== run
+# One case under a time limit: a case that never finishes (a supervisor that does not stop, a wait for
+# ever) fails by name with what was still running, instead of hanging the whole file until run_all.sh's
+# 300 s limit says only "TIMEOUT". Whatever it left behind is swept at exit by the marker, never by name.
+run_case() { # <function>
+    local f=$1 t=${PA_CASE_TIMEOUT:-120} cp wp d p
+    ( $f ) >"$TMPROOT/res/$f" 2>/dev/null & cp=$!
+    ( sleep "$t" & sl=$!; trap 'kill "$sl" 2>/dev/null; exit 0' TERM; wait "$sl" && kill -9 "$cp" 2>/dev/null ) >/dev/null 2>&1 & wp=$!
+    wait "$cp" 2>/dev/null; local rc=$?
+    if [ "$rc" -eq 137 ] && ! kill -0 "$wp" 2>/dev/null; then
+        printf '%-96s FAIL: %s\n' "$f" "did not finish within ${t}s (see the DIAG lines)" >> "$TMPROOT/res/$f"
+        for d in "$TMPROOT"/c_*; do
+            [ -d "$d" ] || continue
+            [ -n "$(procs_of "$d")" ] || continue
+            for p in $(procs_of "$d"); do printf 'DIAG %s pid %s: %s\n' "${d##*/}" "$p" "$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | cut -c1-140)" >> "$TMPROOT/res/$f.diag"; done
+            [ -f "$d/state/supervise.log" ] && tail -n 6 "$d/state/supervise.log" | sed "s|^|DIAG ${d##*/} log: |" >> "$TMPROOT/res/$f.diag"
+        done
+    else
+        kill "$wp" 2>/dev/null
+    fi
+    wait "$wp" 2>/dev/null
+    return 0
+}
+
 main_run() {
     static_cases
     ps_cases
@@ -788,7 +811,7 @@ main_run() {
     local f
     for f in $(declare -F | awk '{print $3}' | grep -E '^case_' | sort); do
         while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do sleep 0.2; done
-        ( $f ) >"$TMPROOT/res/$f" 2>/dev/null &
+        run_case "$f" &
     done
     wait
     for f in "$TMPROOT"/res/case_*; do cat "$f"; done
