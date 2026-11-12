@@ -1508,13 +1508,13 @@ def _chat_refusal(status, tool):
     return "未送出：平台沒有接受這次確認。%s。" % again
 
 
-ALREADY_DONE = ("這筆申請先前已經確認並執行過；圖庫目前的狀態請重新查詢 (this request was already confirmed and carried out earlier; "
+_ALREADY_DONE = ("這筆申請先前已經確認並執行過；圖庫目前的狀態請重新查詢 (this request was already confirmed and carried out earlier; "
                 "look at the gallery again for how it stands now)")
 
 
 def _already_done(kind, request_id):
     """A gallery_change whose id is used again: say only that, never repeat what was done then (the id is not a way to read the gallery)."""
-    return {"ok": True, "sent": False, "state": "ok", "request_id": request_id, "url": None, "message": ALREADY_DONE}
+    return {"ok": True, "sent": False, "state": "ok", "request_id": request_id, "url": None, "message": _ALREADY_DONE}
 
 
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None, request_id=None,
