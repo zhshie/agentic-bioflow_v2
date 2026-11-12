@@ -264,7 +264,7 @@ for w in 'ABF_STATION_GCP_CREDENTIALS' 'ABF_STATION_UPLOADS' 'JAVA_HOME' '.bashr
 [ "$d6" -eq 1 ] && ok "D6 env files: the variables the programs read, the .bashrc comparison, station.env.example in step"
 # D7: cd before every cp, and the TESTING steps
 if [ -n "$d_cdpos" ] && [ -n "$d_cppos" ] && [ "$d_cdpos" -lt "$d_cppos" ] && [ "$(printf '%s\n' "$sec" | grep -c 'cd <repo')" -ge 2 ]; then ok "D7 cd <repository-folder> before the cp lines and before the script call"; else bad "D7 cd to the repository before every cp deploy/ and the script call" "$d_cdpos $d_cppos"; fi
-t18=$(printf '%s\n' "$tsec" | grep -A3 'TC-018'); t30=$(printf '%s\n' "$tsec" | grep 'TC-030'); t13=$(printf '%s\n' "$tsec" | grep -A3 'TC-013')
+t18=$(printf '%s\n' "$tsec" | grep -A3 'TC-018'); t30=$(printf '%s\n' "$tsec" | grep 'TC-030'); t13=$(printf '%s\n' "$tsec" | grep -A12 'TC-013')
 if has "$t18" 'show -p MainPID abf-serve abf-web abf-mcp abf-station@<name>' && hasre "$t18" 'before and after'; then ok "D7 TESTING TC-018: all four process numbers, before and after"; else bad "D7 TESTING TC-018 compares four process numbers before and after"; fi
 if has "$t30" 'abf-platform web' && hasre "$t30" 'already in use|address already'; then ok "D7 TESTING TC-030: the exact command and the error to expect"; else bad "D7 TESTING TC-030 exact command and error"; fi
 if has "$t13" 'wsl --version' && has "$t13" 'loginctl enable-linger' && hasre "$t13" 'you (must|should) see'; then ok "D7 TESTING TC-013 says what each command should show"; else bad "D7 TESTING TC-013 what to see for each command"; fi

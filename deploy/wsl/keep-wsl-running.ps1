@@ -20,6 +20,9 @@ $TaskName = 'abf-wsl-keepalive'
 $wslArgs = ''
 if ($Distro) { $wslArgs = '-d "' + $Distro + '" ' }
 $wslArgs = $wslArgs + '--exec /bin/sleep infinity'
+# The task starts powershell.exe with -WindowStyle Hidden (a window may still flash), and that starts wsl.exe: what finally runs is  wsl.exe $wslArgs
+# (a double quote inside the -Command text is written \" so that the command line keeps it)
+$taskArgs = '-NoProfile -WindowStyle Hidden -Command "& wsl.exe ' + $wslArgs.Replace('"', '\"') + '"'
 
 if ($Apply -and $Remove) {
     Write-Host 'Give either -Apply or -Remove, not both.'
@@ -45,12 +48,12 @@ if ($Remove) {
 
 if ($Apply) {
     try {
-        $action   = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument $wslArgs
+        $action   = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $taskArgs
         $trigger  = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
         $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Hidden -MultipleInstances IgnoreNew
         $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
         Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
-        Write-Host "Registered the task ${TaskName}: at your logon it runs  wsl.exe $wslArgs"
+        Write-Host "Registered the task ${TaskName}: at your logon it runs  powershell.exe $taskArgs"
         Write-Host "Undo it with:  -Remove"
     } catch {
         Write-Host "Could not register the task ${TaskName}: $($_.Exception.Message)"
@@ -64,5 +67,7 @@ if ($Apply) {
 Write-Host 'Nothing was changed. This is what -Apply would do:'
 Write-Host "  register a task named $TaskName"
 Write-Host '  when: you log in to Windows (nothing starts while nobody is logged in)'
-Write-Host "  what: wsl.exe $wslArgs   (hidden window, no time limit, also on battery, one copy at a time, normal rights)"
+Write-Host "  what: powershell.exe $taskArgs"
+Write-Host '        which starts wsl.exe and keeps it open. A window may flash for a moment at logon; if one stays, minimise it (do not close it) and report it.'
+Write-Host '        No time limit, also on battery, one copy at a time, normal rights.'
 Write-Host 'Run it again with -Apply to do it, or with -Remove to take the task away.'

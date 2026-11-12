@@ -107,53 +107,99 @@ Linux). The aim: you log in to Windows, do nothing, and a minute or two later th
 there; if one of its processes dies, it comes back in a few seconds. It uses the same systemd
 user units as "Hosting one lab" above, plus one unit for the site agent (`deploy/systemd/abf-station@.service.in`)
 and one small Windows script (`deploy/wsl/keep-wsl-running.ps1`). Run the commands in the Ubuntu
-window unless a step says Windows. Steps 2 and 5 need the administrator password of the Linux side (sudo), and only you
-should do them.
+window unless a step says Windows. Steps 2 and 5 may need the administrator password of the Linux side (sudo), and only you
+should do them. After each command, what you should see is written next to it; if you see something else, stop there
+and do not go on to the next step.
 
 1. **What you need.** WSL 2 with Ubuntu 22.04 or newer (Windows PowerShell: `wsl -l -v` shows
    VERSION 2), a recent WSL (`wsl --update` in Windows PowerShell if step 2 is not accepted), and the platform
    already installed in a virtual environment as in "Hosting one lab", step 2.
 2. **Turn systemd on.** WSL starts without systemd unless you ask for it. Open the file with
-   `sudo nano /etc/wsl.conf` and make sure it holds these two lines (add them at the end if the file is empty):
+   `sudo nano /etc/wsl.conf` and make sure it holds these two lines (add them at the end if the file is empty or is not there yet):
    ```
    [boot]
    systemd=true
    ```
    Save (Ctrl+O, Enter, Ctrl+X). Then, in Windows PowerShell, run `wsl --shutdown` and open Ubuntu again.
    **This stops everything inside WSL**: every process you started there, the platform if it is running, and the
-   shared SSH connection to the National Center (國網). After the restart you must connect again yourself and type the OTP;
-   nothing does that for you. The platform is away for about a minute. Check that it worked: `ps -p 1 -o comm=` must print `systemd`.
-3. **Write the settings file.** Copy `deploy/env.example` to `~/.config/abf-platform/env` and make it yours only
-   (`mkdir -p ~/.config/abf-platform && cp deploy/env.example ~/.config/abf-platform/env && chmod 600 ~/.config/abf-platform/env`).
-   Replace every `<...>`; `ABF_PUBLIC_URL` is the https address people use. **systemd does not read `~/.bashrc`.**
-   If you started the platform by hand before, some variables it needs (for example where the deployment's settings
-   file is) came from `~/.bashrc`; the services never see them. Every variable the platform needs must be written
-   into `~/.config/abf-platform/env`, one `NAME=value` per line, no `export`.
+   shared SSH connection to the National Center (國網). After the restart you must connect again yourself and type the OTP
+   (see "Opening the National Center connection again" below); nothing does that for you. The platform is away for about a minute.
+   Check that it worked: `ps -p 1 -o comm=` must print `systemd` (before this step it prints `init`).
+3. **Write the settings file.** Go to the repository folder and copy `deploy/env.example` to `~/.config/abf-platform/env`, yours only:
+   ```sh
+   cd <repository-folder>
+   mkdir -p ~/.config/systemd/user ~/.config/abf-platform && cp deploy/env.example ~/.config/abf-platform/env && chmod 600 ~/.config/abf-platform/env
+   ```
+   Replace every `<...>` (`nano ~/.config/abf-platform/env`); `ABF_PUBLIC_URL` is the https address people use.
+   **systemd does not read `~/.bashrc`.** When you started the platform by hand, whatever you had `export`ed in `~/.bashrc`
+   reached the processes; the services never see any of it. The three services (`abf-platform serve`, `web`, `mcp`)
+   read only these from the environment, one `NAME=value` per line, no `export`:
+   `ABF_PUBLIC_URL` (the web page and MCP), and the data locations `ABF_PLATFORM_DB`, `ABF_PLATFORM_TOKENS`,
+   `ABF_PLATFORM_STATE`, `ABF_PLATFORM_UPLOADS`, `ABF_PLATFORM_FIGURES` (and `XDG_DATA_HOME`, which moves the default data folder).
+   Go through every `export` line in `~/.bashrc` and compare: if one of the data locations is exported there, copy it into the
+   env file, or the services will open a new, empty database in the default folder instead of yours. If none is exported,
+   leave them out: the default folder is used, as before.
 4. **Install the units and start them.**
    - The agent's token: make it with `abf-platform agent-token new <name> --user <user>`; it is shown once, so copy it
      into a file at that moment: a file inside WSL's own home folder (not under `/mnt/c`, a Windows drive, where permission
-     bits mean nothing), then `chmod 600` on it. The token never goes into a unit or into any example file.
-   - Name the agent with letters, digits, underscore and dot only (`lab1`, `site_a`). The same `<name>` is used twice and must be identical: in the file
-     `~/.config/abf-platform/station-<name>.env` (copy `deploy/station.env.example` and fill it in; it holds the path of the token file, the deployment folder and the plugin folder) and in the unit instance `abf-station@<name>`.
-   - Copy the four templates and drop the `.in`, replace `<venv>` as in "Hosting one lab", then start. For the agent unit the file keeps the `@` in its name (`abf-station@.service`):
+     bits mean nothing), then `chmod 600` on it. The token never goes into a unit or into any example file. If an agent
+     already has a token file from when you started it by hand, use that existing token file as it is: its file name need not
+     be the agent's name.
+   - Name the agent with letters, digits, underscore and dot only (`lab1`, `site_a`): the name never contains a hyphen (`-`), because the
+     unit's own name is built from it. The same `<name>` is used twice and must be identical: in the file
+     `~/.config/abf-platform/station-<name>.env` and in the unit instance `abf-station@<name>`.
+   - **Several agents.** Each agent is its own service: one `station-<name>.env` for each agent, and one `enable --now` for each.
+     Example with two agents, `lab1` for the cluster and `gcb` for Google Batch (two token files, and the deployment folders
+     they were using by hand):
      ```sh
+     cp deploy/station.env.example ~/.config/abf-platform/station-lab1.env
+     cp deploy/station.env.example ~/.config/abf-platform/station-gcb.env
+     chmod 600 ~/.config/abf-platform/station-lab1.env ~/.config/abf-platform/station-gcb.env
+     ```
+     Fill each file in (`nano`): its own token file, its own deployment folder, the plugin folder (the same for both).
+     Later, in the `enable --now` line below, write `abf-station@lab1 abf-station@gcb` instead of one `abf-station@<name>`
+     (a service that is enabled later is simply one more `systemctl --user enable --now abf-station@<second-name>`).
+   - **What an agent's env file must hold.** The unit gives the agent the three paths in `station-<name>.env` and nothing else
+     from your terminal. What the agent really needs from the environment:
+     `PATH` written out in full (every folder, on one line) so that it finds `ssh` and, for Google Batch, `nextflow`, `gcloud`
+     and Java 17 or newer; `JAVA_HOME` if you had exported it; `ABF_STATION_GCP_CREDENTIALS`, the service-account key file (a path), and
+     `ABF_STATION_UPLOADS`, the folder where the platform keeps the waiting upload files (the same folder as `ABF_PLATFORM_UPLOADS`
+     of the platform, or the `uploads` folder next to `platform.db`) for a Google Batch agent. An AWS, Azure or Kubernetes agent has
+     `ABF_STATION_AWS_CREDENTIALS`, `ABF_STATION_AZURE_CREDENTIALS` or `ABF_STATION_KUBECONFIG` in the same place. The site
+     connection itself needs none of these: the agent finds the shared connection through the deployment folder.
+     Same rule as in step 3: go through every `export` in `~/.bashrc`, and for each one that the agent used, write it as `NAME=value` into
+     that agent's `station-<name>.env` (the example file `deploy/station.env.example` shows where). A path to a key file is allowed; a key's contents never are.
+   - Copy the four templates and drop the `.in`, replace `<venv>` as in "Hosting one lab", then start. For the agent unit the file keeps the `@` in its name (`abf-station@.service`). Start in the repository folder, and make the two folders first (a fresh Ubuntu has neither):
+     ```sh
+     cd <repository-folder>
+     mkdir -p ~/.config/systemd/user ~/.config/abf-platform
      for u in serve web mcp; do cp deploy/systemd/abf-$u.service.in ~/.config/systemd/user/abf-$u.service; done
      cp deploy/systemd/abf-station@.service.in ~/.config/systemd/user/abf-station@.service
      sed -i "s|<venv>|abf-venv|" ~/.config/systemd/user/abf-*.service
      systemctl --user daemon-reload
      ```
-     Before you run the next line, stop everything you started by hand (see "Switching from starting by hand" below), or two copies fight for the same port.
+     Before you run the next line, do the check in "Switching from starting by hand" below: two copies fight for the same port.
      ```sh
      systemctl --user enable --now abf-serve abf-web abf-mcp abf-station@<name>
      ```
+     You should see lines like `Created symlink ...` and no error. If it says `Failed to connect to bus`, systemd is not on for you: go back to step 2.
 5. **Keep it running with nobody at a terminal.** Run `loginctl enable-linger $USER` once. If it asks for a password, run
    `sudo loginctl enable-linger $USER`. This lets your services run without a terminal window open. It does
    not keep WSL itself open: that is the job of the Windows task in step 6. The two do different jobs and you need both.
 6. **Make Windows keep WSL open.** From the repository folder in Ubuntu, show what the script would do (it changes nothing):
-   `powershell.exe -ExecutionPolicy Bypass -File "$(wslpath -w deploy/wsl/keep-wsl-running.ps1)"`. Then add `-Apply` at the end to register the
-   task `abf-wsl-keepalive`: when you log in to Windows it opens WSL in a hidden window and keeps it open. It runs with your
+   ```sh
+   cd <repository-folder>
+   powershell.exe -ExecutionPolicy Bypass -File "$(wslpath -w deploy/wsl/keep-wsl-running.ps1)"
+   ```
+   It prints the task it would make. Then add `-Apply` at the end to register the
+   task `abf-wsl-keepalive`: when you log in to Windows it starts `powershell.exe -NoProfile -WindowStyle Hidden`, and that
+   starts `wsl.exe` and keeps WSL open. A window may flash for a moment at logon. If a window stays, minimise it, do not close it
+   (closing it lets WSL stop), and report it. The task runs with your
    normal rights and asks for no administrator password; add `-Distro <name>` if the Linux you use is not the default one. **It does
    not start while nobody is logged in to Windows**, that is, when you are not logged in to Windows nothing runs: after a reboot, the platform is up only once you have logged in.
+   If your computer's policy forbids `-ExecutionPolicy Bypass` (the command stops with a message about running scripts),
+   copy `deploy/wsl/keep-wsl-running.ps1` to a Windows folder and right-click it, then choose "Run with PowerShell"
+   (that runs the print-only mode; to apply, ask the person who looks after the computer, or report it).
 7. **Look at what is running.** One command lists all four services: `systemctl --user status 'abf-*'`. Each should say
    `active (running)` in green. When one does not, read its last lines: `journalctl --user -u abf-web -n 50`.
    An agent that refuses to start (a wrong path, a token file that is not safe) stops in `failed` and does not retry
@@ -163,9 +209,29 @@ should do them.
    - Remove: `systemctl --user disable --now abf-serve abf-web abf-mcp abf-station@<name>`, then delete the files in
      `~/.config/systemd/user/` and run `systemctl --user daemon-reload`. To remove the Windows task, run the script from step 6 with `-Remove`.
 
-**Switching from starting by hand.** If the platform has been started by hand in a terminal, stop those processes
-first (Ctrl+C in that terminal, or close it); then run step 4's last command. Otherwise the hand-started processes hold the ports,
-the services cannot start, and you may end up with two copies. Expect the platform to be unreachable for about a minute.
+**Switching from starting by hand.** Your hand-started platform is a set of detached processes (`abf-platform serve`, `web`, `mcp`,
+and one `abf-station run` for each agent): closing the terminal does nothing to them. Step 2's `wsl --shutdown` already stopped
+them all, so after it there should be none left. Before step 4's last command, check, in the Ubuntu window:
+```sh
+pgrep -af 'abf-platform|abf-station'
+```
+It prints nothing when none is left: go on. If it prints lines, something is still running (started again by hand, or by a
+login script): stop what you started by hand with `pkill -f 'abf-platform|abf-station'`, run the `pgrep` line again and make sure it
+prints nothing. Otherwise the hand-started processes hold the ports, the services cannot start, and you may end up with two copies.
+Expect the platform to be unreachable for about a minute.
+
+**Going back to starting by hand.** In the Ubuntu window: stop and remove the four services,
+`systemctl --user disable --now abf-serve abf-web abf-mcp abf-station@<name>` (every agent you enabled), then remove the unit files with
+`rm ~/.config/systemd/user/abf-serve.service ~/.config/systemd/user/abf-web.service ~/.config/systemd/user/abf-mcp.service ~/.config/systemd/user/abf-station@.service`
+and `systemctl --user daemon-reload`. Take the two lines `[boot]` and `systemd=true` out of `/etc/wsl.conf` (`sudo nano /etc/wsl.conf`),
+then in Windows PowerShell run `wsl --shutdown` and open Ubuntu again. Start the platform the way you did before: `abf-platform serve` as in
+`docs/PLATFORM.md` section 1, the agent as in section 6 of the same file, `web` and `mcp` as you did. Also remove the Windows task, otherwise
+WSL still opens at every logon: run the script from step 6 with `-Remove`.
+
+**Opening the National Center connection again.** After `wsl --shutdown` or a reboot the shared SSH connection to the site is gone, and the agent
+waits. Open it yourself, in the Ubuntu window: `scripts/preflight.sh` prints the line to paste when the connection is missing; paste exactly that line
+and you type the OTP yourself (only you have the one-time code; nothing in this setup can). When `scripts/preflight.sh` shows the site as OK,
+the agent picks the connection up without a restart.
 
 **What this does not do.** The connection to the National Center does not come back by itself: after a reboot or `wsl --shutdown`,
 you connect again and type the OTP; the agent waits for it. Tailscale Funnel is not handled here: it is set up as in
