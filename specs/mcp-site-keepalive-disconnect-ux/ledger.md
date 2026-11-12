@@ -108,3 +108,10 @@ ts=2026-11-12T11:06:34+08:00 machine=DESKTOP-7J5L5BJ event=reopened
 - 全套結果見本輪 executor 報告與 `executor-status`。
 
 - 2026-11-12 對照 base：axe `meta-refresh` 在 base 9ae086b2 就存在（web_board.py:956；UI2.md 同一規則同一節點），本件沒碰它；`.linkbar` 無 serious／critical。見 screenshots/summary.md。
+
+## 2026-11-12 修正輪（驗收 REJECT 後，三項）
+1. **TC-038／TC-039 測試**（`platform/tests/test_site_disconnect_ux.py`）：新增 `test_launch_pipeline_refused_when_closed`、`test_resume_and_relaunch_refused_when_closed[resume|relaunch]`、`test_terminal_launch_refused_when_closed`（走 PTY 的 `abf-platform launch`，打 y），另加對照 `test_resume_and_relaunch_go_through_when_open`。每條斷言：被擋（`sent` 為 false、無 job_id）、訊息含 agent 名與 `WSL` 與「重新登入」、新增的那一筆 confirmation 是 `void`（不是 pending／approved）、`launch_nextflow` job 數不變。四條路徑都被現有的單一閘擋下，**沒有發現新 bug**，程式碼沒改。
+   - 閘門中和實驗：我在本地把 `jobs.py` 的 `== "closed":` 暫時改成 `== "closed" and False:`，四個新測試全部失敗（4 failed），然後 `git checkout` 還原；被中和的版本沒有 commit。
+   - 因為閘本來就在，這些測試加進去就是綠的，所以那個 commit 的訊息雖寫 RED:，實際上是「補上缺的測試」，紅燈靠上面的中和實驗證明。
+2. **截圖重拍**：用拋棄式平台（temp 資料夾、空閒 port，沒碰 8787/8788/8789 與真資料庫），agent 在線且自報 `site_link=closed`（重拍前 `closed_agents` 列出 `['agent-t']`），board／launch／settings × zh／en × 1440／390 共 12 張，每張都量到一條 `.linkbar`。舊的 12 張（agent 離線、沒有紅條）已被取代；`screenshots/summary.md` 重寫，只寫圖上看得到的。axe：只有 board 上既有的 critical `meta-refresh`（origin/v3 `web_board.py:958`），以及 12 頁都有的 moderate `landmark-unique`（`.side`、`.views`）；沒有任何項目指到 `.linkbar`。
+3. **docs/TESTING.md**：新增 TC-032 手動步驟（白話：開哪頁、紅條的字與顏色、什麼情況會出現與不該出現、怎麼讓它消失）。
