@@ -51,7 +51,7 @@ new_case() { # new_case <id>: a clean sandbox in $C; sets C ST LIST SE
     ST="$C/state"; LIST="$C/list"
     SE=(env "ABFT_CASE=$C" "HOME=$C/home" "TMPDIR=$C/tmp" "ABF_SUPERVISE_STATE=$ST"
         ABF_SUPERVISE_BASE=0.2 ABF_SUPERVISE_MAX=1.6 ABF_SUPERVISE_STABLE=1 ABF_SUPERVISE_WAIT=2 ABF_SUPERVISE_TICK=0.3)
-    SUP_PID=""
+    SUP_PID=""; LAUNCH=(bash)
 }
 mkfake() { # name [sleep]: records each start's pid, then sleeps (same pid)
     printf '#!/bin/sh\necho $$ >> "%s/pids/%s"\nexec sleep %s\n' "$C" "$1" "${2:-600}" > "$C/bin/$1"; chmod +x "$C/bin/$1"
@@ -65,7 +65,7 @@ curpid() { tail -n1 "$C/pids/$1" 2>/dev/null; }
 up() { local p; p=$(curpid "$1"); [ -n "$p" ] && alive "$p"; }
 all_up() { local n; for n in "$@"; do up "$n" || return 1; done; }
 starts_ge() { [ "$(starts "$1")" -ge "$2" ]; }
-start_sup() { set -m; "${SE[@]}" bash "$SUP" "$@" >"$C/sup.out" 2>&1 </dev/null & SUP_PID=$!; set +m; }
+start_sup() { set -m; "${SE[@]}" "${LAUNCH[@]}" "$SUP" "$@" >"$C/sup.out" 2>&1 </dev/null & SUP_PID=$!; set +m; }
 sup_down() { gone "$SUP_PID"; }
 stop_sup() { # TERM it, wait for it, keep its exit code in SUP_RC
     [ -n "$SUP_PID" ] || return 0
@@ -276,7 +276,12 @@ case_t028() { new_case t028; mkfake a; mkfake b; wl "a $C/bin/a" "b $C/bin/b"; s
     stop_sup; sweep "$C"; }
 
 stop_case() { # <TC> <signal>
-    new_case "t$1"; mkfake a; mkfake b; mkfake c; wl "a $C/bin/a" "b $C/bin/b" "c $C/bin/c"; start_sup --list "$LIST"; wait_for 10 all_up a b c
+    new_case "t$1"; mkfake a; mkfake b; mkfake c; wl "a $C/bin/a" "b $C/bin/b" "c $C/bin/c"
+    # A shell cannot trap a signal that was ignored when it was started, and a CI step (or any job started
+    # from a shell without job control) starts us with SIGINT ignored: for the INT case the supervisor is
+    # started through a one-line python exec that puts SIGINT back to its default. Same program, same test.
+    [ "$2" = INT ] && LAUNCH=(python3 -c 'import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])' bash)
+    start_sup --list "$LIST"; wait_for 10 all_up a b c
     local pa=$(curpid a) pb=$(curpid b) pc=$(curpid c)
     skill "-$2" "$SUP_PID"; wait_for 12 sup_down; wait "$SUP_PID" 2>/dev/null; SUP_RC=$?
     local n=$(( $(starts a) + $(starts b) + $(starts c) ))
