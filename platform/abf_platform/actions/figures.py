@@ -21,7 +21,6 @@ import os
 import re
 import secrets
 import time
-import threading
 import unicodedata
 
 try:
@@ -335,36 +334,27 @@ def _chmod(path, mode):
         pass
 
 
-_LOCKS = {}
-_LOCKS_GUARD = threading.Lock()
-
-
 @contextlib.contextmanager
 def gallery_lock(folder):
     """One lock for each gallery folder, held from the read of index.json to its replace (ruling G1): pack, delete and the confirmed write all
-    read the index and replace it whole, so two of them at once lose an update. A flock on the folder itself (other processes; no lock file, because a gallery folder holds only its figures and index.json) plus a thread
-    lock of the same folder (the web server's worker threads). A folder that is not there is not locked: there is no index to lose."""
+    read the index and replace it whole, so two of them at once lose an update. It is a flock on the folder itself, taken on a handle of its own
+    each time, so it holds between processes and between the web server's workers alike; there is no lock file, because a gallery folder holds
+    only its figures and index.json. A folder that is not there is not locked: there is no index to lose."""
     key = os.path.realpath(folder)
-    if not os.path.isdir(key):
-        yield
-        return
-    with _LOCKS_GUARD:
-        local = _LOCKS.setdefault(key, threading.Lock())
-    with local:
-        fd = None
-        if fcntl is not None:
-            try:
-                fd = os.open(key, os.O_RDONLY)
-                fcntl.flock(fd, fcntl.LOCK_EX)
-            except OSError:
-                if fd is not None:
-                    os.close(fd)
-                    fd = None
+    fd = None
+    if fcntl is not None and os.path.isdir(key):
         try:
-            yield
-        finally:
+            fd = os.open(key, os.O_RDONLY)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError:
             if fd is not None:
-                os.close(fd)        # closing releases the flock
+                os.close(fd)
+                fd = None
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)        # closing releases the flock
 
 
 def _stage(folder, final_name, data, tag):
