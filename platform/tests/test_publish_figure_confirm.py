@@ -749,3 +749,187 @@ def test_migration_run_twice_gives_the_same_result(tmp_path):
     assert {n: second.execute("SELECT * FROM %s" % n).fetchall() for n in ("confirmations", "jobs")} == data_1
     assert "publish_figure" in t.check_of(second, "confirmations")
     second.close()
+
+
+# ---- hardening round (lead ruling N1 to N6, 2026-11-13; the second adversarial review) ---------------------------------------------------
+
+@pytest.mark.parametrize("field", ["code", "params"])
+@pytest.mark.parametrize("bad", ["\x1b[1A\x1b[2K[1] harmless.png", "\x08\x08[2] evil.png", "\x1b[2J\x1b[H", "a‮b", "a​b", "﻿a",
+                                 "a b", "a b", "a\x85b", "a\rb", "a\x7fb"])
+def test_n1_code_and_params_refuse_control_and_format_characters(w, field, bad):
+    # N1: ESC, backspace, bidi, zero width and the other line separators forged lines of the screen
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    got = call(w, ann, run, [fig("a.png", **{field: bad})])
+    assert got["state"] == "refused" and field in got["reason"] and w.confirmations() == []
+
+
+@pytest.mark.parametrize("bad", ["a‮b", "a​b", "﻿a", "a⁦b"])
+def test_n1_caption_refuses_format_characters(w, bad):
+    # N1
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    got = call(w, ann, run, [fig("a.png", caption=bad)])
+    assert got["state"] == "refused" and "caption" in got["reason"] and w.confirmations() == []
+
+
+def test_n1_newline_and_tab_stay_legal_in_code_and_params(w):
+    # N1: only the other control characters go
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    assert call(w, ann, run, [fig("a.png", code="a\n\tb\n", params="k=1\n\tj=2")])["state"] == "pending"
+
+
+def test_n1_long_runs_of_spaces_are_collapsed_on_every_screen_but_not_in_the_file(w):
+    # N1: display only; what is stored is what was sent
+    from abf_platform import actions
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    pad = " " * 300
+    code = "x = 1" + pad + "[2] other.png\n" + " " * 8 + "ok\n"
+    got = call(w, ann, run, [fig("a.png", caption="c" + pad + "d", code=code, params="k" + pad + "= 1")])
+    assert got["state"] == "pending" and " " * 9 not in got["summary"] and "[2] other.png" in got["summary"]
+    assert " " * 8 + "ok" in got["summary"]                                              # a run of 8 is left alone
+    assert " " * 9 not in w.confirmations()[0]["screen_text"]
+    bundle = json.loads(w.confirmations()[0]["bundle_json"])
+    assert bundle["figures"][0]["code"] == code                                          # the stored content is not altered
+    en = actions.screen_for_page(bundle, [], "en")
+    assert " " * 9 not in en
+    press(w, "ann", got["request_id"])
+    assert (gallery(w, ann, run) / "a.png.code.txt").read_text() == code
+
+
+def test_n2_a_lone_surrogate_in_filename_or_run_id_is_refused_up_front(w):
+    # N2: the refusal itself must be encodable (MCP turns an unencodable answer into a generic tool error)
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    for args in ((run, [fig("\ud800.png")]), ("\ud800", [fig()]), (run, [fig("a\udfff.png")])):
+        got = call(w, ann, *args)
+        assert got["state"] == "refused" and w.confirmations() == []
+        json.dumps(got).encode("utf-8")
+        got["message"].encode("utf-8")
+        got["reason"].encode("utf-8")
+
+
+def test_n2_an_echoed_bad_name_is_cut_and_has_no_control_characters(w):
+    # N2: 3 kB of name with newlines was echoed whole
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    evil = "x\n[2] forged line\x1b[2J" * 150
+    for name in (evil, evil + ".png", "a‮" * 100 + ".exe"):
+        got = call(w, ann, run, [fig(name)])
+        assert got["state"] == "refused" and len(got["reason"]) < 700, got["reason"][:200]
+        assert not any(ch in got["reason"] for ch in "\n\r\x1b‮")
+    got = call(w, ann, "r\n" + "z" * 400, [fig()])
+    assert got["state"] == "refused" and "\n" not in got["reason"] and len(got["reason"]) < 400
+
+
+def _break_replaces(figures, monkeypatch, fail_from, also_restore):
+    real = figures.os.replace
+    calls = []
+
+    def boom(a, b):
+        calls.append(b)
+        if len(calls) >= fail_from and (also_restore or len(calls) == fail_from):
+            raise OSError("disk full /secret/path")
+        return real(a, b)
+    monkeypatch.setattr(figures.os, "replace", boom)
+
+
+def test_n3_when_the_restore_fails_too_the_answer_does_not_say_nothing_was_stored(w, monkeypatch):
+    # N3: the gallery then holds new bytes with the old index; the person must be told it may be inconsistent
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    press(w, "ann", call(w, ann, run, [fig("a.png", PNG + b"1", code="")])["request_id"])
+    second = call(w, ann, run, [fig("a.png", PNG + b"2", code="")])
+    _break_replaces(figures, monkeypatch, 2, True)
+    c, r = press(w, "ann", second["request_id"])
+    assert "沒有任何圖被存入" not in r.text and "inconsistent" in r.text and "/secret" not in r.text
+    assert not [p for p in gallery(w, ann, run).iterdir() if p.name.startswith(".tmp-")]
+
+
+def test_n3_a_failed_write_that_restores_fine_still_says_nothing_was_stored(w, monkeypatch):
+    # N3: the plain F5 case keeps its words
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    press(w, "ann", call(w, ann, run, [fig("a.png", PNG + b"1", code="")])["request_id"])
+    second = call(w, ann, run, [fig("a.png", PNG + b"2", code="")])
+    _break_replaces(figures, monkeypatch, 2, False)
+    c, r = press(w, "ann", second["request_id"])
+    assert "inconsistent" not in r.text and (gallery(w, ann, run) / "a.png").read_bytes() == PNG + b"1"
+
+
+def test_n3_leftover_temporary_files_are_removed_before_the_next_write(w):
+    # N3: a kill between two replaces leaves .tmp-* files; the next write into that gallery (confirm, pack, delete) clears them
+    from abf_platform import actions
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    press(w, "ann", call(w, ann, run, [fig("a.png")])["request_id"])
+    folder = gallery(w, ann, run)
+    for step in ("confirm", "pack", "delete"):
+        (folder / ".tmp-deadbeef-0001").write_bytes(b"x")
+        (folder / ".tmp-idx-0002").write_bytes(b"y")
+        if step == "confirm":
+            press(w, "ann", call(w, ann, run, [fig("b.png")])["request_id"])
+        elif step == "pack":
+            assert actions.pack_figures(w.ip.index, w.ip.state_db, run, ["a.png"], caller=ann)["ok"]
+        else:
+            assert actions.delete_figure(w.ip.index, w.ip.state_db, run, "b.png", caller=ann)["ok"]
+        assert not [p for p in folder.iterdir() if p.name.startswith(".tmp-")], step
+    assert (folder / "a.png").exists()
+
+
+def test_n4_a_request_shown_against_an_older_figure_does_not_overwrite_a_newer_one(w):
+    # N4: R2 said "replaces a.png" (v1); R3 replaced it with v3 first; R2's yes must not silently bury v3
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    press(w, "ann", call(w, ann, run, [fig("a.png", PNG + b"1", code="")])["request_id"])
+    r2 = call(w, ann, run, [fig("a.png", PNG + b"2", code="")])
+    r3 = call(w, ann, run, [fig("a.png", PNG + b"3", code="")])
+    assert "覆蓋" in r2["summary"] and "覆蓋" in r3["summary"]
+    assert press(w, "ann", r3["request_id"])[1].status_code == 200
+    c, r = press(w, "ann", r2["request_id"])
+    assert r.status_code == 409 and (gallery(w, ann, run) / "a.png").read_bytes() == PNG + b"3"
+    assert {x["id"]: x["state"] for x in rows(w)}[r2["request_id"]] == "void"
+
+
+def test_n4_the_same_request_still_replaces_when_the_gallery_did_not_move(w):
+    # N4: the identity check does not get in the way of the ordinary replace, nor of a repeated call
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    press(w, "ann", call(w, ann, run, [fig("a.png", PNG + b"1", code="")])["request_id"])
+    r2 = call(w, ann, run, [fig("a.png", PNG + b"2", code="")])
+    assert call(w, ann, run, [fig("a.png", PNG + b"2", code="")])["request_id"] == r2["request_id"]
+    assert press(w, "ann", r2["request_id"])[1].status_code == 200
+    assert (gallery(w, ann, run) / "a.png").read_bytes() == PNG + b"2"
+
+
+def test_n5_only_true_is_a_yes_at_the_action_layer(w):
+    # N5: user_confirmed=1 (truthy, not True) skipped the pending-bytes cap and made a pending row
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+
+    def big(i):
+        return fig("b%d.png" % i, PNG + bytes([i]) * (3 * 1024 * 1024 + 512 * 1024), code="")
+    for i in range(4):
+        assert call(w, ann, run, [big(i)])["state"] == "pending"
+    for truthy in (1, "yes", "true", [1]):
+        got = call(w, ann, run, [big(4)], request_id="x", user_confirmed=truthy)
+        assert got["state"] == "refused" and "20 MB" in got["reason"], truthy
+    assert len(rows(w)) == 4 and no_files(w, ann, run)
+
+
+def test_n6_the_stored_request_of_another_person_is_not_read(w, monkeypatch):
+    # N6: facts() was read for any request id; nothing leaked, but the read must come after the owner check
+    from abf_platform import confirm
+    ann, bob = w.user("ann"), w.user("bob")
+    run, bob_run = seed(w, "r1", "succeeded", ann), seed(w, "r2", "succeeded", bob)
+    mine = call(w, ann, run, [fig("a.png")])
+    seen = []
+    real = confirm.facts
+    monkeypatch.setattr(confirm, "facts", lambda p, rid: (seen.append(rid), real(p, rid))[1])
+    got = call(w, bob, bob_run, [fig("a.png")], request_id=mine["request_id"], user_confirmed=True)
+    assert got["state"] == "refused" and mine["request_id"] not in seen
+    assert [r["state"] for r in rows(w)] == ["pending"]
