@@ -292,7 +292,7 @@ if ! printf '%s\n' "$sec" | grep -E 'sed -i' | grep -F 'abf-venv' >/dev/null && 
 
 # ---------- ruling F (third acceptance): last wording fixes ----------
 # F1: check the WSL version first, no version number stated as fact
-s1=$(printf '%s\n' "$sec" | awk '/^1\. \*\*/{on=1;next} /^2\. \*\*/{on=0} on')
+s1=$(printf '%s\n' "$sec" | awk '/^1\. \*\*/{on=1} /^2\. \*\*/{on=0} on')
 if has "$s1" 'wsl --version' && has "$s1" 'wsl --update' && hasre "$s1" 'before step 2'; then ok "F1 step 1: run wsl --version first, wsl --update before step 2 if it errors"; else bad "F1 step 1 wsl --version / wsl --update before step 2"; fi
 if ! has "$sec" '0.67' && ! printf '%s\n' "$tsec" | grep -F '0.67' >/dev/null; then ok "F1 no minimum WSL version number stated"; else bad "F1 a WSL version number is still stated"; fi
 s7=$(printf '%s\n' "$sec" | awk '/^7\. \*\*/{on=1} /^8\. \*\*/{on=0} on'); s8=$(printf '%s\n' "$sec" | awk '/^8\. \*\*/{on=1} /^9\. \*\*/{on=0} on')

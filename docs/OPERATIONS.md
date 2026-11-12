@@ -205,7 +205,7 @@ leave them out: the default folder is used, as before.
    If you started them with another port or another flag, change the unit files in `~/.config/systemd/user/` now, before step 7. Also check that every `ABF_`, `PATH`, `JAVA_HOME` and `XDG_` value
    in the file is in the env file of step 3 or of step 4. For each `abf-station run` line, check that its `--token-file` and `--deployment` values equal the ones in that agent's `station-<name>.env`
    (these are command-line flags in the saved file, not environment variables). If the file is empty, nothing was running by hand: go on.
-7. **Restart WSL. The platform is down from here.** In Windows PowerShell run `wsl --shutdown`, wait a few seconds, and open Ubuntu again from the Start menu (or the WSL terminal you normally use).
+7. **Restart WSL. The platform is down from here.** In Windows PowerShell run `wsl --shutdown`, wait a few seconds, and start Ubuntu once more from the Start menu (or the WSL terminal you normally use).
    **This stops everything inside WSL**: every process you started there, the platform if it is running, and the
    shared SSH connection to the National Center (國網). After the restart you must connect again yourself and type the OTP
    (see "Opening the National Center connection again" below); nothing does that for you. The platform is stopped from this step until step 8 has finished: a few minutes, depending on how fast you type the commands.
