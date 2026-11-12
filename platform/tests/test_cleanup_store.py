@@ -644,12 +644,11 @@ def test_the_migration_failure_and_dangling_link_paths_still_roll_back_with_the_
 def test_every_place_that_reads_or_writes_the_kind_is_in_the_ledger():
     # TC-087, TC-111
     ledger = (Path(__file__).resolve().parents[2] / "specs" / "mcp-gallery-actions" / "ledger.md").read_text(encoding="utf-8")
-    hits = set()
+    hits = {"actions/__init__.py", "web.py"}      # the two files that use the kind through confirm.describe, not through SQL
     for path in sorted(PKG.rglob("*.py")):
         text = path.read_text(encoding="utf-8")
-        for n, line in enumerate(text.splitlines(), 1):
-            if re.search(r"kind\s*(=|IN|<>|==|!=)\s*['\"(]|\[\"kind\"\]|row\[\"kind\"\]|c\.kind", line) and "confirmations" in text:
-                hits.add(path.relative_to(PKG).as_posix())
+        if re.search(r"(FROM|INTO|UPDATE|JOIN)\s+confirmations\b", text):       # every file with SQL on the confirmations table
+            hits.add(path.relative_to(PKG).as_posix())
     for rel in hits:
         assert rel in ledger, rel + " reads or writes confirmations.kind and is not in the ledger's list"
     for needle in ("git diff --stat", "foreign_key_check", "sqlite_master", "gallery_change"):
