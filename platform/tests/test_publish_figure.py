@@ -673,3 +673,66 @@ def test_failed_index_write_leaves_no_temporary_file(w, monkeypatch):
     assert got["ok"] is False and got["reason"] == "write_failed"
     assert [p.name for p in gallery(w, ann, run).iterdir() if p.name.startswith(".tmp")] == []
     assert tree(gallery(w, ann, run)) == before
+
+
+def test_delete_removes_files_inside_the_lock(w, monkeypatch):
+    # K2 (lead, 2026-11-13, after acceptance): the files of a deleted figure are removed while the lock is still held, so a confirmed write of the
+    # same name that comes in right after the index write cannot have its new file deleted. Forced interleaving: a thread that writes the same
+    # name is started just before the first unlink.
+    import threading
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    rid = call(w, ann, run, [fig("x.png")])["request_id"]          # proposed while x.png is not in the gallery: replaces nothing
+    bundle = json.loads(w.sql("SELECT bundle_json FROM confirmations WHERE id = ?", (rid,))[0]["bundle_json"])
+    stored(w, ann, run, ("x.png",))
+    real_unlink, errors, fired = os.unlink, [], []
+
+    def unlink_after_the_new_write_tried(path, *a, **k):
+        if not fired and threading.current_thread() is threading.main_thread():
+            fired.append(1)
+            def again():
+                try:
+                    figures.write_confirmed(w.ip.state_db, ann.user_id, bundle, rid, time.time())
+                except BaseException as e:      # noqa: BLE001
+                    errors.append(repr(e))
+            t = threading.Thread(target=again)
+            t.start()
+            t.join(1.5)         # with the lock released already it finishes here, before this unlink
+        return real_unlink(path, *a, **k)
+
+    monkeypatch.setattr(figures.os, "unlink", unlink_after_the_new_write_tried)
+    got = figures.delete_figure(w.ip.index, w.ip.state_db, run, "x.png", caller=ann)
+    monkeypatch.undo()
+    for t in threading.enumerate():
+        if t is not threading.current_thread():
+            t.join(20)
+    assert got["ok"] and not errors, (got, errors)
+    folder = gallery(w, ann, run)
+    assert sorted(figures.read_index(str(folder))[0]) == ["x.png"] and (folder / "x.png").exists(), sorted(p.name for p in folder.iterdir())
+
+
+def test_no_lock_means_no_change(w, monkeypatch):
+    # K3 (lead, 2026-11-13): a lock that cannot be taken refuses the operation with one plain sentence and changes nothing; it never goes on
+    # without the lock. Pack and delete answer reason "busy"; the confirmed write is voided through slice 1's write-failed path.
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    stored(w, ann, run, ("a.png",))
+    rid = call(w, ann, run, [fig("n.png")])["request_id"]
+    before = tree(gallery(w, ann, run))
+    if figures.fcntl is None:
+        pytest.skip("no flock on this system")
+    def refuse(fd, op):
+        raise OSError(5, "Input/output error")
+    monkeypatch.setattr(figures.fcntl, "flock", refuse)
+    packed = pack(w, ann, run, ["a.png"])
+    deleted = figures.delete_figure(w.ip.index, w.ip.state_db, run, "a.png", caller=ann)
+    c, resp = press(w, ann.name, rid)
+    monkeypatch.undo()
+    for got in (packed, deleted):
+        assert got["ok"] is False and got["reason"] == "busy", got
+        assert "圖庫目前無法變更，請稍後再試" in got["message"] and "The gallery cannot be changed right now, please try again later" in got["message"]
+    assert tree(gallery(w, ann, run)) == before
+    row = w.sql("SELECT state, void_reason FROM confirmations WHERE id = ?", (rid,))[0]
+    assert row["state"] == "void" and row["void_reason"], dict(row)
