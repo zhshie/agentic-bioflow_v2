@@ -752,3 +752,59 @@ def test_figure_csp_and_svg_opened_as_a_document(w):
     assert "content-disposition" not in c.get(path).headers                                           # no header at all: as before
     png = c.get("/run/figure?run=%s&name=a.png" % rid, headers={"Sec-Fetch-Dest": "document"})
     assert "content-disposition" not in png.headers
+
+
+def long_code(lines=1000, width=99):
+    return "".join(("L%04d " % i).ljust(width, "x") + "\n" for i in range(lines))        # about 100 KB, one numbered line each
+
+
+def test_finished_page_inlines_only_the_start_of_code_and_params(w):
+    # TC-004 as changed by ruling G5: the first part is complete, the rest can be downloaded; and a short text is still shown whole
+    big, small = long_code(), "# short\nprint(1)\n"
+    one_line = "k=" + "9" * 10000
+    ann, c, rid = setup(w, items=[fig("a.png", PNG, code=big, params=one_line), fig("b.png", PNG, code=small, params="seed=1"),
+                                  fig("c.png", PNG, code=big, params="seed=2")])
+    page = c.get(url(rid)).text
+    g = gallery_part(page)
+    assert len(page.encode("utf-8")) < 120_000, len(page)                       # not 2 x 100 KB of code
+    shown = htmllib.unescape(re.findall(r"<pre>(.*?)</pre>", g, re.S)[0])
+    first = [x for x in re.findall(r"<pre>(.*?)</pre>", g, re.S) if "L0000" in x]
+    assert len(first) == 2
+    for pre in first:
+        text = htmllib.unescape(pre)
+        assert text.splitlines()[0].startswith("L0000") and "L0199" in text and "L0200" not in text      # 200 lines, whichever comes first with 20 KB
+        assert len(text.encode("utf-8")) <= 20 * 1024 and big.startswith(text)                             # the start, unaltered
+    assert g.count("可下載") + g.count("下載") >= 2
+    assert 'href="/run/figure?run=%s&amp;name=a.png&amp;part=code"' % rid in g and 'name=c.png&amp;part=code"' in g
+    assert "name=b.png&amp;part=" not in g and "# short\nprint(1)" in htmllib.unescape(g)                    # whole: no link, no sentence about the rest
+    assert g.count("僅顯示開頭") == 2
+    en = gallery_part(c.get(url(rid, "&lang=en")).text)
+    assert "part=code" in en and "first part" in en.lower() and not cjk(en.replace(" ", ""))
+    full = c.get("/run/figure?run=%s&name=a.png&part=code" % rid)
+    assert full.status_code == 200 and full.text == big
+    assert full.headers["content-type"].startswith("text/plain") and full.headers["content-disposition"] == 'attachment; filename="a.png.code.txt"'
+    assert full.headers["x-content-type-options"] == "nosniff" and full.headers["cache-control"] == "private, no-store"
+    assert "form-action 'none'" in full.headers["content-security-policy"] and "sandbox" in full.headers["content-security-policy"]
+    assert c.get("/run/figure?run=%s&name=a.png&part=params" % rid).text == one_line
+    assert c.get("/run/figure?run=%s&name=a.png&part=params&download=1" % rid).text == one_line
+
+
+def test_part_download_is_owner_only_and_answers_404_for_everything_else(w):
+    # ruling G5: the same owner check and the same one-line 404 as the figure itself
+    ann, c, rid = setup(w, items=[fig("a.png", PNG, code="print(1)\n", params=""), fig("b.png", PNG, code="", params="k=1")])
+    bob, cb, rid_b = world(w, "bob-done", who="bob")
+    anon = w.web()
+    r = anon.get("/run/figure?run=%s&name=a.png&part=code" % rid)
+    assert r.status_code in (302, 303) and "print(1)" not in r.text
+    ref = figure_get(cb, rid, "zz.png")
+    assert ref.status_code == 404
+    for run_id, name, part, client in ((rid, "a.png", "code", cb), (rid_b, "a.png", "code", cb), ("no-such-run", "a.png", "code", c),
+                                       (rid, "zz.png", "code", c), (rid, "a.png", "params", c), (rid, "b.png", "code", c),
+                                       (rid, "a.png", "index", c), (rid, "a.png", "../index.json", c), (rid, "a.png", "", c), (rid, "index.json", "code", c)):
+        got = client.get("/run/figure?run=%s&name=%s&part=%s" % (quote(run_id, safe=""), quote(name, safe=""), quote(part, safe="")))
+        if (name, part) == ("a.png", "") and client is c:
+            assert got.status_code == 200 and got.content == PNG            # an empty part is no part
+            continue
+        assert (got.status_code, got.text, got.headers["content-type"].split(";")[0]) == (ref.status_code, ref.text, ref.headers["content-type"].split(";")[0]), (run_id, name, part)
+    assert c.get("/run/figure?run=%s&name=a.png&part=code" % rid).text == "print(1)\n"
+    assert c.get("/run/figure?run=%s&name=b.png&part=params" % rid).text == "k=1"
