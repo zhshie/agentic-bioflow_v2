@@ -820,5 +820,10 @@ main_run() {
 }
 main_run | tee "$TMPROOT/all.out"
 nf=$(grep -cE '[[:space:]]FAIL(:|$)' "$TMPROOT/all.out" || true)
-if [ "${nf:-0}" -gt 0 ]; then echo "$nf failed"; exit 1; fi
+if [ "${nf:-0}" -gt 0 ]; then
+    # run_all.sh shows only the last lines of a failing file: say again here which cases failed (and what a hung one left)
+    echo "--- failed cases ---"
+    grep -E '[[:space:]]FAIL(:|$)|^DIAG ' "$TMPROOT/all.out" | cut -c1-260 | head -n 40
+    echo "$nf failed"; exit 1
+fi
 echo "all passed"
