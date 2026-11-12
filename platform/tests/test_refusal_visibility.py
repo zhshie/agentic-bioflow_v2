@@ -135,8 +135,8 @@ def test_tcr094_nothing_of_the_chat_command_or_site_login_command():
 
 def test_tcr090_091_nothing_of_c2_or_c3():
     # TC-090, TC-091
-    # mcp-site-connection-status: `site_link` is now the agent's own report of the shared connection (facts); the platform files below carry it, nothing else may
-    allowed = {"platform/abf_platform/common.py", "platform/abf_platform/agents.py", "platform/abf_platform/actions/__init__.py", "platform/abf_platform/mcp_server.py", "platform/abf_station/launch.py", "platform/abf_station/agent.py"}
+    # mcp-site-keepalive-disconnect-ux adds site_link.py and the three files that read it; mcp-site-connection-status: `site_link` is now the agent's own report of the shared connection (facts); the platform files below carry it, nothing else may
+    allowed = {"platform/abf_platform/common.py", "platform/abf_platform/agents.py", "platform/abf_platform/actions/__init__.py", "platform/abf_platform/mcp_server.py", "platform/abf_platform/site_link.py", "platform/abf_platform/jobs.py", "platform/abf_platform/web.py", "platform/abf_platform/web_board.py", "platform/abf_station/launch.py", "platform/abf_station/agent.py"}
     assert [h for h in _absent("site_link") if h[0] not in allowed] == []
     assert _absent("abf-station connect", "abf-connect://") == []
 
