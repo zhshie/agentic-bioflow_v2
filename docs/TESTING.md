@@ -1240,4 +1240,5 @@ Needs a running platform, one user with one finished run, and an MCP client logg
 4. Log in as another user and open the first address: the page must refuse. Call `publish_figure` as that user with the first user's `run_id`: the answer is the same as for a run that does not exist.
 5. Send an SVG containing `<script>`: refused whole, no page address. Send 11 figures: refused, and no request is made.
 6. Do not press 送出 on a fresh request: wait 10 分鐘 (10 minutes) and press it then (or open the page): the page says the request has expired (逾時), and the folder is still as it was (a request that nobody answered writes nothing). Then ask again for the same figure: the new request is made and the old one is not reused.
-7. Open the page in English (`?lang=en`) and at 390 px width: no line is cut off, and each state shows a symbol, words and a colour.
+7. Open the page in English (`?lang=en`) and at 390 px width: no line is cut off, and each state is shown in words and a colour (the confirmation pages say the state as text in `<p class="ok|bad">`, like the three existing kinds; there is no ✓ or ⚠ symbol).
+   Whether to add a symbol is left for the maintainer (contract TC-054).
