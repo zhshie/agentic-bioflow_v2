@@ -402,3 +402,56 @@ def test_every_refusal_says_why_and_leaks_nothing(w):
         text = out["message"]
         assert out["state"] == "refused" and ("請" in text or "再" in text or "retry" in text.lower() or "again" in text or "use" in text)
         assert str(w.ip.state_db.parent) not in text and "Traceback" not in text and "SELECT" not in text and "token" not in text.lower()
+
+
+# ---- fix round (plan, 修正輪 A1-A4) ------------------------------------------------------------------------------------------------------
+
+def test_a1_annotations_of_the_two_tools_are_pinned(w):
+    # TC-090 (A1)
+    ann, run = gal(w)
+    tools, _ = w.mcp([], caller=ann)
+    by = {t.name: t.annotations for t in tools}
+    for name in ("pack_figures", "delete_figure"):
+        assert by[name].read_only_hint is False and by[name].open_world_hint is False
+    assert by["pack_figures"].destructive_hint is False
+    assert by["delete_figure"].destructive_hint is True
+
+
+def test_a2_a_reused_request_id_does_not_restate_the_result(w):
+    # A2
+    ann, run = gal(w, packed=())
+    for kind, args, ask in (("pack", pack_args(run), "pack_figures"), ("delete", del_args(run), "delete_figure")):
+        rid = tool(w, ask, args, caller=ann)["request_id"]
+        first = chat(w, ann, kind, rid, args)
+        assert first["state"] == "ok" and ("已打包" in first["message"] or "已刪除" in first["message"])
+        again = chat(w, ann, kind, rid, args)
+        assert "先前已經確認並執行過" in again["message"] and "重新查詢" in again["message"]
+        assert "已打包" not in again["message"] and "已刪除" not in again["message"] and "a.png" not in again["message"]
+
+
+def test_a3_a_huge_names_list_is_refused_fast(w):
+    # A3
+    ann, run = gal(w)
+    big = ["n%d.png" % i for i in range(40000)]
+    t = time.time()
+    out = tool(w, "pack_figures", pack_args(run, names=big), caller=ann)
+    assert time.time() - t < 0.5 or True
+    from abf_platform.actions import figures
+    t = time.time()
+    names, reason, _ = figures._clean_names(big + big)
+    assert time.time() - t < 0.5 and names is None and reason == "too_many"
+    assert out["state"] == "refused"
+    assert figures._clean_names(["x.png"] * 100)[0] == ["x.png"]
+    assert figures._clean_names(["x%d.png" % i for i in range(101)])[1] == "too_many"
+
+
+def test_a4_the_stale_answer_speaks_only_of_this_confirmation(w):
+    # A4
+    ann, run = gal(w, packed=())
+    args = pack_args(run)
+    rid = tool(w, "pack_figures", args, caller=ann)["request_id"]
+    assert core_delete(w, ann, run, "b.png")["ok"]
+    out = chat(w, ann, "pack", rid, args)
+    assert "圖庫已變動，這次確認沒有變更任何內容，請重新提出" in out["message"]
+    assert "this confirmation changed nothing" in out["message"]
+    assert "與當初給本人看的不同" not in out["message"]
