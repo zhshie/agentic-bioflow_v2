@@ -64,7 +64,8 @@ if [ "$envfiles" = "$(printf 'EnvironmentFile=%%h/.config/abf-platform/env\nEnvi
 
 # ---------- Windows script ----------
 if [ -n "$ps1" ]; then ok "TC-004 $PS1 exists"; else bad "TC-004 $PS1 exists"; fi
-if has "$ps1" 'abf-wsl-keepalive' && hasre "$ps1" 'New-ScheduledTaskTrigger +-AtLogOn' && hasre "$ps1" "wsl\.exe" && has "$ps1" '--exec' && has "$ps1" '/bin/sleep' && hasre "$ps1" 'infinity'; then ok "TC-004 task abf-wsl-keepalive: at logon, wsl.exe --exec /bin/sleep infinity"; else bad "TC-004 task name, trigger and action"; fi
+# TC-004 as changed by ruling D9: the action is a hidden-window powershell that starts wsl.exe; what finally runs is wsl.exe [-d <distro>] --exec /bin/sleep infinity
+if has "$ps1" 'abf-wsl-keepalive' && hasre "$ps1" 'New-ScheduledTaskTrigger +-AtLogOn' && hasre "$ps1" "New-ScheduledTaskAction +-Execute +'powershell\.exe'" && has "$ps1" '-NoProfile -WindowStyle Hidden -Command' && hasre "$ps1" '& wsl\.exe' && has "$ps1" '--exec' && has "$ps1" '/bin/sleep' && hasre "$ps1" 'infinity'; then ok "TC-004 (ruling D9) task abf-wsl-keepalive: at logon, powershell.exe -NoProfile -WindowStyle Hidden -Command & wsl.exe ... --exec /bin/sleep infinity"; else bad "TC-004 task name, trigger and action (ruling D9)"; fi
 nact=$(printf '%s\n' "$ps1" | grep -cE 'New-ScheduledTaskAction' || true)
 if [ "$nact" -eq 1 ] && ! printf '%s\n' "$ps1" | grep -iE 'abf-platform|abf-station|systemctl|serve|restart' | grep -vE '^[[:space:]]*#|Write-Host|Write-Output|"[^"]*(platform|systemd)[^"]*"' >/dev/null; then ok "TC-004 one action only; nothing starts or restarts the platform"; else bad "TC-004 one action only" "actions: $nact"; fi
 if hasre "$ps1" 'ExecutionTimeLimit +\(?New-TimeSpan +-Seconds +0\)?|ExecutionTimeLimit +\[TimeSpan\]::Zero|ExecutionTimeLimit +0' \
@@ -238,5 +239,38 @@ if command -v powershell.exe >/dev/null 2>&1 && command -v wslpath >/dev/null 2>
   after=$(cd /mnt/c 2>/dev/null && powershell.exe -NoProfile -Command "$q" 2>/dev/null | tr -d '\r')
   if [ -n "$out" ] && hasre "$out" 'abf-wsl-keepalive' && hasre "$out" '-Apply' && [ "$before" = "$after" ]; then ok "TC-037 default mode prints the plan and registers nothing (tasks before=$before after=$after)"; else bad "TC-037 default mode" "rc=$prc before=$before after=$after out=$(printf '%s' "$out" | head -c 200)"; fi
 else skip "TC-037 run the script in default mode" "powershell.exe is not reachable from here; the shape checks of TC-036 stand"; fi
+
+# ---------- fix round, rulings D1-D9 (acceptance REJECT: the docs would strand the owner) ----------
+d_cdpos=$(lineno 'cd <repo' "$sec"); d_cppos=$(lineno 'cp deploy/' "$sec")
+# D1: the folders exist before the first cp into them
+d1=$(lineno 'mkdir -p ~/\.config/systemd/user ~/\.config/abf-platform' "$sec")
+if [ -n "$d1" ] && [ -n "$d_cppos" ] && [ "$d1" -le "$d_cppos" ] && has "$sec" 'mkdir -p ~/.config/systemd/user ~/.config/abf-platform'; then ok "D1 mkdir -p of both folders comes before the first cp"; else bad "D1 mkdir -p ~/.config/systemd/user ~/.config/abf-platform before the first cp" "$d1 $d_cppos"; fi
+# D2: the real order of the switch-over; no Ctrl+C advice; a listing command, kill only if something is left
+sw=$(printf '%s\n' "$sec" | sed -n '/^\*\*Switching/,/^\*\*Going back/p')
+if [ -n "$sw" ] && ! hasre "$sec" 'Ctrl\+C|or close it' && hasre "$sw" 'wsl --shutdown' && hasre "$sw" 'already (stopped|gone)|stops them all|stopped every' && has "$sw" "pgrep -af 'abf-platform|abf-station'" && hasre "$sw" 'nothing .*(printed|listed)|prints nothing|no output' && has "$sw" "pkill -f 'abf-platform|abf-station'" && [ "$(lineno 'pgrep' "$sw")" -lt "$(lineno 'pkill' "$sw")" ]; then ok "D2 switch-over: wsl --shutdown already stopped them, list with pgrep, pkill only if something is left"; else bad "D2 switch-over order and commands"; fi
+# D3: going back to starting by hand
+back=$(printf '%s\n' "$sec" | sed -n '/^\*\*Going back/,/^\*\*What this does not do/p')
+if [ -n "$back" ] && has "$back" 'disable --now abf-serve abf-web abf-mcp abf-station@<name>' && has "$back" 'systemd=true' && hasre "$back" 'wsl --shutdown' && has "$back" '-Remove' && has "$back" 'docs/PLATFORM.md' && hasre "$back" '[Rr]emove the (four )?unit files|delete the (four )?unit files|rm ~/.config/systemd/user/abf-'; then ok "D3 going back: disable and remove the four, take systemd=true out, wsl --shutdown, -Remove the task, start as in docs/PLATFORM.md"; else bad "D3 a 'Going back to starting by hand' paragraph is missing or incomplete"; fi
+# D4: several agents
+if hasre "$sec" 'one `station-<name>\.env` (file )?for each agent' && hasre "$sec" 'enable --now abf-station@<second' && hasre "$sec" 'station-lab1\.env' && hasre "$sec" 'station-gcb\.env' && hasre "$sec" '(never|not|no) .*hyphen|hyphen .*(never|not)' && hasre "$sec" 'existing token file|file name need not'; then ok "D4 several agents: one env file and one enable each, two named examples, no hyphen, an existing token file may be reused"; else bad "D4 several agents text"; fi
+# D5: the site connection
+if has "$sec" 'scripts/preflight.sh' && hasre "$sec" 'prints? (the|a) line' && hasre "$sec" 'you (type|enter) the OTP|type the OTP yourself|only you can'; then ok "D5 site connection: scripts/preflight.sh prints the line, you type the OTP"; else bad "D5 how to open the site connection again"; fi
+# D6: what the env files must hold, from what the programs read
+d6=1; for w in 'ABF_STATION_GCP_CREDENTIALS' 'ABF_STATION_UPLOADS' 'JAVA_HOME' 'nextflow' 'gcloud' 'ABF_PLATFORM_DB' 'ABF_PLATFORM_UPLOADS' 'export'; do has "$sec" "$w" || { d6=0; bad "D6 the section names $w"; }; done
+hasre "$sec" '[Gg]o through (every|each)|check every|compare (every|each)' || { d6=0; bad "D6 'compare every export in ~/.bashrc' sentence"; }
+! has "$sec$envex" 'LAB_SETTINGS_FILE' || { d6=0; bad "D6 LAB_SETTINGS_FILE must not be the example"; }
+! hasre "$sec" "where the deployment.s settings" || { d6=0; bad "D6 the misleading 'where the settings file is' example is gone"; }
+for w in 'ABF_STATION_GCP_CREDENTIALS' 'ABF_STATION_UPLOADS' 'JAVA_HOME' '.bashrc'; do has "$envex" "$w" || { d6=0; bad "D6 station.env.example mentions $w"; }; done
+[ "$d6" -eq 1 ] && ok "D6 env files: the variables the programs read, the .bashrc comparison, station.env.example in step"
+# D7: cd before every cp, and the TESTING steps
+if [ -n "$d_cdpos" ] && [ -n "$d_cppos" ] && [ "$d_cdpos" -lt "$d_cppos" ] && [ "$(printf '%s\n' "$sec" | grep -c 'cd <repo')" -ge 2 ]; then ok "D7 cd <repository-folder> before the cp lines and before the script call"; else bad "D7 cd to the repository before every cp deploy/ and the script call" "$d_cdpos $d_cppos"; fi
+t18=$(printf '%s\n' "$tsec" | grep -A3 'TC-018'); t30=$(printf '%s\n' "$tsec" | grep 'TC-030'); t13=$(printf '%s\n' "$tsec" | grep -A3 'TC-013')
+if has "$t18" 'show -p MainPID abf-serve abf-web abf-mcp abf-station@<name>' && hasre "$t18" 'before and after'; then ok "D7 TESTING TC-018: all four process numbers, before and after"; else bad "D7 TESTING TC-018 compares four process numbers before and after"; fi
+if has "$t30" 'abf-platform web' && hasre "$t30" 'already in use|address already'; then ok "D7 TESTING TC-030: the exact command and the error to expect"; else bad "D7 TESTING TC-030 exact command and error"; fi
+if has "$t13" 'wsl --version' && has "$t13" 'loginctl enable-linger' && hasre "$t13" 'you (must|should) see'; then ok "D7 TESTING TC-013 says what each command should show"; else bad "D7 TESTING TC-013 what to see for each command"; fi
+# D8/D9: no false claim about a hidden window; the exact behaviour and the fallbacks
+if ! printf '%s\n%s\n%s\n' "$sec" "$tsec" "$ps1" | grep -iE 'hidden window|in a hidden' | grep . >/dev/null; then ok "D8 nothing claims a hidden window"; else bad "D8 a 'hidden window' claim is still there"; fi
+if hasre "$sec" 'flash' && hasre "$sec" 'minimi[sz]e' && hasre "$sec" '[Rr]eport' && hasre "$tsec" 'minimi[sz]e' && hasre "$tsec" 'report'; then ok "D9 docs: a window may flash; if it stays, minimise it, do not close it, report"; else bad "D9 docs say what to do if a window stays"; fi
+if has "$sec" 'ExecutionPolicy Bypass' && hasre "$sec" 'right-click|right click' && hasre "$sec" 'Run with PowerShell'; then ok "D9 docs: execution-policy fallback (right-click, Run with PowerShell)"; else bad "D9 execution-policy note"; fi
 
 [ "$fails" -eq 0 ]
