@@ -167,6 +167,14 @@ shell：`tests/keepalive_log_test.sh`（K2、K3）：
 10. 深色模式值的來源：`web_board.py` 的 CSS 變數表已有 `--failed`／`--failed-bg` 的亮色（約 211 行：#b0261d／#fae6e3）與深色（約 214 行，`prefers-color-scheme: dark` 區段：#f28b81／#3a1916）；`.linkbar` 用變數名即自動換色，不新增深色區段、不另查 `tokens.json`。（`--lost` 的深色值在 215 行，與本件無關。）TC：深色區段內存在 `--failed` 與 `--failed-bg`，且 `.linkbar` 沒有自帶色碼。
 11. 依賴確認（supervise）：開工前確認 base 已含 mcp-site-connection-status（`site_link`／`site_link_at`、`agents.view` 欄、`on_site.sh --check-master`）；未含則不開工。所有 TC 以該件已合併為前提，出題用其合併後的介面。
 
+## 裁決（lead，11-11 深夜，接全套紅燈兩題）
+1. **不得把 keepalive_log.sh 加進 DAEMON_ALLOW**（該閘門守憲法 I.2『不得有監控常駐程式』，放寬屬 A 級，未獲授權）。改作法：keepalive_log.sh 改成**單次執行**——每呼叫一次只檢查一次連線、追加一行 log，並從 log 最後一筆算 open→closed 的存活分鐘；不得有 while／loop／nohup／sleep 常駐。docs 與 PITFALLS 的使用說明改成『由人手動或既有排程呼叫一次』，不宣稱常駐。TC K2／K3 對應改成單次呼叫的行為（連呼叫兩次、第二次偵測到 closed 時寫 event 行）；先前的 loop 版測試內容改寫，不是刪除。
+2. **TC-009 中文連結列文字改用『分析』，不得含 run**（wording sweep 禁用字，不開例外）；verifier 重寫該 TC 的字串，頁面同一句。推送同一分支。
+
+
+## 裁決（lead，11-12）
+TC-009／034／068／069／073 的合約文字改成與 11-11 深夜裁決一致（單次執行的 keepalive_log.sh、無 loop／nohup／sleep、中文用『分析』）；由 worker 改合約後重驗，通過就推同一分支。
+
 ## 專長守則（backend）
 
 ### executor
@@ -234,12 +242,3 @@ shell：`tests/keepalive_log_test.sh`（K2、K3）：
 - **FAIL**：畫面有範本味（制式 AI 樣板感）；截圖與維護者核可的草稿不一致且報告未說明；impeccable 偵測器的違規未處理。以上三條原本列為「需要人看的事」的範本味，改為判 FAIL。
 - 計畫附有核可草稿時，逐畫面把實跑截圖與草稿並列比對，不一致處逐條列出；沒有草稿可比對則標 UNVERIFIED 並寫明缺什麼。
 - 出題（CONTRACT）加：每個畫面一條「與核可草稿一致」的 TC，一條「通過 impeccable 文字檢查」的 TC。
-
-
-## 裁決（lead，11-11 深夜，接全套紅燈兩題）
-1. **不得把 keepalive_log.sh 加進 DAEMON_ALLOW**（該閘門守憲法 I.2『不得有監控常駐程式』，放寬屬 A 級，未獲授權）。改作法：keepalive_log.sh 改成**單次執行**——每呼叫一次只檢查一次連線、追加一行 log，並從 log 最後一筆算 open→closed 的存活分鐘；不得有 while／loop／nohup／sleep 常駐。docs 與 PITFALLS 的使用說明改成『由人手動或既有排程呼叫一次』，不宣稱常駐。TC K2／K3 對應改成單次呼叫的行為（連呼叫兩次、第二次偵測到 closed 時寫 event 行）；先前的 loop 版測試內容改寫，不是刪除。
-2. **TC-009 中文連結列文字改用『分析』，不得含 run**（wording sweep 禁用字，不開例外）；verifier 重寫該 TC 的字串，頁面同一句。推送同一分支。
-
-
-## 裁決（lead，11-12）
-TC-009／034／068／069／073 的合約文字改成與 11-11 深夜裁決一致（單次執行的 keepalive_log.sh、無 loop／nohup／sleep、中文用『分析』）；由 worker 改合約後重驗，通過就推同一分支。
