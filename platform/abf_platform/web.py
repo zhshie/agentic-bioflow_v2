@@ -107,7 +107,7 @@ LAUNCH_HEADERS = dict(_HEADERS, **{      # /launch alone may show pictures, and 
 FINISHED_HEADERS = dict(_HEADERS, **{      # the finished stage of a succeeded run alone may show pictures, and only our own (the private gallery, mcp-publish-figure-gallery)
     "Content-Security-Policy": _HEADERS["Content-Security-Policy"].replace("style-src", "img-src 'self'; style-src", 1)})
 FIGURE_HEADERS = dict(_HEADERS, **{      # one figure of the gallery: a picture only, whatever the bytes are (sandbox, no script, no framing), never kept by a cache
-    "Cache-Control": "private, no-store", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'"})
+    "Cache-Control": "private, no-store", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"})
 FIGURE_404 = "找不到這張圖 (figure not found)"
 HOME = "/"                  # where a login with no (or a refused) `next` goes: a constant, so there is no open redirect
 
@@ -1119,7 +1119,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if not got.get("found"):
             return PlainTextResponse(FIGURE_404, status_code=404, headers=_HEADERS)
         headers = dict(FIGURE_HEADERS)
-        if request.query_params.get("download") == "1":
+        if request.query_params.get("download") == "1" or (got.get("type") == "svg" and request.headers.get("sec-fetch-dest") == "document"):
             headers["Content-Disposition"] = 'attachment; filename="%s"' % got["name"]      # a name the gallery holds: letters, digits, dot, underscore, hyphen
         return Response(got["data"], media_type=got["mime"], headers=headers)
 
