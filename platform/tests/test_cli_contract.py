@@ -132,6 +132,10 @@ MATRIX = dict([
     leaf("forget", ["forget"], no_happy="asks y/n on a real terminal; a test has none", fail=([], ["forget", "r1"])),
     leaf("launches", ["launches", "--bogus"], happy=([], ["launches"]), no_fail="listing cannot be refused"),
     leaf("fetch-records", ["fetch-records"], no_happy="asks a live agent to read a site; no agent runs in a test", fail=([], ["fetch-records", "r1"])),
+    leaf("studio-connect", ["studio-connect"], no_happy="the token is typed at a hidden prompt or read from standard input, and the check connects to a platform; a test has neither (test_studio_remote.py covers it)",
+         no_fail="its refusals exit 2 (an address or token that cannot be used) or 3 (no connection), which this matrix does not take as failures (test_studio_remote.py covers them)"),
+    leaf("fetch-results", ["fetch-results"], no_happy="it reads a platform over the network and writes a folder on the computer it runs on; a test has no platform (test_studio_cli.py covers it with fakes)",
+         no_fail="its refusals exit 2 (not set up, and the settings file is the computer's own) or 3 (no connection), which this matrix does not take as failures (test_studio_remote.py covers them)"),
 ])
 
 
@@ -166,7 +170,7 @@ def test_every_leaf_is_in_the_matrix():
         assert bool(row["happy"]) != bool(row["no_happy"]), path
         assert bool(row["fail"]) != bool(row["no_fail"]), path
     # the launch commands are in it as well
-    assert {"launch", "cancel", "forget", "resume", "relaunch", "launches", "fetch-records"} <= set(MATRIX)
+    assert {"launch", "cancel", "forget", "resume", "relaunch", "launches", "fetch-records", "studio-connect", "fetch-results"} <= set(MATRIX)
 
 
 @pytest.mark.parametrize("path", sorted(MATRIX))

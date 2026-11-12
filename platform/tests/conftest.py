@@ -53,3 +53,14 @@ def e2e_cfg2():
     if not launcher:
         pytest.fail("the end-to-end tests of the launch path need the second pinned Nextflow: run them through tests/platform_test.sh")
     return {"launcher": launcher, "home": os.environ["ABF_NXF2_HOME"], "ver": os.environ["ABF_NXF2_VER"]}
+
+
+@pytest.fixture
+def short_tmp():
+    """A short fixed base folder (about 14 characters), for tests whose result depends on the length of a path inside it
+    (a unix socket path is limited to about 104 characters; a detail is clipped at 300). pytest's own tmp_path gets longer on a retry."""
+    import shutil
+    import tempfile
+    d = Path(tempfile.mkdtemp(prefix="abf-", dir="/tmp" if os.path.isdir("/tmp") else None))
+    yield d
+    shutil.rmtree(str(d), ignore_errors=True)

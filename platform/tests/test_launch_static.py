@@ -136,8 +136,36 @@ def test_the_one_waiting_loop_of_the_terminal_commands_is_pinned_in_place_and_in
     assert re.search(r"end = time\.time\(\) \+ _grace\(\)", text) and "time.sleep(0.25)" in text
 
 
+# The two user-side commands of cli-fetch-publish-figure: each file may call asyncio.sleep exactly where and as often as listed here (the functions that call it),
+# not anywhere else in the file. studio_cli._ask asks again every 2 seconds while a tool says `loading`; studio_remote._Session._run waits out a retry.
+PINNED_SLEEPS = {"studio_cli.py": ["_ask"], "studio_remote.py": ["_run"]}
+
+
+def _sleep_callers(path):
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    callers = []
+    for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        for n in ast.walk(fn):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "sleep":
+                callers.append(fn.name)
+    return sorted(callers)
+
+
+def test_the_user_side_commands_sleep_only_where_and_as_often_as_pinned():
+    for name, expected in PINNED_SLEEPS.items():
+        path = PLATFORM_DIR / "abf_platform" / name
+        # a function that holds the sleep is counted once per call, and an enclosing function counts the calls of the ones inside it too: `_run` is one method
+        found = _sleep_callers(path)
+        assert sorted(set(found)) == sorted(expected) and len(found) == len(expected), (name, found)
+        text = path.read_text(encoding="utf-8")
+        assert len(re.findall(r"\basyncio\.sleep\(", text)) == len(expected), name
+        assert not re.search(r"\btime\.sleep\(", text), name
+
+
 def test_nothing_else_in_the_new_code_sleeps_or_waits_in_a_loop():
     for p in code_files():
+        if p.name in PINNED_SLEEPS:        # pinned one by one in the test above, not exempted
+            continue
         if p.parent.name == "abf_launch" or p.name in ("agent.py", "agents.py", "jobs.py", "site.py"):  # the 007 poll loops
             continue
         text = "".join(l + "\n" for _, l in real_lines(p))
