@@ -256,19 +256,6 @@ def test_bundle_size_cap_and_message(w):
     assert small["state"] == "pending"
 
 
-def test_confirmed_row_keeps_bundle_until_forget(w):
-    # TC-071, TC-083
-    from abf_platform import confirm
-    ann = w.user("ann")
-    run = seed(w, "r1", "succeeded", ann)
-    got = call(w, ann, run, [fig()])
-    press(w, "ann", got["request_id"])
-    assert rows(w)[0]["bundle_json"] and "content_base64" in rows(w)[0]["bundle_json"]
-    confirm.forget_content(w.ip.state_db, "r1")
-    assert not rows(w)[0]["bundle_json"]
-    assert (gallery(w, ann, run) / "a.png").read_bytes() == PNG
-
-
 def test_unsent_content_is_cleared_after_the_keep_time(w):
     # TC-072
     from abf_platform import confirm
@@ -296,7 +283,7 @@ def test_confirm_page_for_publish_figure(w):
     assert csrf_of(zh) and "a.png" in zh and "b.png" in zh and "覆蓋既有同名圖" in zh and "line19" in zh and "line20" not in zh and "31" in zh
     assert "&lt;script&gt;" in zh and "<script>" not in zh
     assert "<img" not in zh and "data:" not in zh and "style=" not in zh and not re.search(r"(?:src|href)=\"https?://", zh)
-    assert "⚠" in zh or "✓" in zh or "!" in zh or "待" in zh
+    assert re.search(r"<button[^>]*>\s*送出\s*</button>", zh) and re.search(r"<details open><summary>[^<]+</summary>", zh)      # TC-054: the state is in words, see test_confirm_page_states_say_it_in_words
     en = c.get("/c/" + got["request_id"] + "?lang=en").text
     assert "Confirm adding figures" in en and "Send" in en and not re.search(r"[　-鿿＀-￯]", en.split("<body", 1)[1])
     # another person, wrong CSRF
@@ -323,21 +310,6 @@ def test_confirm_page_times_out_with_410(w):
     w.clock.t += confirm.PENDING_SECONDS + 5
     r = c.post("/c/" + got["request_id"], data={"csrf": token})
     assert r.status_code == 410 and no_files(w, ann, run)
-
-
-def test_page_headers_and_css_are_unchanged(w):
-    # TC-052
-    from abf_platform import web
-    src = (Path(web.__file__)).read_text(encoding="utf-8")
-    base = subprocess.run(["git", "show", "origin/v3:platform/abf_platform/web.py"], capture_output=True, cwd=str(Path(web.__file__).parent), check=False)
-    if base.returncode == 0:
-        old = base.stdout.decode("utf-8")
-        for name in ("_HEADERS", "LAUNCH_HEADERS", "CSS_SHA256"):
-            m_old = re.search(r"^%s\s*=.*?(?=^\S)" % name, old, re.M | re.S)
-            m_new = re.search(r"^%s\s*=.*?(?=^\S)" % name, src, re.M | re.S)
-            assert (m_old and m_old.group(0)) == (m_new and m_new.group(0)), name
-        routes = lambda t: sorted(re.findall(r"@app\.route\(\"([^\"]+)\"|Route\(\"([^\"]+)\"", t))
-        assert routes(old) == routes(src)
 
 
 # ---- the database --------------------------------------------------------------------------------------------------------------------
@@ -431,3 +403,341 @@ def test_constitution_untouched():
     if r.returncode != 0:
         pytest.skip("no origin/v3 here")
     assert r.stdout == b""
+
+
+# ==== fix round: F4 (the database does not grow), F5 (a failed overwrite is undone), F6 (the yes re-checks), F2 (missing or weak tests), F3 ====
+
+import hashlib
+import os
+
+from test_publish_figure import JPEG, SVG_OK
+
+
+def stripped(row):
+    """The bundle of a row: no image bytes in it, the facts of every figure still there."""
+    assert row["bundle_json"] and "content_base64" not in row["bundle_json"]
+    figs = json.loads(row["bundle_json"])["figures"]
+    assert all({"name", "type", "size", "sha256", "caption"} <= set(f) for f in figs)
+    return figs
+
+
+def test_confirmed_row_keeps_bundle_until_forget(w):
+    # TC-071 as the ruling F4 changes it (the lead names this rewrite): confirmed means the bytes are dropped, the metadata stays, the gallery files stay
+    from abf_platform import confirm
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    got = call(w, ann, run, [fig(caption="c1")])
+    assert "content_base64" in rows(w)[0]["bundle_json"]          # a pending request holds them: the person is shown, and the write needs them
+    press(w, "ann", got["request_id"])
+    row = rows(w)[0]
+    figs = stripped(row)
+    assert figs[0]["name"] == "a.png" and figs[0]["size"] == len(PNG) and figs[0]["sha256"] == hashlib.sha256(PNG).hexdigest() and figs[0]["caption"] == "c1"
+    assert row["sha256"] and row["state"] == "confirmed"
+    assert (gallery(w, ann, run) / "a.png").read_bytes() == PNG
+    confirm.forget_content(w.ip.state_db, "r1")
+    assert not rows(w)[0]["bundle_json"] and (gallery(w, ann, run) / "a.png").read_bytes() == PNG
+
+
+def test_f4_void_and_expired_rows_lose_their_bytes_and_a_failed_write_at_once(w, monkeypatch):
+    # ruling F4 (adversarial review 1): a declined, an expired and a failed request must not keep the images
+    from abf_platform import confirm
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    tool_json(w.call("publish_figure", mcp_args(run, [fig("v.png")]), caller=ann, answer=form_answer("decline")))
+    call(w, ann, run, [fig("e.png")])
+    got = call(w, ann, run, [fig("f.png")])
+    real = os.replace
+
+    def boom(a, b):
+        raise OSError("disk")
+    monkeypatch.setattr(figures.os, "replace", boom)
+    press(w, "ann", got["request_id"])
+    monkeypatch.setattr(figures.os, "replace", real)
+    failed = [r for r in rows(w) if r["id"] == got["request_id"]][0]
+    assert failed["state"] == "void"
+    stripped(failed)                                                 # at once, without waiting for the next request
+    w.clock.t += confirm.PENDING_SECONDS + 5
+    fresh = call(w, ann, run, [fig("n.png")])                         # the same person's next request sweeps
+    for r in rows(w):
+        if r["id"] == fresh["request_id"]:
+            assert "content_base64" in r["bundle_json"]               # the one that is open keeps them
+        else:
+            stripped(r)
+
+
+def test_f4_pending_content_per_person_is_capped_at_twenty_mib(w):
+    # ruling F4: a constant of 20 MiB; more than that waiting is refused with the reason
+    from abf_platform import confirm
+    from abf_platform.actions import figures
+    assert figures.MAX_PENDING_BYTES == 20 * 1024 * 1024
+    ann, bob = w.user("ann"), w.user("bob")
+    run, bob_run = seed(w, "r1", "succeeded", ann), seed(w, "r2", "succeeded", bob)
+
+    def big(i):
+        return fig("b%d.png" % i, PNG + bytes([i]) * (3 * 1024 * 1024 + 512 * 1024), code="")
+    first = [call(w, ann, run, [big(i)]) for i in range(4)]
+    assert [x["state"] for x in first] == ["pending"] * 4
+    assert call(w, ann, run, [big(0)])["request_id"] == first[0]["request_id"]           # the same content again is the same request, not more bytes
+    over = call(w, ann, run, [big(4)])
+    assert over["state"] == "refused" and "20 MB" in over["reason"] and len(rows(w)) == 4
+    assert call(w, bob, bob_run, [big(5)])["state"] == "pending"                          # somebody else's waiting requests are not counted
+    w.clock.t += confirm.PENDING_SECONDS + 5
+    assert call(w, ann, run, [big(4)])["state"] == "pending"                              # the expired ones do not count
+
+
+def test_f4_replaying_a_finished_confirmed_call_says_done(w):
+    # ruling F4 (adversarial review 7): `replaces` changes once the gallery has the name; the replay must still be recognised
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    args = mcp_args(run, [fig("a.png", code="print(2)\n")])      # a name the gallery does not have yet: the screen says nothing is replaced, and after the write the gallery has it
+    rid = tool_json(w.call("publish_figure", args, caller=ann))["request_id"]
+    confirmed = dict(args, request_id=rid, user_confirmed=True)
+    assert tool_json(w.call("publish_figure", confirmed, caller=ann))["state"] == "ok"
+    again = tool_json(w.call("publish_figure", confirmed, caller=ann))
+    assert again["state"] == "ok" and "已存入圖庫" in again["message"] and "內容" not in again["message"].split("(")[0]
+    assert [r["state"] for r in rows(w)] == ["confirmed", "confirmed"]
+    # a replay with other content is still refused
+    assert tool_json(w.call("publish_figure", dict(confirmed, figures=[fig("a.png", code="print(3)\n")]), caller=ann))["state"] == "refused"
+
+
+@pytest.mark.parametrize("target", ["a.png", "a.png.code.txt", "a.png.params.txt", "index.json"])
+def test_f5_a_failed_overwrite_puts_every_old_byte_back(w, monkeypatch, target):
+    # ruling F5 (adversarial review 3): the page said nothing was stored while a.png already held the new bytes
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    press(w, "ann", call(w, ann, run, [fig("a.png", code="old code\n", params="old=1"), fig("keep.png")])["request_id"])
+    folder = gallery(w, ann, run)
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+    got = call(w, ann, run, [fig("a.png", PNG + b"\x09" * 5, code="new code\n", params="new=2")])
+    real = os.replace
+
+    def boom(src, dst):
+        if os.path.basename(dst) == target:
+            raise OSError("disk full")
+        return real(src, dst)
+    monkeypatch.setattr(figures.os, "replace", boom)
+    c, r = press(w, "ann", got["request_id"])
+    assert r.status_code == 500 and "沒有任何圖被存入" in r.text
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
+    assert [x["state"] for x in rows(w) if x["id"] == got["request_id"]] == ["void"]
+
+
+def test_f5_a_failed_first_write_leaves_no_folder_content(w, monkeypatch):
+    # ruling F5: the same for a gallery that did not exist: nothing is left, index.json included
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    got = call(w, ann, run, [fig("a.png"), fig("b.png")])
+    real = os.replace
+    monkeypatch.setattr(figures.os, "replace", lambda s, d: (_ for _ in ()).throw(OSError("x")) if d.endswith("index.json") else real(s, d))
+    press(w, "ann", got["request_id"])
+    assert no_files(w, ann, run)
+
+
+def test_f6_case_variants_approved_in_turn_only_the_first_lands(w):
+    # ruling F6 (adversarial review 4): Fig.png, fig.png, Fig.png asked while the gallery was empty, then approved one after the other
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    one = call(w, ann, run, [fig("Fig.png", PNG + b"1", caption="one", code="")])
+    two = call(w, ann, run, [fig("fig.png", PNG + b"2", caption="two", code="")])
+    three = call(w, ann, run, [fig("Fig.png", PNG + b"3", caption="three", code="")])
+    outcomes = [press(w, "ann", x["request_id"])[1] for x in (one, two, three)]
+    assert outcomes[0].status_code == 200 and outcomes[1].status_code == 409 and outcomes[2].status_code == 409
+    folder = gallery(w, ann, run)
+    idx = json.loads((folder / "index.json").read_text())
+    assert sorted(idx["figures"]) == ["Fig.png"] and idx["figures"]["Fig.png"]["caption"] == "one"
+    assert (folder / "Fig.png").read_bytes() == PNG + b"1" and sorted(p.name for p in folder.iterdir()) == ["Fig.png", "Fig.png.params.txt", "index.json"]
+    assert not (folder / "fig.png").exists()
+    states = {x["id"]: x["state"] for x in rows(w)}
+    assert [states[x["request_id"]] for x in (one, two, three)] == ["confirmed", "void", "void"]
+
+
+def test_f6_a_request_that_did_not_say_replaces_does_not_replace(w):
+    # ruling F6: the screen of the second request said nothing is replaced; if the gallery got the name meanwhile, nothing is written
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    first = call(w, ann, run, [fig("a.png", PNG + b"1")])
+    second = call(w, ann, run, [fig("a.png", PNG + b"2")])
+    assert "覆蓋" not in second["summary"]
+    press(w, "ann", first["request_id"])
+    c, r = press(w, "ann", second["request_id"])
+    assert r.status_code == 409 and (gallery(w, ann, run) / "a.png").read_bytes() == PNG + b"1"
+    # and a request that said replaces still replaces
+    third = call(w, ann, run, [fig("a.png", PNG + b"3")])
+    assert "覆蓋" in third["summary"]
+    press(w, "ann", third["request_id"])
+    assert (gallery(w, ann, run) / "a.png").read_bytes() == PNG + b"3"
+
+
+# ---- F2 (the contract's cases that were missing or could not fail) ---------------------------------------------------------------------
+
+def test_a_token_is_not_a_yes(w):
+    # TC-008: a bearer token, the csrf of the page, the address of the page, a prefix of the id: none of them says yes
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    args = mcp_args(run, [fig()])
+    rid = tool_json(w.call("publish_figure", args, caller=ann))["request_id"]
+    csrf = csrf_of(logged_in(w, "ann").get("/c/" + rid).text)
+    for fake in ("Bearer abf_pat_" + "a" * 20, csrf, "/c/" + rid, rid[:16], rid.upper(), rid + "x"):
+        got = tool_json(w.call("publish_figure", dict(args, request_id=fake, user_confirmed=True), caller=ann))
+        assert got["state"] == "refused", fake
+    try:
+        w.call("publish_figure", dict(args, token="abf_pat_" + "b" * 20, user_confirmed=True), caller=ann)
+    except Exception:
+        pass                                  # an argument that does not exist may be turned down by the schema itself
+    assert [r["state"] for r in rows(w)] == ["pending"] and no_files(w, ann, run)
+
+
+def test_confirmation_channel_is_never_terminal_and_the_form_is_the_only_form(w):
+    # TC-009 (second half): the three channels are the ones the page shows
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    tool_json(w.call("publish_figure", mcp_args(run, [fig()]), caller=ann, answer=form_answer()))
+    assert [r["channel"] for r in rows(w)] == ["ELICITED"]
+
+
+def test_bundle_size_limit_to_the_byte(w):
+    # TC-037, TC-038: a bundle whose bundle_json is exactly 5 MiB is taken; one byte more is refused with the limit and the size
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    raw = 3 * ((figures.MAX_BUNDLE_BYTES - 60000) // 4)
+    data = PNG + b"\0" * (raw - len(PNG))
+    probe = call(w, ann, run, [fig("a.png", data, code="", params="")])
+    assert probe["state"] == "pending"
+    base = len([r for r in rows(w) if r["id"] == probe["request_id"]][0]["bundle_json"].encode())
+    pad = figures.MAX_BUNDLE_BYTES - base
+    assert 0 < pad < figures.MAX_CODE_BYTES
+    exact = call(w, ann, run, [fig("a.png", data, code="x" * pad, params="")])
+    assert exact["state"] == "pending"
+    assert len([r for r in rows(w) if r["id"] == exact["request_id"]][0]["bundle_json"].encode()) == figures.MAX_BUNDLE_BYTES
+    over = call(w, ann, run, [fig("a.png", data, code="x" * (pad + 1), params="")])
+    assert over["state"] == "refused" and "5 MB" in over["reason"] and "目前" in over["reason"] and "the figures together exceed the 5 MB limit" in over["reason"]
+
+
+def test_confirm_page_states_say_it_in_words(w):
+    # TC-054: pending, success, expired and failed pages each say their state in words (the same way the pages of the other kinds do: a
+    # line of text with the class ok or bad), so that the colour of the class is never the only carrier of it
+    from abf_platform import confirm
+    from abf_platform.actions import figures
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+
+    def status_lines(html):
+        return [re.sub(r"<[^>]+>", "", m.group(2)).strip() for m in re.finditer(r'<p class="(ok|bad)">(.*?)</p>', html, re.S)]
+    pending = call(w, ann, run, [fig("p.png")])
+    c = logged_in(w, "ann", w.web(clock=w.clock))
+    for lang, send in (("", "送出"), ("?lang=en", "Send")):
+        page = c.get("/c/" + pending["request_id"] + lang).text
+        assert re.search(r"<button[^>]*>\s*%s\s*</button>" % send, page) and re.search(r"<p>[^<]{10,}</p>", page)
+    done = c.post("/c/" + pending["request_id"], data={"csrf": csrf_of(c.get("/c/" + pending["request_id"]).text)}).text
+    assert any("已存入圖庫 1 張" in s for s in status_lines(done))
+    done_en = c.get("/c/" + pending["request_id"] + "?lang=en").text
+    assert any(s.startswith("Added 1 figures") for s in status_lines(done_en))
+    old = call(w, ann, run, [fig("o.png")])
+    csrf = csrf_of(c.get("/c/" + old["request_id"]).text)
+    w.clock.t += confirm.PENDING_SECONDS + 5
+    gone = c.post("/c/" + old["request_id"], data={"csrf": csrf})
+    assert gone.status_code == 410 and any("逾時" in s for s in status_lines(gone.text))
+    en_gone = c.get("/c/" + old["request_id"] + "?lang=en").text
+    assert any("expired" in s for s in status_lines(en_gone))
+    w.clock.t -= confirm.PENDING_SECONDS + 5
+    bad = call(w, ann, run, [fig("x.png", PNG + b"x")])
+    csrf = csrf_of(c.get("/c/" + bad["request_id"]).text)
+    real = figures.os.replace
+    figures.os.replace = lambda a, b: (_ for _ in ()).throw(OSError("no"))
+    try:
+        failed = c.post("/c/" + bad["request_id"], data={"csrf": csrf})
+    finally:
+        figures.os.replace = real
+    assert failed.status_code == 500 and any("未存入" in s for s in status_lines(failed.text))
+    en_void = c.get("/c/" + bad["request_id"] + "?lang=en").text
+    assert any("voided" in s for s in status_lines(en_void))
+
+
+def test_page_headers_and_css_are_unchanged(w):
+    # TC-052 (a missing origin/v3 is a skip with its reason, never a silent pass)
+    from abf_platform import web
+    try:
+        base = subprocess.run(["git", "show", "origin/v3:platform/abf_platform/web.py"], capture_output=True, cwd=str(Path(web.__file__).parent))
+    except OSError as e:
+        pytest.skip("git is not available here: %s" % e)
+    if base.returncode != 0:
+        pytest.skip("origin/v3 is not there, so the old web.py cannot be compared: " + base.stderr.decode("utf-8", "replace")[:200])
+    old, src = base.stdout.decode("utf-8"), Path(web.__file__).read_text(encoding="utf-8")
+    for name in ("_HEADERS", "LAUNCH_HEADERS"):
+        pat = r"^%s\s*=.*?(?=^\S)" % name
+        m_old, m_new = re.search(pat, old, re.M | re.S), re.search(pat, src, re.M | re.S)
+        assert m_old and m_new, name + " is not found, so nothing was compared"
+        assert m_old.group(0) == m_new.group(0), name
+    routes = lambda t: sorted(re.findall(r"@app\.route\(\"([^\"]+)\"|Route\(\"([^\"]+)\"", t))
+    assert routes(src) and routes(old) == routes(src)
+    # the stylesheet (and so the sha256 the CSP names) lives in web_board.py: that file is not touched at all
+    board = subprocess.run(["git", "diff", "--stat", "origin/v3", "--", "platform/abf_platform/web_board.py"], capture_output=True, cwd=str(Path(web.__file__).parent))
+    assert board.returncode == 0 and board.stdout == b""
+
+
+def test_responses_and_logs_carry_no_secret_path_or_trace(w, monkeypatch, caplog, capsys):
+    # TC-095: a refusal, an expiry and a failed write; what the person and the log are told holds no token, csrf, password, path, stack or SQL
+    from abf_platform import confirm, store
+    from abf_platform.actions import figures
+    caplog.set_level(0)
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    texts = [call(w, ann, run, [fig("../x.png")])["reason"]]
+    c = logged_in(w, "ann", w.web(clock=w.clock))
+    csrfs = []
+    expiring = call(w, ann, run, [fig("e.png")])
+    csrfs.append(csrf_of(c.get("/c/" + expiring["request_id"]).text))
+    w.clock.t += confirm.PENDING_SECONDS + 5
+    texts.append(c.post("/c/" + expiring["request_id"], data={"csrf": csrfs[-1]}).text)
+    w.clock.t -= confirm.PENDING_SECONDS + 5
+    bad = call(w, ann, run, [fig("w.png", PNG + b"w")])
+    csrfs.append(csrf_of(c.get("/c/" + bad["request_id"]).text))
+    monkeypatch.setattr(figures.os, "replace", lambda a, b: (_ for _ in ()).throw(OSError("/secret/place failed")))
+    texts.append(c.post("/c/" + bad["request_id"], data={"csrf": csrfs[-1]}).text)
+    texts.append([r for r in rows(w) if r["id"] == bad["request_id"]][0]["void_reason"] or "")
+    everything = "\n".join(texts) + caplog.text + capsys.readouterr().out + capsys.readouterr().err
+    root = str(store.figures_root(w.ip.state_db))
+    for secret in [x for x in csrfs if x] + ["correct horse battery", root, "/secret", "Traceback", "OSError", "sqlite", "SELECT ", "INSERT "]:
+        assert secret not in everything, secret
+
+
+def test_documents_describe_the_tool(w):
+    # TC-096
+    repo = Path(__file__).resolve().parents[2]
+    platform_md = (repo / "docs" / "PLATFORM.md").read_text(encoding="utf-8")
+    testing_md = (repo / "docs" / "TESTING.md").read_text(encoding="utf-8")
+    changelog = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "Twenty-three tools" in platform_md and "publish_figure" in platform_md and "NO_JOB_KINDS" in platform_md and "index.json" in platform_md
+    i = platform_md.index("`publish_figure` (mcp-publish-figure, slice 1)")
+    para = platform_md[i:i + 4000].split("\n", 1)[0]
+    assert "confirmation" in para or "presses 送出" in para
+    assert "confirmed" in para and "dropped" in para            # F4: what the row keeps now
+    j = testing_md.index("publish_figure")
+    steps = testing_md[j:j + 4000]
+    assert "<script" in steps and "送出" in steps and ("10 分鐘" in steps or "10 minutes" in steps)      # F8: not pressing for ten minutes writes nothing
+    assert "mcp-publish-figure" in changelog
+
+
+def test_migration_run_twice_gives_the_same_result(tmp_path):
+    # F3 (ruling): opening a migrated database again changes nothing
+    from abf_platform import store
+    import test_cleanup_store as t
+    db = _old_db(tmp_path)
+    con = store.connect_state(db)
+    con.close()
+    first = sqlite3.connect(str(db))
+    schema_1 = first.execute("SELECT type, name, sql FROM sqlite_master ORDER BY type, name").fetchall()
+    data_1 = {n: first.execute("SELECT * FROM %s" % n).fetchall() for n in ("confirmations", "jobs")}
+    first.close()
+    con = store.connect_state(db)
+    assert con.execute("PRAGMA foreign_key_check").fetchall() == []
+    con.close()
+    second = sqlite3.connect(str(db))
+    assert second.execute("SELECT type, name, sql FROM sqlite_master ORDER BY type, name").fetchall() == schema_1
+    assert {n: second.execute("SELECT * FROM %s" % n).fetchall() for n in ("confirmations", "jobs")} == data_1
+    assert "publish_figure" in t.check_of(second, "confirmations")
+    second.close()
