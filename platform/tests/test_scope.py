@@ -8,6 +8,7 @@ so the same rules run here.
 import re
 import subprocess
 import time
+import ast
 from pathlib import Path
 
 from helpers import PLATFORM_DIR, REPO_ROOT
@@ -196,3 +197,38 @@ def test_tc061_no_ssh_no_scheduler_no_outgoing_connection_in_the_source():
                 if re.search(pat, line):
                     hits.append("%s:%d %s" % (f.name, n, line.strip()))
     assert hits == []
+
+
+# The one file of the package that may import an HTTP client or the MCP client: the user-side connection of cli-fetch-publish-figure (studio-connect, fetch-results).
+# It reaches the platform's public address as a client, from a user's own computer; nothing else in the package makes an outgoing connection.
+NETWORK_CLIENT_EXEMPT = {"studio_remote.py": "the user-side connection (cli-fetch-publish-figure): the MCP client to the platform's own public address"}
+
+
+def network_client_imports(source):
+    """The (line, module) of every import of httpx, httpx2, requests-style clients or the MCP client in `source`, in both `import x` and `from x import y`
+    spellings; the server side of the MCP package (mcp.server, mcp.shared) is not a client."""
+    hits = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            pairs = [(node.lineno, a.name, ()) for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            pairs = [(node.lineno, node.module or "", tuple(a.name for a in node.names))]
+        else:
+            continue
+        for line, module, names in pairs:
+            top = module.split(".")[0]
+            if top in ("httpx", "httpx2", "aiohttp", "requests") or module.startswith("mcp.client") or (module == "mcp" and set(names) & {"Client", "ClientSession"}):
+                hits.append((line, module))
+    return hits
+
+
+def test_tc061_only_the_named_file_imports_an_http_or_mcp_client():
+    # TC-061 (the import half, both spellings)
+    assert network_client_imports("import httpx\nimport httpx2 as h") == [(1, "httpx"), (2, "httpx2")]
+    assert network_client_imports("from httpx2 import AsyncClient\nfrom mcp.client.streamable_http import x\nfrom mcp import Client") == \
+        [(1, "httpx2"), (2, "mcp.client.streamable_http"), (3, "mcp")]
+    assert network_client_imports("from mcp.server.auth import provider") == []
+    hits = [(f.name, h) for f in _sources() if f.name not in NETWORK_CLIENT_EXEMPT for h in network_client_imports(f.read_text(encoding="utf-8"))]
+    assert hits == []
+    for name, reason in NETWORK_CLIENT_EXEMPT.items():
+        assert reason and (PKG / name).is_file()
