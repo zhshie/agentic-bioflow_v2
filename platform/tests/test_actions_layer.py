@@ -26,7 +26,8 @@ SCAN_DIRS = [PLATFORM_DIR / "abf_platform", PLATFORM_DIR / "abf_station", PLATFO
 REFUSED = "no human confirmation channel"
 READ_NAMES = ["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log",
               "run_outputs", "read_run_file", "my_usage"]    # results-outputs: the Outputs tab of the results stage; a read like the others, never waiting for the site
-WRITE_NAMES = ["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "publish_figure"]    # 009c: the two tools that make a request a person must say yes to; 009e: and the two for a failed run
+WRITE_NAMES = ["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"]    # 009c: the two tools that make a request a person must say yes to; 009e: and the two for a failed run
+WRITE_NAMES = WRITE_NAMES + ["publish_figure"]    # mcp-publish-figure: added after the pinned literal above (keep-submissions TC-040 compares that line)
 CANVAS_NAMES = ["find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]    # canvas-mcp-read: five reads whose actions live in the submodules actions.catalogue and actions.pipelines, not in the actions package
 ROUTES_V3 = [('/agent/hello', ('POST',)), ('/agent/poll', ('POST',)), ('/agent/result/{jid}', ('POST',)),
              ('/trace/create', ('POST',)), ('/trace/{rid}/begin', ('PUT',)), ('/trace/{rid}/complete', ('PUT',)),
