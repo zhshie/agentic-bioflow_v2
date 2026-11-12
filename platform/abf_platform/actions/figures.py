@@ -485,6 +485,7 @@ def _commit(folder, built, bundle, rid, now):
 
 MIME = {"png": "image/png", "svg": "image/svg+xml", "jpg": "image/jpeg"}
 NAME_LIMIT = 80
+NAMES_LIMIT = 100
 
 
 def _refused(reason, message, found=True, **more):
@@ -619,11 +620,14 @@ def _clean_names(names):
     """(distinct names in the order given, None, None), or (None, reason, the offending name) when the list is not one."""
     if isinstance(names, (str, bytes)) or not isinstance(names, (list, tuple, set, frozenset)):
         return None, "bad_name", ""
-    out = []
+    if len(names) > NAMES_LIMIT:        # before anything is looked at one by one (the same ceiling as the page's form fields)
+        return None, "too_many", ""
+    out, seen = [], set()
     for n in names:
         if not isinstance(n, str) or not n or len(n) > NAME_LIMIT or any(ord(c) < 32 or ord(c) == 127 for c in n):
             return None, "bad_name", n[:NAME_LIMIT] if isinstance(n, str) else ""
-        if n not in out:
+        if n not in seen:
+            seen.add(n)
             out.append(n)
     if len(out) > MAX_PER_RUN:
         return None, "too_many", ""
@@ -715,8 +719,7 @@ def _delete_figure(index_path, platform_path, run_id, name, *, caller, _folder=N
 # created time, the request that stored it, and whether it is packed). At the yes the gallery is read again under its lock; if it is not as it was
 # shown, nothing is written. The write itself is slice 2's pack_figures / delete_figure, called inside that same hold of the lock.
 
-CHANGED_MESSAGE = ("圖庫已變動，與當初給本人看的不同，沒有變更任何內容，請重新提出 (the gallery has changed since the question was asked; nothing was changed, "
-                   "please propose again)")
+CHANGED_MESSAGE = ("圖庫已變動，這次確認沒有變更任何內容，請重新提出 (the gallery has changed; this confirmation changed nothing, please propose again)")
 UNREADABLE_MESSAGE = "圖庫目前暫時無法讀取，沒有變更任何內容，請聯絡平台管理者 (the gallery cannot be read right now; nothing was changed, tell the platform administrator)"
 GONE_MESSAGE = "找不到這個分析的圖庫，沒有變更任何內容，請確認分析後重新提出 (the gallery of this run was not found; nothing was changed, check the run and propose again)"
 ONE_AT_A_TIME = "一次只能刪除一張圖，請分開提出 (delete one figure at a time; propose each separately)"

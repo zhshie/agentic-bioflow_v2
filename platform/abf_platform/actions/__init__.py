@@ -1508,6 +1508,15 @@ def _chat_refusal(status, tool):
     return "未送出：平台沒有接受這次確認。%s。" % again
 
 
+ALREADY_DONE = ("這筆申請先前已經確認並執行過；圖庫目前的狀態請重新查詢 (this request was already confirmed and carried out earlier; "
+                "look at the gallery again for how it stands now)")
+
+
+def _already_done(kind, request_id):
+    """A gallery_change whose id is used again: say only that, never repeat what was done then (the id is not a way to read the gallery)."""
+    return {"ok": True, "sent": False, "state": "ok", "request_id": request_id, "url": None, "message": ALREADY_DONE}
+
+
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None, request_id=None,
                user_confirmed=False, done=None):
     """The yes of a person for a bundle that is built and checked: through the form, else by the page, else (CHAT) the person's own
@@ -1525,7 +1534,7 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
                                         expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=_writer_for(kind))
         except confirm.NotApproved as e:
             if e.status == "already":
-                return done(request_id) if done else _queued(request_id, e.job_id, what)
+                return _already_done(kind, request_id) if kind == "gallery_change" else (done(request_id) if done else _queued(request_id, e.job_id, what))
             if kind == "gallery_change" and e.status in ("failed", "write_failed"):      # the writer says why in its own words: the gallery changed, or could not be read or written
                 return _no("未送出：%s" % e)
             return _no(_chat_refusal(e.status, tool))
@@ -1554,7 +1563,7 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
                 _, job_id = confirm.approve(platform_path, rid, ELICITED.name, caller_id, clock, writer=_writer_for(kind))
             except confirm.NotApproved as e:
                 if e.status == "already":
-                    return done(rid) if done else _queued(rid, e.job_id, what)
+                    return _already_done(kind, rid) if kind == "gallery_change" else (done(rid) if done else _queued(rid, e.job_id, what))
                 return _no("未送出：%s。請從 AI 重新送出 (nothing was queued; send it again from the AI)" % e)
             return done(rid) if done else _queued(rid, job_id, what)
         if caller is None:         # the client claims forms but this call cannot show one, and there is nobody to log in

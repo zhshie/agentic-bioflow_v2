@@ -170,3 +170,18 @@ TC-113, TC-114 and TC-115 need a running platform, an MCP client and the maintai
 
 - New in this slice (`test_gallery_change.py`, `test_gallery_change_confirm.py`, `test_gallery_change_page.py`, the new tests of `test_cleanup_store.py`): all pass in WSL.
 - Local full platform run (`python3 -m pytest tests`, WSL, serial, 20 minutes) before the last fixes: 3643 passed, 15 failed, 24 errors; the failures and errors are in the packaging/wheel tests (`test_station_packaging`, `test_su_packaged`, `test_guidance` wheel copy, two of `test_station_envs`, `test_cli` tc035) and in the Nextflow end-to-end tests (`test_nextflow_e2e`, `test_launch_nextflow`, `test_launch_e2e` tc034), which need a wheel build and a Nextflow install that this WSL does not have. The verdict that counts is the CI of the pull request.
+
+## (h) Fix round (plan, 修正輪 A1-A5)
+
+- A1: `test_a1_annotations_of_the_two_tools_are_pinned` pins `pack_figures` (not read-only, not destructive, not open world) and `delete_figure` (not read-only, destructive, not open world). The annotations in `mcp_server.py` were already right, so this test passed at once; it fails if `_DELETES` is made non-destructive.
+- A2: a reused `request_id` of kind `gallery_change` answers only "already confirmed and carried out earlier; look at the gallery again" (`actions/__init__.py` `_already_done`, used at both `already` branches of `_ask`). Other kinds untouched.
+- A3: `_clean_names` refuses more than 100 names (`NAMES_LIMIT`) before looking at any, and de-duplicates with a set (no quadratic time).
+- A4: `CHANGED_MESSAGE` now says "圖庫已變動，這次確認沒有變更任何內容，請重新提出" (and the English equivalent) on the three channels. The existing tests only pin the substrings 圖庫已變動 and 重新提出, which the new sentence keeps; none was edited. The window "a delete removed the files but the transaction did not commit" cannot be rolled back: a known limit, in `docs/PLATFORM.md`.
+- A5: `docs/PLATFORM.md` now says `cancel` and `delete_figure` are also marked destructive.
+- Not done by ruling: adversarial finding 1 (a yes relayed through the chat can authorise an irreversible delete) waits for the maintainer.
+
+### Known behaviours (adversarial findings 4, 5, 6, as the plan records them)
+
+- Finding 4: the delete-committed-but-transaction-not-committed window cannot be rolled back (see A4).
+- Finding 5: the request-time snapshot covers each figure's name, created time, the request id that stored it and its packed flag; an edit of the index that keeps those four (not reachable through the platform's own writers) is not detected.
+- Finding 6: pending gallery_change requests count toward the existing limit of ten open requests per person, so ten unanswered ones block that person's other requests for up to ten minutes.
