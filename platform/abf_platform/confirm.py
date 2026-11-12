@@ -28,6 +28,7 @@ KEEP_UNSENT_SECONDS = 7 * 86400    # a void request, or a pending one past its t
 CLEAN_PENDING_SECONDS = 7 * 86400  # a clean_work request is a reminder, not a question to answer now: it lives a week
 MAX_OPEN_CLEAN = 50               # open clean_work requests one caller may have; they do not use up MAX_OPEN_PENDING
 JOB_KIND = {"launch": "launch_nextflow", "cancel": "cancel_run", "clean_work": "clean_work"}
+NO_JOB_KINDS = ("publish_figure",)  # a person's yes that queues no job: approve() flips the row and calls the writer the action layer passes, in the same transaction
 
 
 class NotApproved(jobs.JobRefused):
@@ -124,13 +125,49 @@ def void(state_path, rid, reason):
     return bool(jobs.transaction(state_path, work))
 
 
+def _without_content(bundle):
+    """publish_figure: the bundle without the image bytes of its figures (name, type, size, sha256, caption, code, params and replaces stay)."""
+    return dict(bundle, figures=[{k: v for k, v in f.items() if k != "content_base64"} for f in bundle.get("figures", [])])
+
+
+def drop_figure_content(state_path, caller_user_id, clock=time.time):
+    """publish_figure: drop the image bytes from every request of this caller that is over (confirmed, void, or pending past its time) and still
+    holds them. Called when the same person makes the next request; there is no background work."""
+    now = clock()
+
+    def work(con):
+        rows = con.execute("SELECT id, bundle_json FROM confirmations WHERE kind = 'publish_figure' AND caller_user_id IS ? AND bundle_json LIKE '%content_base64%' "
+                           "AND (state IN ('confirmed', 'void') OR (state = 'pending' AND (expires_at IS NULL OR expires_at <= ?)))", (caller_user_id, now)).fetchall()
+        for r in rows:
+            try:
+                kept = json.dumps(_without_content(json.loads(r["bundle_json"])))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            con.execute("UPDATE confirmations SET bundle_json = ? WHERE id = ?", (kept, r["id"]))
+
+    jobs.transaction(state_path, work)
+
+
+def pending_figure_bytes(state_path, caller_user_id, clock=time.time, except_sha=None):
+    """publish_figure: the size in bytes of the requests of this caller that wait for a yes and are not past their time (the images are in them),
+    leaving out the one whose content hash is `except_sha` (asking for the same again is the same request). Only reads."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return 0
+    try:
+        return con.execute("SELECT COALESCE(SUM(LENGTH(bundle_json)), 0) FROM confirmations WHERE kind = 'publish_figure' AND state = 'pending' "
+                           "AND caller_user_id IS ? AND expires_at > ? AND sha256 IS NOT ?", (caller_user_id, clock(), except_sha)).fetchone()[0]
+    finally:
+        con.close()
+
+
 def _changed(row, expected_sha, expected_kind):
     """CHAT: whether the content now asked for is not the content of request `row` (the hash and the kind must both match)."""
     return expected_sha is None or expected_kind is None or row["sha256"] != expected_sha or row["kind"] != expected_kind
 
 
 def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_seconds=None, offline_after=None, *,
-            expected_sha=None, expected_kind=None):
+            expected_sha=None, expected_kind=None, writer=None):
     """A person said yes to pending request `rid` through `channel` (ELICITED, PAGE or CHAT): flip it and queue its job, in one
     transaction. Returns (rid, job id). NotApproved when the request is not there, is not this caller's, is void or expired, was
     approved already, or when the queue refuses (then the request is void, with the reason).
@@ -141,7 +178,12 @@ def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_
     CHAT (the AI relays the person's own answer from the chat, with the request id) is checked in its own order: not_found,
     not_yours (a missing caller is never the owner), then for a confirmed row `changed` or `already`, void, expired, `changed` for a
     pending row, and then the checks below. `changed` means the kind or the hash of what is asked now is not that of the request;
-    the row is left as it was. `expected_sha` and `expected_kind` are what the caller asks for now, and CHAT needs both."""
+    the row is left as it was. `expected_sha` and `expected_kind` are what the caller asks for now, and CHAT needs both.
+
+    A request of a NO_JOB_KINDS kind (publish_figure) queues no job: the row is flipped to confirmed and `writer(state_path, caller_user_id,
+    bundle, rid, now)` is called in the same transaction; returns (rid, None). The writer raises jobs.JobRefused when what it is asked to
+    write no longer passes its checks (status failed) or any other error when it cannot write (status write_failed); either way the request
+    is void with the reason, and a person's yes stays on the void row, as for a queue that refuses."""
     now = clock()
 
     def work(con):
@@ -182,6 +224,20 @@ def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_
             return "failed", "the content does not match what was shown (內容與顯示時不符)", None
         con.execute("UPDATE confirmations SET state = 'confirmed', channel = ?, confirmed_at = ? WHERE id = ? AND state = 'pending'",
                     (channel, now, rid))
+        if row["kind"] in NO_JOB_KINDS:
+            try:
+                if writer is None:
+                    raise RuntimeError("no writer")
+                writer(state_path, row["caller_user_id"], bundle, rid, now)
+                answer = ("written", None, None)
+            except jobs.JobRefused as e:
+                con.execute("UPDATE confirmations SET state = 'void', void_reason = ? WHERE id = ?", (str(e)[:300], rid))
+                answer = ("failed", str(e), None)
+            except Exception:
+                con.execute("UPDATE confirmations SET state = 'void', void_reason = ? WHERE id = ?", ("寫入圖庫失敗 (could not write the gallery)", rid))
+                answer = ("write_failed", "寫入圖庫失敗，沒有任何圖被存入 (could not write the gallery; no figure was stored)", None)
+            con.execute("UPDATE confirmations SET bundle_json = ? WHERE id = ?", (json.dumps(_without_content(bundle)), rid))      # written or not, the row keeps no image bytes
+            return answer
         job_kind = JOB_KIND[row["kind"]]
         con.execute("SAVEPOINT enqueue")
         try:
@@ -198,7 +254,7 @@ def approve(state_path, rid, channel, caller_user_id, clock=time.time, deadline_
         return "queued", None, job_id
 
     status, message, job_id = jobs.transaction(state_path, work)
-    if status != "queued":
+    if status not in ("queued", "written"):
         raise NotApproved(status, message, job_id)
     return rid, job_id
 
@@ -356,6 +412,9 @@ def facts(state_path, rid):
             return {"what": "cancel", "run_name": bundle["run_name"]}
         if row["kind"] == "clean_work":
             return {"what": "clean_work", "run_name": bundle["run_name"], "work": bundle["work"]}
+        if row["kind"] == "publish_figure":
+            return {"what": "publish_figure", "run_name": bundle["run_name"], "count": len(bundle["figures"]),
+                    "figures": bundle["figures"], "replaces": bundle.get("replaces", [])}
         what = "resume" if "resume" in bundle else "relaunch" if "relaunch" in bundle else "launch"
         source = bundle["resume"]["origin"] if what == "resume" else bundle
         out = {"what": what, "run_name": bundle["run_name"], "pipeline": source["pipeline"], "revision": source["revision"],

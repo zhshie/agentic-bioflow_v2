@@ -183,6 +183,7 @@ set.
 | `tokens.db` | Hashes of access tokens, the users and their web-password hashes, web sessions, OAuth clients and logins. Next to the index; `ABF_PLATFORM_TOKENS` overrides. | Yes. Cannot be rebuilt. |
 | `platform.db` | Compute environments, agents, the queue of jobs, launches, confirmations, the hand-off record. Next to the index; `ABF_PLATFORM_STATE` overrides. | Yes. Cannot be rebuilt. |
 | `web_signing.key` | The key that signs the confirmation page's cookies. Made on first start of `web`, owner-only. | Yes. Losing it logs everyone out, nothing more; keep it private. |
+| `figures/` | The private figure galleries made with `publish_figure`, `<figures>/<user id>/<run id>/` (the figures, their code and parameters, and an `index.json`). Next to `platform.db`; `ABF_PLATFORM_FIGURES` overrides. | Yes: they are not kept anywhere else. |
 | `uploads/` | Samplesheets uploaded for runs, `<uploads>/<user>/`. Next to `platform.db`; `ABF_PLATFORM_UPLOADS` overrides. | Yes, if the uploaded files are not kept elsewhere. |
 | `records/` | Nextflow records fetched back from the site, `records/<run name>/`. Next to `platform.db`. `rebuild` reads them. | Yes: they are what a rebuild is made from when the launch folders are gone. |
 

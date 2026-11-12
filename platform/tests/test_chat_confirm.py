@@ -324,6 +324,8 @@ def test_tcm_40_launch_pipeline_and_forget_have_no_chat_arguments(w):
         props = set(t.input_schema.get("properties", {}))
         if name in FOUR:
             assert CHAT <= props, name
+        elif name == "publish_figure":      # mcp-publish-figure: the same two relay arguments, but chat is not offered it (CHAT_EXCLUDED)
+            assert CHAT <= props, name
         else:
             assert not (CHAT & props), name
 
@@ -370,7 +372,7 @@ def test_tcm_45_page_and_form_stay(w):
 # change makes the test below fail. If a later change to the platform legitimately alters one of these, edit the list with it.
 BASE_TOOLS = ["cancel", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation",
               "launch", "launch_pipeline", "list_agents", "list_compute_envs", "list_pipelines", "list_runs", "list_site_files",
-              "list_used_pipelines", "my_usage", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
+              "list_used_pipelines", "my_usage", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
 BASE_CONFIRMATION_COLUMNS = ["id", "sha256", "kind", "created_at", "used_at", "caller_user_id", "state", "channel", "confirmed_at",
                              "expires_at", "ce_name", "bundle_json", "screen_text", "void_reason", "forgotten_at", "forgotten_by"]
 BASE_TABLES = ["agents", "compute_envs", "confirmations", "jobs", "launches", "meta"]
@@ -396,7 +398,7 @@ def test_tcm_47_no_new_column_no_new_table(w):
     assert [r[1] for r in w.sql("PRAGMA table_info(confirmations)")] == BASE_CONFIRMATION_COLUMNS
     rows = w.sql("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name")
     assert [r[1] for r in rows if r[0] == "table"] == BASE_TABLES
-    blob = "\n".join(" ".join((r[2] or "").split()) for r in rows)
+    blob = "\n".join(" ".join((r[2] or "").split()) for r in rows).replace(", 'publish_figure'", "")      # mcp-publish-figure: the only change is the new confirmations kind
     assert hashlib.sha256(blob.encode("utf-8")).hexdigest() == BASE_SCHEMA_SHA256
     routes = sorted((getattr(r, "path", str(r)), tuple(sorted(getattr(r, "methods", None) or []))) for r in w.web().app.routes)
     assert routes == sorted(BASE_ROUTES)

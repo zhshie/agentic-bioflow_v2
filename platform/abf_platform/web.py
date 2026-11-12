@@ -92,9 +92,9 @@ _HEADERS = {"Cache-Control": "no-store", "X-Frame-Options": "DENY", "Referrer-Po
             "Content-Security-Policy": "default-src 'none'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
             % web_board.style_source()}
 _PLAIN = {      # the labels of the plain block at the top of the confirmation page
-    "zh": {"kind": "種類", "launch": "送出新分析", "resume": "續跑", "relaunch": "重跑", "cancel": "取消", "clean_work": "清理中間檔", "run": "分析名稱", "pipeline": "管線",
+    "zh": {"kind": "種類", "launch": "送出新分析", "resume": "續跑", "relaunch": "重跑", "cancel": "取消", "clean_work": "清理中間檔", "publish_figure": "存入圖庫", "count": "圖片數", "run": "分析名稱", "pipeline": "管線",
            "version": "版本", "env": "環境", "samples": "樣本數", "folder": "新資料夾", "work": "要刪除的資料夾", "full": "完整內容（技術細節）"},
-    "en": {"kind": "Request", "launch": "New analysis", "resume": "Continue the run", "relaunch": "Re-run", "cancel": "Cancel", "clean_work": "Clean up intermediate files", "run": "Run name",
+    "en": {"kind": "Request", "launch": "New analysis", "resume": "Continue the run", "relaunch": "Re-run", "cancel": "Cancel", "clean_work": "Clean up intermediate files", "publish_figure": "Add figures to the gallery", "count": "Figures", "run": "Run name",
            "pipeline": "Pipeline", "version": "Version", "env": "Environment", "samples": "Samples", "folder": "New folder", "work": "Folder to delete",
            "full": "Full content (technical)"}}
 LAUNCH_HEADERS = dict(_HEADERS, **{      # /launch alone may show pictures, and only our own (guided-launch-2d: the workflow diagram under the pipeline)
@@ -411,7 +411,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         t = _PLAIN[lang]
         rows = [(t["kind"], t[facts["what"]])]
         for key, label in (("run_name", "run"), ("pipeline", "pipeline"), ("revision", "version"), ("ce", "env"), ("samples", "samples"),
-                           ("folder", "folder"), ("work", "work")):
+                           ("folder", "folder"), ("work", "work"), ("count", "count")):
             if key in facts:
                 rows.append((t[label], facts[key]))
         return "<dl class=\"fields plain\">%s</dl>" % "".join("<dt>%s</dt><dd>%s</dd>" % (_esc(k), _esc(v)) for k, v in rows)
@@ -444,9 +444,43 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             out += "<p>%s</p><pre>%s</pre>" % (_esc(t["re_changes_extra"]), _esc("\n".join(extra)))
         return out
 
+    def figures_page(req, sid, rid, lang):
+        """The page of a publish_figure request: what will be added to the gallery, and after Send, how many were. No job number, no image."""
+        en = lang == "en"
+        title = "Confirm adding figures" if en else "存入圖庫確認"
+        facts = actions.request_facts(platform_path, rid) or {}
+        text = req["summary"] or ""
+        if en and facts.get("figures"):      # the stored screen is Chinese; the page in English shows the same facts in English
+            text = actions.screen_for_page({"run_name": facts["run_name"], "figures": facts["figures"]}, facts.get("replaces"), "en")
+        shown = "<details open><summary>%s</summary><pre>%s</pre></details>" % (_PLAIN[lang]["full"], _esc(text))
+        if req["state"] in ("pending", "confirmed"):
+            shown = plain_block(rid, lang) + shown
+        if req["state"] == "pending":
+            intro = ("<p>Everything that will be added to the gallery is shown below. If it is correct, press \"Send\"; nothing is written until you press it.</p>" if en else
+                     "<p>以下為將存入圖庫的全部內容。確認無誤後，請按「送出」；按下後才會寫入圖庫。</p>")
+            return _page(title, "%s%s<form method=\"post\" action=\"/c/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
+                         "<button type=\"submit\">%s</button></form>" % (intro, shown, rid, _esc(csrf(sid, rid)), "Send" if en else "送出"), lang=lang)
+        if req["state"] == "confirmed":
+            return _page(title, "<p class=\"ok\">%s</p>%s%s" % (_esc(gallery_line(facts.get("count"), lang)), shown, gallery_link(facts.get("run_name"), lang)), lang=lang)
+        if req["state"] == "expired":
+            return _page(title, "<p class=\"bad\">%s</p>" % ("This request has expired (10 minutes). Please send it again." if en else "該申請已逾時（10 分鐘）。請重新送出。"), lang=lang)
+        reason = _esc(req["void_reason"] or "-")
+        return _page(title, "<p class=\"bad\">%s</p>" % (("This request was voided: %s. Please send it again." if en else "該申請已作廢：%s。請重新送出。") % reason), 409, lang=lang)
+
+    def gallery_line(count, lang):
+        n = count if isinstance(count, int) else 0
+        return ("Added %d figures to the gallery." if lang == "en" else "已存入圖庫 %d 張。") % n
+
+    def gallery_link(run_name, lang):
+        link = "/?run_name=" + urllib.parse.quote(str(run_name), safe="") if run_name else "/"
+        return "<div class=\"acts\"><a class=\"nv\" href=\"%s\">%s</a></div>" % (_esc(link), "View the run" if lang == "en" else "查看分析")
+
     def state_page(req, sid, rid, lang="zh"):
         clean = req["kind"] == "clean_work"
+        figs = req["kind"] == "publish_figure"
         en = lang == "en"
+        if figs:
+            return figures_page(req, sid, rid, lang)
         if en:
             title = "Confirm clean-up" if clean else ("Confirm launch" if req["kind"] == "launch" else "Confirm cancel")
         else:
@@ -517,7 +551,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         form = await body_of(request)
         if not _same(form.get("csrf", ""), csrf(sid, rid)):
             return _page("表單已失效", "<p class=\"bad\">表單驗證碼不符或已失效，未送出任何內容。請重新整理頁面後再操作。</p>", 403)
-        run_name = (actions.request_facts(platform_path, rid) or {}).get("run_name") if req["kind"] != "clean_work" else None
+        facts = actions.request_facts(platform_path, rid) or {}
+        run_name = facts.get("run_name") if req["kind"] != "clean_work" else None
+        figs = req["kind"] == "publish_figure"
 
         def sent(job_id):
             """The page after Send (launch, resume, relaunch, cancel): the job number, what happens next, and the way to the run's page."""
@@ -529,6 +565,17 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             _, job_id = actions.approve(platform_path, rid, confirmed_by=actions.PAGE,
                                         caller=actions.Caller(user["user_id"], user["name"], user["lab"]), clock=clock)
         except actions.NotApproved as e:
+            if figs:
+                if e.status == "already":
+                    return _page("Confirm adding figures" if lang == "en" else "存入圖庫確認",
+                                 "<p class=\"ok\">%s</p>%s" % (_esc(gallery_line(facts.get("count"), lang)), gallery_link(run_name, lang)), lang=lang)
+                if e.status == "write_failed":
+                    return _page("Not stored" if lang == "en" else "未存入", "<p class=\"bad\">%s</p>" % (
+                        "Not stored: the gallery could not be written, so no figure was added. Please send the figures again." if lang == "en" else
+                        "未存入：寫入圖庫時發生錯誤，沒有任何圖被存入。請重新送出。"), 500, lang=lang)
+                code = {"not_found": 404, "not_yours": 403, "expired": 410}.get(e.status, 409)
+                return _page("Not stored" if lang == "en" else "未存入", "<p class=\"bad\">%s</p>" % (
+                    ("Not stored: %s. Please send the figures again." if lang == "en" else "未存入：%s。請重新送出。") % _esc(e)), code, lang=lang)
             if e.status == "already":
                 if req["kind"] == "clean_work":
                     return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。</p>" % _esc(e.job_id))
@@ -537,6 +584,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if req["kind"] == "clean_work":
                 return _page("未送出", "<p class=\"bad\">未送出：%s。</p>" % _esc(e), code)
             return _page("未送出", "<p class=\"bad\">未送出：%s。請重新送出。</p>" % _esc(e), code)
+        if figs:
+            return _page("Added to the gallery" if lang == "en" else "已存入圖庫", "<p class=\"ok\">%s</p>%s" % (_esc(gallery_line(facts.get("count"), lang)), gallery_link(run_name, lang)), lang=lang)
         if req["kind"] == "clean_work":
             return _page("已送出", "<p class=\"ok\">已送出。工作編號 %s。代理將清理該次分析的中間檔，結果不受影響。</p>" % _esc(job_id))
         return sent(job_id)

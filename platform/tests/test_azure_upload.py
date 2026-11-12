@@ -828,7 +828,7 @@ def test_no_new_user_visible_action_and_no_new_dependency(tmp_path, ip):
     tools, _ = mcp_inproc(ip.index, [])
     assert {t.name for t in tools} == {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files",
                                       "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch", "launch_pipeline", "cancel", "resume",
-                                      "relaunch", "forget"}
+                                      "relaunch", "forget", "publish_figure"}
     from abf_platform import web
     app = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", tmp_path / "platform.db")
     assert not [r.path for r in app.routes if re.search(r"azure|azbatch|blob", getattr(r, "path", ""), re.I)]

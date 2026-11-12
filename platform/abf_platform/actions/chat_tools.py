@@ -16,6 +16,9 @@ from .. import mcp_server
 REQUEST_TOOLS = frozenset({"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"})
 # a query that needs no yes but is not marked read-only: for a lost run it queues one read of the site (ruling R2)
 QUERY_TOOLS = frozenset({"get_run"})
+# tools that exist for the person's own LLM client and are not offered to the browser chat: publish_figure carries the bytes of a figure the
+# LLM client made, which the page does not have (mcp-publish-figure, slice 1)
+CHAT_EXCLUDED = frozenset({"publish_figure"})
 
 CHAT_SYSTEM_PROMPT = """你是這個分析平台裡的小助理，幫實驗室成員查他們的 Nextflow 分析跑得怎麼樣。你只能用下面這些工具。
 
@@ -49,7 +52,7 @@ def _is_read_only(tool):
 
 def classify_check(tools):
     """Raise if a registered tool is neither read-only nor listed in REQUEST_TOOLS: a new tool must be classified on purpose."""
-    unclassified = sorted(t.name for t in tools if not _is_read_only(t) and t.name not in REQUEST_TOOLS)
+    unclassified = sorted(t.name for t in tools if not _is_read_only(t) and t.name not in REQUEST_TOOLS and t.name not in CHAT_EXCLUDED)
     if unclassified:
         raise ValueError("tool(s) neither read-only nor in REQUEST_TOOLS, classify them on purpose: " + ", ".join(unclassified))
 
@@ -62,7 +65,7 @@ async def tool_specs(index_path, platform_path=None):
         tools = await server.list_tools()
         classify_check(tools)
         _cache[key] = [{"name": t.name, "description": t.description or "", "input_schema": dict(t.input_schema)}
-                       for t in tools if _is_read_only(t) or t.name in REQUEST_TOOLS]
+                       for t in tools if t.name not in CHAT_EXCLUDED and (_is_read_only(t) or t.name in REQUEST_TOOLS)]
     return [_without_chat_args(s) for s in _cache[key]]
 
 
