@@ -69,7 +69,7 @@ def test_proposal_writes_nothing_until_pressed(w):
 
 
 def test_not_your_run_and_missing_run_get_the_same_answer(w):
-    # TC-003, TC-004
+    # TC-059
     ann, bob = w.user("ann"), w.user("bob")
     run = seed(w, "r1", "succeeded", ann)
     a = call(w, bob, run, [fig()])
@@ -84,7 +84,7 @@ def test_not_your_run_and_missing_run_get_the_same_answer(w):
     fig("a.svg", b'<svg onload="x()"/>'), fig("a.png", caption="x" * 201),
 ])
 def test_bad_figures_refuse_the_whole_call_without_a_request(w, bad):
-    # TC-005 .. TC-020
+    # TC-023, TC-025, TC-031, TC-033, TC-034
     ann = w.user("ann")
     run = seed(w, "r1", "succeeded", ann)
     got = call(w, ann, run, [fig("ok.png"), bad])
@@ -92,7 +92,7 @@ def test_bad_figures_refuse_the_whole_call_without_a_request(w, bad):
 
 
 def test_good_svg_and_limits(w):
-    # TC-021, TC-022, TC-023
+    # TC-035, TC-027, TC-023, TC-037
     ann = w.user("ann")
     run = seed(w, "r1", "succeeded", ann)
     assert call(w, ann, run, [fig("a.svg", b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="1"/></svg>')])["state"] == "pending"
@@ -102,7 +102,7 @@ def test_good_svg_and_limits(w):
 
 
 def test_overwrite_is_marked_and_gallery_is_capped(w):
-    # TC-024, TC-025
+    # TC-014, TC-029
     ann = w.user("ann")
     run = seed(w, "r1", "succeeded", ann)
     got = call(w, ann, run, [fig()])
@@ -118,7 +118,7 @@ def test_overwrite_is_marked_and_gallery_is_capped(w):
 
 
 def test_write_failure_voids_and_leaves_no_half_gallery(w, monkeypatch):
-    # TC-026, TC-027
+    # TC-018, TC-020
     from abf_platform.actions import figures
     ann = w.user("ann")
     run = seed(w, "r1", "succeeded", ann)
@@ -141,7 +141,7 @@ def test_write_failure_voids_and_leaves_no_half_gallery(w, monkeypatch):
 
 
 def test_page_shows_everything_and_send_button(w):
-    # TC-028, TC-029
+    # TC-041, TC-043
     ann = w.user("ann")
     run = seed(w, "r1", "succeeded", ann)
     got = call(w, ann, run, [fig(caption="圖說")])
@@ -151,7 +151,7 @@ def test_page_shows_everything_and_send_button(w):
 
 
 def test_only_the_owner_can_press(w):
-    # TC-030
+    # TC-047
     ann, bob = w.user("ann"), w.user("bob")
     run = seed(w, "r1", "succeeded", ann)
     got = call(w, ann, run, [fig()])
@@ -161,7 +161,7 @@ def test_only_the_owner_can_press(w):
 
 
 def test_confirmations_kind_check_and_no_job(w):
-    # TC-031
+    # TC-079
     from abf_platform import confirm
     ann = w.user("ann")
     run = seed(w, "r1", "succeeded", ann)
@@ -173,7 +173,7 @@ def test_confirmations_kind_check_and_no_job(w):
 
 
 def test_list_figures_reads_the_gallery(w):
-    # TC-032
+    # TC-061
     from abf_platform import actions
     ann = w.user("ann")
     run = seed(w, "r1", "succeeded", ann)
