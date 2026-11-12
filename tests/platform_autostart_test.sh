@@ -424,7 +424,7 @@ case_round() { new_case round; mkfake a; mkfake b; wl "a $C/bin/a" "b $C/bin/b";
     if [ "$(starts a)" -ge 1 ] && [ -d "$ST" ] && ! printf '%s\n%s\n%s\n%s\n' "$o_check" "$o_status" "$o_bad" "$(cat "$C/sup.out")" | grep -qF "$CANARY" && ! grep -rqF "$CANARY" "$ST"; then ok "TC-073 an environment variable of the caller appears in no output, no log, no state file"; else bad "TC-073 environment leak"; fi
     # TC-094
     if [ -s "$ST/supervise.log" ] && ! grep -qvE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} ' "$ST/supervise.log"; then ok "TC-094 every line of supervise.log starts with a date and time"; else bad "TC-094 untimed line" "$(grep -vE '^[0-9]{4}-[0-9]{2}-[0-9]{2} ' "$ST/supervise.log" | head -n2)"; fi
-    if slog | grep -q ' a 已停止'; then ok "TC-094 the stop is logged too"; else bad "TC-094 stop line"; fi; }
+    if cat "$ST"/supervise.log "$ST"/supervise.log.1 2>/dev/null | grep -q ' a 已停止'; then ok "TC-094 the stop is logged too"; else bad "TC-094 stop line"; fi; }
 
 case_t080() { new_case t080; printf '#!/bin/sh\nn=0\nfor x in "$@"; do printf "%%s\\n" "$x" >> "%s/args"; done\necho $$ >> "%s/pids/argt"\nexec sleep 600\n' "$C" "$C" > "$C/bin/argt"; chmod +x "$C/bin/argt"
     mkfake plain

@@ -49,6 +49,8 @@ STATE="${ABF_SUPERVISE_STATE:-${HOME:-}/.local/state/abf-platform}"
 say() { printf '%s\n' "$*"; }
 err() { printf '%s\n' "$*" >&2; }
 
+[ "${BASH_VERSINFO[0]:-0}" -ge 5 ] || { err "看守腳本需要 bash 5 以上（WSL 的 Ubuntu 22.04 有）；請用較新的 bash 再試。"; exit 2; }
+
 to_us() { # "0.25" -> 250000; fails when it is not a plain non-negative number
     local v=$1
     [[ $v =~ ^([0-9]+)(\.([0-9]{1,6}))?$ ]] || return 1
