@@ -35,3 +35,13 @@ CSRF purposes: `figpack:<run id>` and `figdel:<run id>`. Names per press: 30 (= 
 ## Verification record
 
 Filled in below at the end of the run (suite counts, UI checks, what is unverified).
+
+### UI checks (TC-072, TC-073, TC-074)
+
+Driver: a throwaway script outside the repository (it reuses `scripts/dev/ui_check.py`'s `start_platform`; `ui_check.py` itself has no finished-stage page). Playwright, Chromium and axe-playwright-python were available in WSL. 12 screenshots (empty, three unpacked incl. one SVG and a 74-character file name, packed; 1440 and 390; zh and en) are in WSL `/tmp/ui-shots-gallery/` with `summary.md`.
+
+- Images: all load (0 broken). TC-073: no horizontal overflow at 390 in any state (0 px).
+- axe, pages with figures (unpacked, packed): 0 serious, 0 critical; 1 moderate `landmark-unique` on `.side` (the board's own left column, not this slice).
+- axe, **empty gallery page: 1 critical `meta-refresh`**. That is the finished page's existing 15-second `<meta refresh>`, pinned by `test_fs11_constraints_hold`, which this slice keeps while the gallery is empty (see decision 2). So TC-072's "no critical" is **not met for the empty state**; it is met for the states with figures. Removing the refresh on every finished page needs that pinned test changed: for the maintainer.
+- TC-074 (impeccable detector): see the report; run on the saved HTML files if the tool ran, else UNVERIFIED.
+- TC-075, TC-076, TC-094, TC-095 are for the maintainer (manual); not done by the executor.
