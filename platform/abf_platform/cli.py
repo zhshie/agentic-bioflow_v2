@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http] | runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...] | studio-connect --server URL | fetch-results RUN [--dir DIR]"""
+"""abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http] | runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...] | studio-connect --server URL | fetch-results RUN [--dir DIR] | publish-figure RUN FILE [--code FILE]"""
 import argparse
 import asyncio
 import json
@@ -920,7 +920,7 @@ def build_parser():
     from abf_launch import cli as launch_cli
     launch_cli.add_commands(sub)
     from . import studio_cli
-    studio_cli.add_commands(sub)      # studio-connect, fetch-results: they run on a user's own computer
+    studio_cli.add_commands(sub)      # studio-connect, fetch-results, publish-figure: they run on a user's own computer
     return p
 
 

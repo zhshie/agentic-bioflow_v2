@@ -157,3 +157,73 @@ Existing tests changed, each by the ruling that names it: `test_studio_cli.py::t
 problem; it expected 0); `test_tc073_*` accepts lines added to `plan.md` after the first acceptance (the lead's rulings) and still demands no change to
 `test-case.md` and `test-case-overview.md`; `studio_harness.FakeSite.size_of` no longer raises for text that cannot be encoded. New file:
 `platform/tests/test_studio_cli_hardening.py`.
+
+---
+
+# Slice 2 (publish-figure, the third line of the downstream page)
+
+Branch `fable/cli-publish-figure`, stacked on `fable/mcp-publish-figure` (pull request 393, not merged yet): `publish_figure` is in the tree it is based on.
+The first section above is slice 1 and is left as it was; TC-053 ("no publish-figure yet") held for slice 1 and is the one expectation slice 2 flips.
+
+## What was done, by group of test cases
+
+| Group | Test cases | Where |
+|---|---|---|
+| the command | TC-056, TC-057, TC-058, TC-059, TC-060, TC-061, TC-062 | `studio_cli.py` (`cmd_publish_figure`, `_publish`, `_figure_item`, `_read_local`, `_read_text`, `_caption_problem`); tests `test_studio_publish.py` |
+| local limits | TC-064 | the constants `MAX_BUNDLE_BYTES`, `MAX_CODE_BYTES`, `MAX_PARAMS_BYTES`, `MAX_CAPTION_CHARS` imported from `actions/figures.py` (see the import below) |
+| no yes from the command | TC-057, TC-060, TC-067, TC-068 | the arguments sent are `run_id` and `figures` (one item) only; the source holds neither `user_confirmed` nor the request id key, nor `webbrowser`; only the tool `publish_figure` is called |
+| real server | TC-063, TC-065, TC-066 (and TC-040, TC-079, TC-081, TC-082 for this command) | `test_studio_publish.py`, with the real `abf-platform mcp --http` fixture of `test_studio_remote.py` (two users, a revoked token); TC-066 presses the page's button through `actions.approve(..., confirmed_by=PAGE)` as the same user, the call the page makes |
+| page | TC-054 | `web_downstream._commands` (third line `abf-platform publish-figure <run id> <圖檔>`, `<image file>` in English); `test_web_downstream.py` |
+| existing tests | TC-071, TC-072 | see "Existing tests touched" |
+| docs | TC-077 | `docs/PLATFORM.md` ("publish-figure"), `docs/OPERATIONS.md` (the link of `publish-figure`, `--public-url`), `docs/TESTING.md` (TC-069), `CHANGELOG.md`; `test_studio_docs.py` |
+| manual | TC-069 | steps in `docs/TESTING.md`; **UNVERIFIED**: not done by the executor (needs the maintainer's own computer, RStudio and a public confirmation address) |
+
+## The one import that was a judgement
+
+The ruling allows `from abf_platform.jobs import RUN_FILE_MAX_BYTES` and nothing that opens a database. The limits of the gallery are in `actions/figures.py`, and
+importing from it runs `actions/__init__.py` first, which imports the server's action layer (`store`, `confirm`, `jobs`, `starlette` and the rest). Measured
+before using it: with `ABF_PLATFORM_DB` pointing at an empty folder, `from abf_platform.actions.figures import MAX_BUNDLE_BYTES` and `from abf_platform.jobs
+import RUN_FILE_MAX_BYTES` leave the folder empty (nothing is opened or created at import). It does load more code on the user's computer (and `starlette`, which
+`mcp` brings anyway). TC-083 of the test cases names the exception ("片2 加 figures.MAX_*"), so `test_studio_remote.py::test_tc083_*` now allows exactly one new
+form: in `studio_cli.py` only, `from .actions.figures import MAX_*` (every name starts with `MAX_`), and keeps `store`, `actions` for any other use, in
+`studio_remote.py` for any use. TC-082 (the command opens no database) runs for `publish-figure` too. If the lead would rather not load the action layer on the
+user's computer, the alternative is a small constants module on the server side, which is a server change this task may not make.
+
+## Not copied from the server, said here
+
+The filename rules (the regex, 80 characters, the type by extension), the content checks (PNG and JPEG header, the SVG deny list), the number of figures in the
+gallery (`MAX_PER_RUN`) and the per-person pending limit are judged by the platform only; the command prints the platform's reason. Copying them would be a
+second copy of a rule that can drift. Checked on the computer: that the figure is a regular file within `MAX_BUNDLE_BYTES` (counted in bytes, and again after
+base64), that code and params are strict UTF-8 without NUL within their limits in bytes, that the caption is one line (no `Cc`, `Zl`, `Zp`) within its limit in
+characters and can be encoded, and that the file name can be encoded (a lone surrogate from the command line is refused as a sentence, not a stack).
+
+## Existing tests touched, and how
+
+By addition, except the flips the plan and the lead named:
+
+- `test_studio_cli.py::test_tc053_*` (slice 1 pinned "no publish-figure yet"): flipped to "registered, and the source calls `publish_figure`" (renamed
+  `test_tc053_flipped_by_slice_two_...`). The test is kept, its direction is turned.
+- `test_web_downstream.py` (the page): the `publish-figure not in` assertions at the two places that pinned the slice 1 page flipped to `in` with the exact line;
+  `len(blocks.splitlines()) == 2` became `== 3`; `test_downstream_commands_escape_run_id` also checks the third line; the non-succeeded run now also has no
+  `publish-figure`.
+- `test_studio_remote.py`: TC-083 allow-list (above); TC-085 expects `publish_figure` in the set of tools the source calls; the `server` fixture yields two more
+  keys (`plat`, `alice_id`).
+- `test_studio_docs.py`: the slice 1 assertion "`publish-figure` is not in the guide" flipped; the example-line regex also takes `publish-figure`; TC-077 added.
+- Command lists, by addition of the third name in registration order: `test_cli_contract.py` (`MATRIX` third leaf, and the set assertion), `test_cleanup_offer.py`
+  (`COMMANDS`, in sorted place), `test_station_envs.py` (two places). `test_every_leaf_is_in_the_matrix` is untouched.
+- Goldens `cli_help_top.txt` and `cli_tree.txt`: regenerated with `ABF_UPDATE_GOLDEN=1` and the diff read: only the command name in two lists, the usage line, one
+  help row and one tree row for `publish-figure`.
+- `studio_harness.py`: `FakeSite.publish_figure` and the tool name in `tool_names`.
+- Not touched: `test_launch_static.py` (`PINNED_SLEEPS`: `publish-figure` adds no sleep), `test_scope.py`, the slice 1 hardening tests.
+
+## Not done by the executor
+
+TC-069 (manual). The full suite was not run here (the machine is heavily loaded); the verdict is the CI of the pull request.
+
+## An observation that is not this slice's (and was not changed)
+
+Run in one process, a test that uses the module-scoped `server` fixture of `test_studio_remote.py` and then `test_station_envs.py::test_tc071_*` (or `tc039`)
+fails with `io.UnsupportedOperation: fileno` (`sys.stderr` is handed to a subprocess by the MCP stdio client). It does the same on the base commit of this
+branch (`056caee5`, checked in a separate worktree), so it is not caused by slice 2. The CI shards do not put them together (`ABF_PLATFORM_LIST=1`: `test_station_envs.py`
+is in another shard than `test_studio_remote.py`, and `test_studio_publish.py`, which also uses that fixture, has no file after it in its shard that starts the MCP stdio
+client). If the shards are ever rebalanced it can show up; the cause was not looked for.

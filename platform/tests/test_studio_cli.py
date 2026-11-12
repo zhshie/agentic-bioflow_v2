@@ -1,7 +1,7 @@
 # Nothing existing: no test covers a command that writes files on a user's own computer from what read-only MCP tools answer; the tests of the run page and of the MCP tools stop at the server.
 """cli-fetch-publish-figure, slice 1: the fetch-results command, the R code it prints, and the strings of studio_cli. The answers of the tools are fakes
 (studio_harness.FakeSite), no network is used. Test case numbers are in the comments (specs/cli-fetch-publish-figure/test-case.md).
-publish-figure is slice 2 and is not here (TC-053 checks that nothing of it exists yet)."""
+publish-figure is slice 2 and is in test_studio_publish.py (the slice 1 pin TC-053 "nothing of it exists yet" is flipped below)."""
 import ast
 import os
 import re
@@ -356,13 +356,13 @@ def test_tc078_the_strings_have_the_same_keys_in_both_languages():
     assert all(banned_in(v) == [] for v in zh.values())
 
 
-def test_tc053_publish_figure_is_not_in_slice_one(capsys):
-    # TC-053 (the page half is in test_web_downstream.py)
+def test_tc053_flipped_by_slice_two_publish_figure_is_now_registered_and_called(capsys):
+    # TC-053 held for slice 1 ("no publish-figure yet"); slice 2 flips it, as the plan says (TC-054 and TC-071 take its place; the page half is in test_web_downstream.py)
     commands = set(_choices())
-    assert {"studio-connect", "fetch-results"} <= commands and "publish-figure" not in commands
-    for name in ("studio_cli.py", "studio_remote.py"):
-        text = (PKG / name).read_text(encoding="utf-8")
-        assert "publish_figure" not in text and "figures" not in text
+    assert {"studio-connect", "fetch-results", "publish-figure"} <= commands
+    text = (PKG / "studio_cli.py").read_text(encoding="utf-8")
+    assert "publish_figure" in text and "figures" in text
+    assert "publish_figure" not in (PKG / "studio_remote.py").read_text(encoding="utf-8")      # the connection module knows no tool by name except the hint it asks for
 
 
 def test_tc073_the_pinned_tests_are_still_there_and_the_contract_files_were_not_touched():
