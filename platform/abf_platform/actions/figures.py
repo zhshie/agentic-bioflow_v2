@@ -20,6 +20,7 @@ import os
 import re
 import secrets
 import time
+import unicodedata
 
 from .. import jobs, status, store
 
@@ -80,7 +81,13 @@ def _text_problem(value, label, limit, unit):
         raise FigureRefused("%s 必須是文字 (%s must be text)" % (label, label))
     if chr(0) in value:
         raise FigureRefused("%s 含有 NUL 字元，不是純文字 (%s contains a NUL character)" % (label, label))
-    size = len(value) if unit == "chars" else len(value.encode("utf-8", "surrogatepass"))
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise FigureRefused("%s 含有不成對的代理字元，不是正確的文字 (%s contains a lone surrogate, which is not valid text)" % (label, label))
+    if label == "caption" and any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in value):
+        raise FigureRefused("caption 不可含換行或控制字元（說明只能是單行文字）(the caption must be one line of text: no line break or control character)")
+    size = len(value) if unit == "chars" else len(encoded)
     if size > limit:
         raise FigureRefused("%s 超過上限（%d %s）(%s is over the limit of %d %s)" % (
             label, limit, "字元" if unit == "chars" else "位元組", label, limit, "characters" if unit == "chars" else "bytes"))
@@ -220,6 +227,7 @@ def _screen(run_name, figures, existing, lang="zh"):
     for i, f in enumerate(figures, 1):
         lines.append("[%d] %s" % (i, f["name"]))
         lines.append(("Type: %s   Size: %d bytes" if en else "類型：%s　大小：%d 位元組") % (f["type"], f["size"]))
+        lines.append(("SHA-256 (first 12): %s" if en else "SHA-256（前 12 碼）：%s") % f["sha256"][:12])
         if f["name"] in existing:
             lines.append("Replaces the figure of the same name" if en else "覆蓋既有同名圖 (replaces the figure of the same name)")
         lines.append(("Caption: %s" if en else "說明：%s") % (f["caption"] or "-"))
