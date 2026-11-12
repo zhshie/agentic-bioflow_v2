@@ -14,13 +14,20 @@ executed or parsed as HTML: an image is only ever loaded by an <img>, and code, 
 """
 import base64
 import binascii
+import contextlib
 import hashlib
 import json
 import os
 import re
 import secrets
 import time
+import threading
 import unicodedata
+
+try:
+    import fcntl
+except ImportError:      # not a Unix: the platform runs on Linux; there is no cross-process lock to take elsewhere
+    fcntl = None
 
 from .. import common, confirm, jobs, status, store
 
@@ -328,6 +335,38 @@ def _chmod(path, mode):
         pass
 
 
+_LOCKS = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+@contextlib.contextmanager
+def gallery_lock(folder):
+    """One lock for each gallery folder, held from the read of index.json to its replace (ruling G1): pack, delete and the confirmed write all
+    read the index and replace it whole, so two of them at once lose an update. A flock on the folder itself (other processes; no lock file, because a gallery folder holds only its figures and index.json) plus a thread
+    lock of the same folder (the web server's worker threads). A folder that is not there is not locked: there is no index to lose."""
+    key = os.path.realpath(folder)
+    if not os.path.isdir(key):
+        yield
+        return
+    with _LOCKS_GUARD:
+        local = _LOCKS.setdefault(key, threading.Lock())
+    with local:
+        fd = None
+        if fcntl is not None:
+            try:
+                fd = os.open(key, os.O_RDONLY)
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            except OSError:
+                if fd is not None:
+                    os.close(fd)
+                    fd = None
+        try:
+            yield
+        finally:
+            if fd is not None:
+                os.close(fd)        # closing releases the flock
+
+
 def _stage(folder, final_name, data, tag):
     temp = os.path.join(folder, ".tmp-%s-%s" % (tag, secrets.token_hex(4)))
     fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
@@ -354,6 +393,15 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
             built.append((f, data))
     except (FigureRefused, KeyError, TypeError, ValueError, binascii.Error) as e:
         raise jobs.JobRefused("核准時重新檢查未通過，沒有寫入任何圖：%s (the check at the time of the yes failed; nothing was written)" % e)
+    for sub in (os.path.dirname(folder), folder):
+        os.makedirs(sub, mode=0o700, exist_ok=True)
+        _chmod(sub, 0o700)
+    with gallery_lock(folder):
+        _commit(folder, built, bundle, rid, now)
+
+
+def _commit(folder, built, bundle, rid, now):
+    """The part of write_confirmed that reads and replaces index.json; it runs with the gallery lock held."""
     existing, problem = read_index(folder)
     if len(set(existing) | {f["name"] for f, _ in built}) > MAX_PER_RUN:
         raise jobs.JobRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
@@ -368,9 +416,6 @@ def write_confirmed(platform_path, caller_user_id, bundle, rid, now):
     if sorted(replacing) != sorted(bundle.get("replaces", [])):
         raise jobs.JobRefused("圖庫在申請送出後有變動，會被取代的圖與確認畫面上寫的不同，沒有寫入任何圖，請重新提出 "
                               "(the gallery changed after the request was made: what would be replaced is not what the screen said; nothing was written)")
-    for sub in (os.path.dirname(folder), folder):
-        os.makedirs(sub, mode=0o700, exist_ok=True)
-        _chmod(sub, 0o700)
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
     staged, replaced, backups = [], [], {}
     index = {k: dict(v) for k, v in existing.items()}
@@ -571,20 +616,21 @@ def pack_figures(index_path, platform_path, run_id, names, *, caller, clock=time
         if reason == "too_many":
             return _refused(reason, "一次最多選 %d 張圖，沒有變更任何內容 (at most %d figures at a time; nothing was changed)" % (MAX_PER_RUN, MAX_PER_RUN))
         return _refused(reason, "圖名不合規定，沒有變更任何內容 (a figure name is not valid; nothing was changed)", name=bad)
-    figures, problem = read_index(folder)
-    for n in chosen:
-        if n not in figures:
-            return _refused("unknown_name", "圖庫裡沒有「%s」，沒有變更任何內容 (the gallery has no figure \"%s\"; nothing was changed)" % (n, n), name=n)
-    if problem:
-        return _refused("write_failed", problem)
-    if not figures:
-        return {"ok": True, "found": True, "count": 0, "names": []}
-    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
-    updated = {k: dict(v, packed=k in chosen, packed_at=stamp if k in chosen else None) for k, v in figures.items()}
-    try:
-        _write_index(folder, updated)
-    except OSError:
-        return _refused("write_failed", "未能打包，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not pack; the gallery is unchanged. Try again later or tell the administrator)")
+    with gallery_lock(folder):
+        figures, problem = read_index(folder)
+        for n in chosen:
+            if n not in figures:
+                return _refused("unknown_name", "圖庫裡沒有「%s」，沒有變更任何內容 (the gallery has no figure \"%s\"; nothing was changed)" % (n, n), name=n)
+        if problem:
+            return _refused("write_failed", problem)
+        if not figures:
+            return {"ok": True, "found": True, "count": 0, "names": []}
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
+        updated = {k: dict(v, packed=k in chosen, packed_at=stamp if k in chosen else None) for k, v in figures.items()}
+        try:
+            _write_index(folder, updated)
+        except OSError:
+            return _refused("write_failed", "未能打包，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not pack; the gallery is unchanged. Try again later or tell the administrator)")
     return {"ok": True, "found": True, "count": len(chosen), "names": chosen}
 
 
@@ -598,16 +644,17 @@ def delete_figure(index_path, platform_path, run_id, name, *, caller):
     chosen, reason, bad = _clean_names([name])
     if chosen is None:
         return _refused("bad_name", "圖名不合規定，沒有刪除任何內容 (a figure name is not valid; nothing was deleted)", name=bad)
-    figures, problem = read_index(folder)
-    if name not in figures:
-        return _refused("unknown_name", "圖庫裡沒有「%s」，沒有刪除任何內容 (the gallery has no figure \"%s\"; nothing was deleted)" % (name, name), name=name)
-    if problem:
-        return _refused("write_failed", problem)
-    rest = {k: v for k, v in figures.items() if k != name}
-    try:
-        _write_index(folder, rest)
-    except OSError:
-        return _refused("write_failed", "未能刪除，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not delete; the gallery is unchanged. Try again later or tell the administrator)")
+    with gallery_lock(folder):
+        figures, problem = read_index(folder)
+        if name not in figures:
+            return _refused("unknown_name", "圖庫裡沒有「%s」，沒有刪除任何內容 (the gallery has no figure \"%s\"; nothing was deleted)" % (name, name), name=name)
+        if problem:
+            return _refused("write_failed", problem)
+        rest = {k: v for k, v in figures.items() if k != name}
+        try:
+            _write_index(folder, rest)
+        except OSError:
+            return _refused("write_failed", "未能刪除，圖庫沒有變更；請稍後再試，或回報給平台管理者 (could not delete; the gallery is unchanged. Try again later or tell the administrator)")
     for leaf in (name, name + ".code.txt", name + ".params.txt"):
         try:
             os.unlink(os.path.join(folder, leaf))
