@@ -16,3 +16,8 @@ rootfs imported into WSL (docker daemon was not running). Each passes after the 
 item 3 also on Ubuntu 22.04.
 
 Unverified: the full suite on 26.04 (the PR's CI is the verdict); python 3.14.8 locally vs 3.14.4 on the runner.
+
+## Verification split
+- Verified locally under python 3.14.8 (uv venv): items 1, 2, 4a, 4b (red before, green after), and on the default 3.10 venv.
+- Item 3 is a 26.04 userland cause (uutils coreutils), not Python; verified on a real Ubuntu 26.04.1 rootfs and on 22.04.
+- Not done: pinning python in `.github/workflows/tests.yml` (a request relayed by an agent, not by the maintainer; executor rules forbid CI edits). Without a pin CI runs 3.14 on 26.04, which is what these fixes target.
