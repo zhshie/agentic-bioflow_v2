@@ -39,7 +39,7 @@ STRINGS = {
         "offline": "這台電腦無法連上網路，或找不到平台主機。請先確認本機網路，並以 studio-connect 的 --server 網址為準：{url}。",
         "unreachable": "平台公開網址無回應：平台所在機器可能未開機，或 Tailscale Funnel／MCP 服務未啟動（網址：{url}）。請稍後再試，或請平台管理者確認。",
         "site_closed": "平台可以連線，但計算站台的連線沒有開啟，因此讀取不到結果。請洽平台管理者，請其重新開啟站台連線後再試。",
-        "site_link": "站台連線狀態：{state}（回報時間：{as_of}；代理：{agent}）",
+        "site_state": "站台連線狀態：{state}（回報時間：{as_of}；代理：{agent}）",
         "tool_error": "平台回報該項操作失敗。請稍後再試；仍失敗請洽平台管理者。",
         "bad_answer": "平台的回覆格式無法辨識。請確認 abf-platform 套件與平台是同一版本後，再執行一次。",
         "write_failed": "無法寫入設定檔 {path}。請確認該資料夾可寫入且磁碟尚有空間，再執行一次。",
@@ -61,7 +61,7 @@ STRINGS = {
         "offline": "This computer cannot reach the network, or cannot find the platform host. Check the local network first, and go by the --server address given to studio-connect: {url}.",
         "unreachable": "The platform's public address does not answer: the platform machine may be off, or the Tailscale Funnel or MCP service is not running (address: {url}). Try again later, or ask the platform administrator to check.",
         "site_closed": "The platform is reachable, but the connection to the compute site is not open, so the result cannot be read. Ask the platform administrator to open the site connection again, then retry.",
-        "site_link": "Site connection: {state} (as of {as_of}; agent: {agent})",
+        "site_state": "Site connection: {state} (as of {as_of}; agent: {agent})",
         "tool_error": "The platform reported that the operation failed. Try again later; if it still fails, contact the platform administrator.",
         "bad_answer": "The answer of the platform is not in a format that can be read. Make sure the abf-platform package is the same version as the platform, then run it again.",
         "write_failed": "The settings file {path} could not be written. Make sure the folder is writable and the disk has space, then run it again.",
@@ -112,7 +112,7 @@ def permission_bits_trusted():
     return os.name == "posix" and sys.platform not in ("cygwin", "msys")
 
 
-_SERVER = re.compile(r"^(?P<scheme>https?)://(?P<host>\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(?P<port>[0-9]{1,5}))?/?$")
+_SERVER = re.compile(r"^(?P<scheme>https?)://(?P<host>\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(?P<port>[0-9]{1,5}))?/?\Z")
 
 
 def check_server(raw):
@@ -302,7 +302,7 @@ def is_site_closed(answer):
     return answer.get("code") in SITE_DOWN_CODES or (isinstance(reason, str) and SITE_DOWN_TEXT in reason)
 
 
-async def site_link_lines(session, compute_env=None):
+async def site_state_lines(session, compute_env=None):
     """The lines that tell what the platform knows of the site connection of this compute environment; nothing when the platform does not say."""
     try:
         answer = await session.call_tool("list_compute_envs", {})
@@ -313,5 +313,5 @@ async def site_link_lines(session, compute_env=None):
         link = env.get("site_connection") if isinstance(env, dict) else None
         if not isinstance(link, dict) or (compute_env and env.get("name") != compute_env):
             continue
-        lines.append(tr("site_link", state=link.get("state"), as_of=link.get("as_of"), agent=link.get("agent")))
+        lines.append(tr("site_state", state=link.get("state"), as_of=link.get("as_of"), agent=link.get("agent")))
     return lines

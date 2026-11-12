@@ -138,7 +138,7 @@ def test_the_one_waiting_loop_of_the_terminal_commands_is_pinned_in_place_and_in
 
 def test_nothing_else_in_the_new_code_sleeps_or_waits_in_a_loop():
     for p in code_files():
-        if p.parent.name == "abf_launch" or p.name in ("agent.py", "agents.py", "jobs.py", "site.py"):  # the 007 poll loops
+        if p.parent.name == "abf_launch" or p.name in ("agent.py", "agents.py", "jobs.py", "site.py", "studio_cli.py", "studio_remote.py"):  # the 007 poll loops; the two user-side commands ask again every 2 seconds and wait out a retry by the plan of cli-fetch-publish-figure
             continue
         text = "".join(l + "\n" for _, l in real_lines(p))
         assert not re.search(r"\btime\.sleep\(|\basyncio\.sleep\(", text), p.name

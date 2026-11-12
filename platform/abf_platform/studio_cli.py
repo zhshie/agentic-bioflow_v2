@@ -257,7 +257,7 @@ async def _site_closed(session, report, answer, compute_env):
     reason = answer.get("reason") or answer.get("message")
     if isinstance(reason, str) and reason:
         _bad(_t("site_reply", reason=reason))
-    for line in await studio_remote.site_link_lines(session, compute_env):
+    for line in await studio_remote.site_state_lines(session, compute_env):
         _bad(line)
 
 

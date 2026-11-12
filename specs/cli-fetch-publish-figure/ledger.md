@@ -124,3 +124,10 @@ was not tried either.
 
 No line of `jobs.py`, `actions/`, `mcp_server.py`, `http_auth.py`, `store.py`, `web_board.py`, `web.py`, `abf_station/`, `.github/`, `hooks/`, the constitution,
 `plugin.json` or the dependencies of `pyproject.toml` is in it (TC-084).
+
+## A pinned test touched that the plan did not name
+
+`platform/tests/test_launch_static.py::test_nothing_else_in_the_new_code_sleeps_or_waits_in_a_loop` bars `asyncio.sleep(` in new code except a list of files. The plan requires
+polling every 2 seconds and a 2 second retry wait, so `studio_cli.py` and `studio_remote.py` were added to that list (one line, a loosening by two names): the reviewer should
+decide. Also: identifiers `site_link` renamed `site_state` (`test_refusal_visibility` TC-090 allow-lists the files that may say `site_link`); the address regex ends in `\Z`
+(`tests/regex_end_anchor_test.sh`); `docs/OPERATIONS.md` does not write `abf-platform studio-connect` or `.ts.net` (`operations_doc_test.sh`, `hosted_deploy_test.sh`).
