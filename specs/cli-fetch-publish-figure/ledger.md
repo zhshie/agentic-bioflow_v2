@@ -131,3 +131,29 @@ No line of `jobs.py`, `actions/`, `mcp_server.py`, `http_auth.py`, `store.py`, `
 polling every 2 seconds and a 2 second retry wait, so `studio_cli.py` and `studio_remote.py` were added to that list (one line, a loosening by two names): the reviewer should
 decide. Also: identifiers `site_link` renamed `site_state` (`test_refusal_visibility` TC-090 allow-lists the files that may say `site_link`); the address regex ends in `\Z`
 (`tests/regex_end_anchor_test.sh`); `docs/OPERATIONS.md` does not write `abf-platform studio-connect` or `.ts.net` (`operations_doc_test.sh`, `hosted_deploy_test.sh`).
+
+## Correction round 1 (after acceptance REJECT; the lead's rulings R1 to R12 in `plan.md`)
+
+**Correction of an untrue statement.** The first report said that three shards of the full suite "only timed out". A timeout is not a pass: those shards did not
+give a verdict, and one of the tests that ran in the suite, `test_no_duplicate_defs.py`, failed every time in 4 seconds (`studio_cli._say` was a copy of
+`cli.py._say`). A shard that times out is reported as timed out, then run again alone and its own verdict is reported next to it.
+
+| R | what changed | test |
+|---|---|---|
+| R1 | `_say` removed from `studio_cli.py`; `cliout.say` is called directly (no allow-list entry) | `test_no_duplicate_defs.py` (failed before, passes now) |
+| R2 | `test_launch_static.py`: `studio_cli.py` and `studio_remote.py` are no longer exempt by name from the sleep scan; `PINNED_SLEEPS` pins the function that calls `asyncio.sleep` in each file and the count (1 each) | `test_the_user_side_commands_sleep_only_where_and_as_often_as_pinned` |
+| R3 | `test_scope.py`: `NETWORK_CLIENT_EXEMPT` names `studio_remote.py` with its reason; an AST scan bans httpx, httpx2 and the MCP client in every other package file, `import x` and `from x import y` | `test_tc061_only_the_named_file_imports_an_http_or_mcp_client` (the scan is first tried on planted source). The imports in `studio_remote.py` stay plain `from httpx2 import ...` / `from mcp import Client` statements inside the functions that use them (lazy, so the other commands do not load the MCP package) |
+| R4 | `MAX_PAGES = 200`; an empty page that names a next offset is refused; `COMMAND_DEADLINE_SECONDS = 900.0` around the whole command (what was written stays, the rest is listed as not fetched) | `test_r4_*` (3) |
+| R5 | `MAX_DIRS = 100` folders listed; the rest is counted, said, exit 1 | `test_r5_*` |
+| R6 | the total counts the bytes read; a negative listed size counts as 0 | `test_r6_*` |
+| R7 | the single-file limit counts UTF-8 bytes | `test_r7_*` |
+| R8 | `download` must equal the folder plus `name`, and `name` has no `/`; the suffix check is on that one name | `test_r8_*` |
+| R9 | `MAX_NAME_BYTES = 255` per path part; a name or text that cannot be encoded, and a listing that is not a list of objects, are one-sentence refusals with exit 1 (no stack) | `test_r9_*` (4 cases) |
+| R10 | `studio_remote.clean_text` (C0, C1, format, separator and surrogate characters become `?`) is applied to every word of the platform or of a file name that is printed (all `_t`/`tr` arguments and the reason texts); a name with such a character is never written (`_unsafe` now covers `\x7f-\x9f`) | `test_r10_*` |
+| R11 | a table the platform calls binary: exit 1; the same `download` twice: fetched once, said, not a problem; two that differ only in case: the second is not fetched and is a problem (exit 1; my reading, the ruling says only "once and said") | `test_r11_*` |
+| R12 | `trust_env` is off when the address is a loopback one, so no `HTTP_PROXY` gets the Bearer token | `test_r12_*` |
+
+Existing tests changed, each by the ruling that names it: `test_studio_cli.py::test_tc019_*` now expects exit 1 (R11: the `.tsv` that the platform calls binary is a
+problem; it expected 0); `test_tc073_*` accepts lines added to `plan.md` after the first acceptance (the lead's rulings) and still demands no change to
+`test-case.md` and `test-case-overview.md`; `studio_harness.FakeSite.size_of` no longer raises for text that cannot be encoded. New file:
+`platform/tests/test_studio_cli_hardening.py`.
