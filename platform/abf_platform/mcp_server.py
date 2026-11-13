@@ -195,6 +195,10 @@ _REQUEST_ID_DOC = "The id of the pending request that the first call returned; o
 _DELETE_REQUEST_ID_DOC = "Has no effect on delete_figure: a deletion cannot be confirmed in the chat, only by the person on the confirmation page or in their own form."
 _DELETE_USER_CONFIRMED_DOC = ("Has no effect on delete_figure: whatever the person said in the chat, a deletion is confirmed only on the confirmation page "
                               "or in their own form; do not set it.")
+_PUBLISH_REQUEST_ID_DOC = ("The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in "
+                           "the chat, and only for a new name: it has no effect when a figure already in the gallery would be replaced.")
+_PUBLISH_USER_CONFIRMED_DOC = ("True only after the person themselves answered yes in the chat to this request, for a new name; never fill it in for them. "
+                               "It has no effect when a figure already in the gallery would be replaced: that is confirmed only on the confirmation page or in their own form.")
 _USER_CONFIRMED_DOC = "True only after the person themselves answered yes in the chat to this request; never fill it in for them."
 
 
@@ -294,15 +298,15 @@ def _add_write_tools(server, platform_path, index_path):
                                               user_confirmed=user_confirmed)
 
     @server.tool(name="publish_figure", annotations=_PUBLISH,
-                 description="Propose figures for the private gallery of one of your own runs (run_id). Each of figures has filename (letters, digits, "
-                             ". _ -; png, svg, jpg or jpeg), content_base64, optional code, params (plain text) and caption (200 characters at "
-                             "most). 10 per call, 5 MB together, 30 per run; same name replaces. Nothing is written until "
-                             "the person says yes on the page this returns; you cannot say it for them: only after they answered in this chat "
-                             "call again with request_id and user_confirmed=true. Not in the delivery package. SVG with scripts or "
-                             "external links is refused.")
+                 description="Propose figures for the gallery of one of your own runs (run_id). Each of figures has filename (letters, digits, "
+                             ". _ -; png, svg, jpg or jpeg), content_base64, optional code, params and caption (max 200 "
+                             "characters). 10 per call, 5 MB together, 30 per run. Nothing is written until the person says yes on the page this "
+                             "returns; you cannot say it for them. For a new name, after they answered in this chat, call again with "
+                             "request_id and user_confirmed=true. A same name replaces for good; user_confirmed has no effect then. "
+                             "Not in the delivery package. SVG with scripts or external links is refused.")
     async def publish_figure_tool(ctx: Context, run_id: str, figures: list[dict],
-                                  request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
-                                  user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
+                                  request_id: Annotated[str | None, Field(description=_PUBLISH_REQUEST_ID_DOC)] = None,
+                                  user_confirmed: Annotated[bool, Field(description=_PUBLISH_USER_CONFIRMED_DOC)] = False) -> dict:
         return await actions.request_publish_figure(platform_path, run_id=run_id, figures=figures, caller=_caller(ctx),
                                                     person=actions.person_at(ctx), remote=_remote(ctx), index_path=index_path,
                                                     request_id=request_id, user_confirmed=user_confirmed)

@@ -589,7 +589,7 @@
             }
           ],
           "default": null,
-          "description": "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat.",
+          "description": "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat, and only for a new name: it has no effect when a figure already in the gallery would be replaced.",
           "title": "Request Id"
         },
         "run_id": {
@@ -598,7 +598,7 @@
         },
         "user_confirmed": {
           "default": false,
-          "description": "True only after the person themselves answered yes in the chat to this request; never fill it in for them.",
+          "description": "True only after the person themselves answered yes in the chat to this request, for a new name; never fill it in for them. It has no effect when a figure already in the gallery would be replaced: that is confirmed only on the confirmation page or in their own form.",
           "title": "User Confirmed",
           "type": "boolean"
         }
