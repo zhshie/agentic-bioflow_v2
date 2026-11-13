@@ -32,13 +32,16 @@ exec_line=$(printf '%s\n' "$code" | grep -E '^ExecStart=' | head -n1)
 miss=""
 for w in 'rserver' '--www-address' '--www-port' '--www-frame-origin' '--auth-none'; do has "$exec_line" "$w" || miss="$miss [$w]"; done
 if [ -z "$miss" ]; then ok "TC-029 ExecStart runs rserver with the four options"; else bad "TC-029 ExecStart options" "missing:$miss"; fi
-if has "$exec_line" '--www-frame-origin=${ABF_PUBLIC_URL}'; then ok "TC-029 the frame origin is \${ABF_PUBLIC_URL}"; else bad "TC-029 www-frame-origin value"; fi
+if has "$exec_line" '--www-frame-origin="$${ABF_PUBLIC_URL}"' && ! has "$exec_line" '--www-frame-origin=${ABF_PUBLIC_URL}'; then ok "S4 the frame origin is read by the shell and quoted, not pasted in by systemd"; else bad "S4 quoted frame origin"; fi
+if has "$exec_line" '--www-enable-origin-check=1'; then ok "S1 the unit sets --www-enable-origin-check=1"; else bad "S1 --www-enable-origin-check=1"; fi
+if has "$exec_line" 'abf-rstudio will not start: ABF_PUBLIC_URL' && has "$exec_line" 'https://*' && has "$exec_line" 'exit 2'; then ok "S4 a missing or non-https ABF_PUBLIC_URL stops the unit with exit 2"; else bad "S4 ABF_PUBLIC_URL guard"; fi
+if printf '%s\n' "$unit" | grep -E 'platform.s owner|owner of the platform' >/dev/null && printf '%s\n' "$unit" | grep -E 'Windows' >/dev/null; then ok "S2 the unit header says what access to this port means"; else bad "S2 unit header consequence"; fi
 check "TC-029 EnvironmentFile=%h/.config/abf-platform/env" has "$code" 'EnvironmentFile=%h/.config/abf-platform/env'
 check "TC-029 WantedBy=default.target" has "$code" 'WantedBy=default.target'
 check "TC-029 Restart=on-failure" has "$code" 'Restart=on-failure'
 # the option names that exist in the package's rserver binary (read from its strings); a misspelling fails here
 for o in $(printf '%s\n' "$exec_line" | grep -oE -- '--[a-z][a-z-]+' | sort -u); do
-  case "$o" in --www-address|--www-port|--www-frame-origin|--auth-none|--server-user|--server-daemonize|--server-data-dir|--server-pid-file|--secure-cookie-key-file|--database-config-file|--www-same-site|--auth-cookies-force-secure) ;;
+  case "$o" in --www-address|--www-port|--www-frame-origin|--auth-none|--server-user|--server-daemonize|--server-data-dir|--server-pid-file|--secure-cookie-key-file|--database-config-file|--www-same-site|--auth-cookies-force-secure|--www-enable-origin-check) ;;
     *) bad "TC-029 option $o is not one of the rserver options seen in the package";; esac
 done
 
@@ -72,6 +75,14 @@ if has "$exec_line" 'chmod 600' && has "$exec_line" 'cookie-key'; then ok "TC-02
 if has "$exec_line" 'export USER=%u'; then ok "TC-029 USER is set for rserver (export USER=%u)"; else bad "TC-029 export USER=%u"; fi
 if printf '%s\n' "$unit" | grep -iE 'not (been )?(verified|checked)|checked on the computer' >/dev/null; then bad "TC-029 the unit header still says the options are not verified"; else ok "TC-029 the unit header states what was verified"; fi
 if has "$ops" 'allow' && hasre "$ops" 'local network' && has "$tst" 'local network' && has "$plat" 'local network'; then ok "TC-043 OPERATIONS, TESTING and PLATFORM tell the browser asks to allow local network access"; else bad "TC-043 local network permission in the docs"; fi
+# ---------- adversarial review round (S2 S3): what the port means, and that the setting is for one user ----------
+rs2=$(printf '%s\n' "$ops" | awk '/RStudio in the downstream page/{on=1} on' | head -n 60)
+miss=""; for w in "platform's owner" 'signing key' 'agent token' 'Windows' 'compute allowance' 'only for a deployment with one user' 'every user' 'runs no script'; do has "$rs2" "$w" || miss="$miss [$w]"; done
+if [ -z "$miss" ]; then ok "S2 S3 OPERATIONS step 12 names the consequences and the one-user rule"; else bad "S2 S3 OPERATIONS" "missing:$miss"; fi
+miss=""; for w in "platform's owner" 'signing key' 'agent token' 'Windows' 'only for a deployment with one user' 'every user' 'runs no script'; do has "$plat" "$w" || miss="$miss [$w]"; done
+if [ -z "$miss" ]; then ok "S2 S3 PLATFORM.md names the consequences and the one-user rule"; else bad "S2 S3 PLATFORM.md" "missing:$miss"; fi
+if grep -E '^#.*(one user|single)' "$ENVEX" >/dev/null && grep -E '^#.*every user' "$ENVEX" >/dev/null; then ok "S3 env.example says the setting is for a deployment with one user"; else bad "S3 env.example one-user sentence"; fi
+
 # ---------- TC-033: the two tests that count files were rewritten, nothing else under deploy/ ----------
 if git rev-parse --git-dir >/dev/null 2>&1; then
   base=$(git merge-base origin/v3 HEAD 2>/dev/null || true)

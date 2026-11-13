@@ -21,6 +21,7 @@ from test_web_downstream import ROUTES_V3
 from test_web_results_outputs import ENTRIES, FOLDER, finish, launch_to, listings
 
 URL = "http://127.0.0.1:8790"
+HEX_ID = "a1b2c3d4e5f60718"
 GOLDEN = Path(__file__).resolve().parent / "__golden__"
 TODAY = GOLDEN / "studio_embed_today"      # what the downstream page answered at origin/v3 74416bc4, before this feature (TC-022)
 BAD_NOT_LOOPBACK = ["https://127.0.0.1:8790", "http://example.com:8790", "http://127.0.0.1.evil.com:8790", "http://localhost.evil.com:8790",
@@ -64,7 +65,7 @@ def web_downstream_why(studio):
 
 def succeeded(w, name="ann-done"):
     ann = w.ann = w.user("ann")
-    rid = seed(w, name, "succeeded", ann)
+    rid = seed(w, name, "succeeded", ann, run_id=HEX_ID)      # a run id of the platform is 16 hexadecimal characters
     launch_to(w, name, FOLDER)
     return rid
 
@@ -242,17 +243,23 @@ def test_tc012_the_run_id_is_escaped_for_html_and_for_r():
     # TC-012
     from abf_platform import web_downstream
     rid = 'x<b>"y&z\'\\w'
+    for bad in (rid, "A1B2C3D4E5F60718", "a1b2c3d4e5f6071", "a1b2c3d4e5f607180", "a1b2c3d4e5f6071g", "a1b2c3d4e5f60718\n", "$(id)", ""):
+        for lang in ("zh", "en"):
+            out = web_downstream.render_downstream(lang, {"id": bad}, None, None, "T", studio_embed=URL)
+            # an id that is not 16 hexadecimal characters gets no R line (it would go into a shell command); the rest of the page is as usual
+            assert "eval(parse" not in out and "dev.copy" not in out and "x<b" not in out and '"y&z' not in out
+            assert "<iframe" in out and 'target="_blank"' in out and "<details>" in out
+            if lang == "en":
+                assert no_cjk(out)
     for lang in ("zh", "en"):
-        out = web_downstream.render_downstream(lang, {"id": rid}, None, None, "T", studio_embed=URL)
-        assert "<b>" not in out and "x<b" not in out and '"y&z' not in out
+        out = web_downstream.render_downstream(lang, {"id": HEX_ID}, None, None, "T", studio_embed=URL)
         pre = next(m for m in re.finditer(r"<pre\b[^>]*>(.*?)</pre>", out, re.S) if "eval(parse" in m.group(1))
         lines = html.unescape(pre.group(1)).strip().split("\n")
+        assert len(lines) == 2
         for line in lines:
-            strings = re.findall(r'"((?:[^"\\]|\\.)*)"', line)
-            decoded = [re.sub(r"\\(.)", r"\1", s) for s in strings]
-            assert rid in decoded, line           # the id is one whole R string, however many quotes and backslashes it holds
             rest = re.sub(r'"(?:[^"\\]|\\.)*"', '""', line)
             assert rest.count("(") == rest.count(")") and "<" not in rest.replace("<-", "")
+        assert 'shQuote("%s")' % HEX_ID in lines[0] and 'shQuote("%s")' % HEX_ID in lines[1]
         if lang == "en":
             assert no_cjk(out)
 
@@ -564,6 +571,9 @@ def test_tc028_the_second_line_stands_alone(w):
     two = r_pre(client(w, URL).get(down(rid)).text)[1]
     assert "library(" not in two and "install.packages" not in two
     assert "tempfile(" in two and "dev.copy(" in two and "png" in two and "dev.off()" in two and "publish-figure" in two and rid in two
+    assert "shQuote(f)" in two and 'shQuote("%s")' % rid in two          # system2 builds one shell command: the id and the file path are quoted for it
+    one = r_pre(client(w, URL).get(down(rid)).text)[0]
+    assert 'shQuote("%s")' % rid in one
     assert not re.search(r"--yes|-y\b|confirm|user_confirmed|--code", two) and balanced(two)
 
 
