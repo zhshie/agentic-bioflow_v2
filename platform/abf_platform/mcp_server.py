@@ -309,11 +309,10 @@ def _add_write_tools(server, platform_path, index_path):
 
     @server.tool(name="pack_figures", annotations=_PACK,
                  description="Propose which figures of one of your own runs (run_id) are in the delivery package: names is the whole set to put in it, "
-                             "exactly this set. Figures you do not list leave the package but stay in the gallery, they are not deleted and can be "
-                             "packed again later; an empty list empties the package. Nothing changes until the person says yes on the page this "
-                             "returns or in their own form; you cannot say it for them: only after they answered in this chat call again with "
-                             "request_id and user_confirmed=true (never before they answer). If the gallery changed after the question, the "
-                             "answer is refused and you propose again.")
+                             "exactly this set. Figures you do not list leave the package but stay in the gallery, they are not deleted; an empty "
+                             "list empties the package. Nothing changes until the person says yes on the page this returns or in their own form; "
+                             "you cannot say it for them: only after they answered in this chat call again with request_id and "
+                             "user_confirmed=true. If the gallery changed after the question, the answer is refused and you propose again.")
     async def pack_figures_tool(ctx: Context, run_id: str, names: list[str],
                                 request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
                                 user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:

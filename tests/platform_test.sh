@@ -107,7 +107,7 @@ tests/test_web_board.py
     local listed f k=0 n
     listed=" $(echo $SHARDS_1 $SHARDS_2 $SHARDS_3 $SHARDS_4 $SHARDS_5 $SHARDS_6 $SHARDS_7 $SHARDS_8) $LAST "
     for n in $(seq 1 "$PLATFORM_PARTS"); do eval "REST_$n="; done
-    for f in $(ls tests/test_*.py | LC_ALL=C sort); do
+    for f in $(ls tests/test_*.py tests/mcp/test_*.py | LC_ALL=C sort); do
         case "$listed" in
             *" $f "*) ;;
             *) n=$((k % PLATFORM_PARTS + 1)); eval "REST_$n=\"\$REST_$n $f\""
