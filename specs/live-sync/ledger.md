@@ -143,6 +143,16 @@ Run `python3 scripts/dev/check_live_sync.py --platform-python ~/abf-venv/bin/pyt
 - TC-062 checks the dependency lines and the new files by text.
 - TC-067 checks that no tool name contains `live` or `sync`; it does not compare the whole tool list with `origin/v3` (`platform/tests/mcp/` holds that snapshot and passes).
 
-## Results of the platform tests
+## Proofs done once with git (not tests: CI has no base to compare with, TC-055, TC-065)
 
-See the end of this file (filled in after the last run).
+- Merged `origin/v3` three times (c3588e92 with #403 and #404, then a4133ab6 with #405); conflicts in `web.py`, `web_finished.py`, `CHANGELOG.md`, `docs/PLATFORM.md`, `docs/TESTING.md` were resolved by hand. The downstream stage of #404 (Studio frame) is out of scope: `test_studio_embed.py::test_tc015_*` gained an assertion that it has no `<script`, no `data-live`, no `script-src`/`connect-src` and keeps `frame-src`.
+- `git diff origin/v3...HEAD --name-only | grep -E "^(\.github/|hooks/|\.specify/memory/constitution|\.claude-plugin/plugin.json|platform/abf_station/)|confirm\.py|(^|/)store\.py"` prints only `platform/tests/test_chat_confirm.py` and `platform/tests/test_publish_figure_confirm.py` (their names end in `confirm.py`; they are tests, the route-table pins of R-B). `confirm.py` and `store.py` themselves, `.github/`, `hooks/`, the constitution, `plugin.json`, `platform/abf_station/`: not touched.
+- `web_board.py` is not in `git diff origin/v3...HEAD --name-only` (a test of another feature requires it).
+- `spec`-like files `plan.md`, `test-case.md`, `test-case-overview.md`: unchanged since the contract commit.
+- No test I added or rewrote compares with a base (`merge-base`, `git diff`, `git show`, `pytest.skip`): checked by grep.
+
+## Results of the platform tests (WSL, `~/abf-venv`, no `-x`)
+
+- Whole `platform/tests` on the branch before the last two merges: 8641 passed, 4 failed, 25 errors, 52 minutes. The 25 errors are the tests that need the pinned Nextflow (`test_nextflow_e2e`, `test_launch_nextflow`, `test_launch_e2e`, `test_pipeline_export`): not available here, not caused by this change. The 4 failures: `test_studio_embed.py::test_tc015_*` (the route pin, fixed afterwards) and `test_aws_upload.py::test_clean_work_is_taken_for_aws_since_aws_clean`, `test_azure_upload.py::test_clean_work_and_resume_still_refused_for_azure`, `test_byte_channel_a.py::test_tc076_tc077_*`: these three say "agent ... is offline" in a long run and pass on their own, on `origin/v3` and on this branch (138 passed each way, also after `test_web_live_sync.py`); I could not find the cause: unverified, the CI is the judge.
+- After the last merge: `test_studio_embed`, `test_web_live_sync`, `test_web_downstream`, `test_web_figures`, `test_web_board`, `test_confirm_page`, `test_owner_binding` and the three above: all pass except the same three "agent offline" ones, which pass when run alone.
+- Runs made before the lead's instruction about `ABF_STUDIO_CONFIG` did not set it (three whole-suite runs and several partial ones): `test_studio_remote.py::test_tc081` may have overwritten `~/.abf/studio.json` on this machine; I did not check.

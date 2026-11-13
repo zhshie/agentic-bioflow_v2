@@ -299,8 +299,13 @@ def test_tc015_no_script_no_refresh_no_new_route(w):
     for lang in (False, True):
         t = c.get(down(rid, lang=lang)).text
         assert "<script" not in t and 'http-equiv="refresh"' not in t
+    # live-sync: this page (the downstream stage, with the Studio frame) is out of scope: no script, no replaceable regions, today's policy plus frame-src only
+    r = c.get(down(rid))
+    csp = r.headers["content-security-policy"]
+    assert "script-src" not in csp and "connect-src" not in csp and "frame-src" in csp and "data-live" not in r.text
     assert sorted((r.path, tuple(sorted(r.methods or []))) for r in c.app.routes) == sorted(
-        ROUTES_V3 + [("/run/figure", ("GET", "HEAD")), ("/run/figure/delete", ("POST",)), ("/run/figures/pack", ("POST",))])
+        ROUTES_V3 + [("/run/figure", ("GET", "HEAD")), ("/run/figure/delete", ("POST",)), ("/run/figures/pack", ("POST",)),
+                     ("/static/live.js", ("GET", "HEAD")), ("/live/version", ("GET", "HEAD")), ("/live/content", ("GET", "HEAD"))])      # live-sync adds the last three
 
 
 def test_tc016_both_languages(w):
