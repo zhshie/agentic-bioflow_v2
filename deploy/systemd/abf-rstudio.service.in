@@ -1,6 +1,9 @@
 # Not a system service, not for a server and not for a shared computer: RStudio Server run as you (not as root), listening on 127.0.0.1 only, so that
 # the downstream page of abf-platform can show it in a frame (the setting ABF_STUDIO_URL). It needs no login of its own, so anyone who can log in to
-# this computer, and any program on it, can use it: for a personal computer only, and never open its port to a network.
+# this computer, and any program on it, can use it. On the computer that also runs the platform that is a shell of the platform's owner: it reads the
+# analyses of every platform user, the platform databases, the token files, the signing key and the agent token, and through them can send analyses to
+# the site and spend its compute allowance. Other Windows users can reach it too (WSL hands loopback ports to Windows). For a personal computer with
+# one user only, and never open its port to a network.
 # This repository does not ship, change or install RStudio Server (it is AGPL); you install it yourself from Posit. The package also enables and
 # starts its own system service, which must be disabled first: see docs/OPERATIONS.md, "RStudio in the downstream page" (desktop section).
 # The port is taken from ABF_STUDIO_URL in the env file, so it is written in one place only; with no ABF_STUDIO_URL this unit stops at once and
@@ -13,7 +16,7 @@ Description=RStudio Server for the abf-platform downstream page (this computer o
 
 [Service]
 EnvironmentFile=%h/.config/abf-platform/env
-ExecStart=/bin/sh -c 'test -n "$${ABF_STUDIO_URL}" || { echo "abf-rstudio will not start: ABF_STUDIO_URL is not set in ~/.config/abf-platform/env (see docs/OPERATIONS.md)" >&2; exit 2; }; export USER=%u; d=%t/abf-rstudio; mkdir -p -m 700 "$$d"; [ -s "$$d/cookie-key" ] || cat /proc/sys/kernel/random/uuid > "$$d/cookie-key"; chmod 600 "$$d/cookie-key"; { echo provider=sqlite; echo "directory=$$d/db"; } > "$$d/database.conf"; exec /usr/lib/rstudio-server/bin/rserver --server-daemonize=0 --server-user=%u --www-address=127.0.0.1 --www-port="$${ABF_STUDIO_URL##*:}" --www-frame-origin=${ABF_PUBLIC_URL} --auth-none=1 --www-same-site=none --auth-cookies-force-secure=1 --server-data-dir="$$d/data" --server-pid-file="$$d/rserver.pid" --secure-cookie-key-file="$$d/cookie-key" --database-config-file="$$d/database.conf"'
+ExecStart=/bin/sh -c 'test -n "$${ABF_STUDIO_URL}" || { echo "abf-rstudio will not start: ABF_STUDIO_URL is not set in ~/.config/abf-platform/env (see docs/OPERATIONS.md)" >&2; exit 2; }; case "$${ABF_PUBLIC_URL}" in https://*) ;; *) echo "abf-rstudio will not start: ABF_PUBLIC_URL must be set to an https:// address in ~/.config/abf-platform/env (see docs/OPERATIONS.md)" >&2; exit 2;; esac; export USER=%u; d=%t/abf-rstudio; mkdir -p -m 700 "$$d"; [ -s "$$d/cookie-key" ] || cat /proc/sys/kernel/random/uuid > "$$d/cookie-key"; chmod 600 "$$d/cookie-key"; { echo provider=sqlite; echo "directory=$$d/db"; } > "$$d/database.conf"; exec /usr/lib/rstudio-server/bin/rserver --server-daemonize=0 --server-user=%u --www-address=127.0.0.1 --www-port="$${ABF_STUDIO_URL##*:}" --www-frame-origin="$${ABF_PUBLIC_URL}" --auth-none=1 --www-enable-origin-check=1 --www-same-site=none --auth-cookies-force-secure=1 --server-data-dir="$$d/data" --server-pid-file="$$d/rserver.pid" --secure-cookie-key-file="$$d/cookie-key" --database-config-file="$$d/database.conf"'
 Restart=on-failure
 RestartSec=5
 # Exit status 2 is the missing setting: trying again every five seconds cannot fix it, so stay failed and let the person read the journal.

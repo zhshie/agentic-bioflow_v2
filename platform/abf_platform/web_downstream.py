@@ -179,12 +179,16 @@ def _r_str(text):
 
 
 def _r_lines(run):
-    """The two lines to paste into the RStudio Console, with the id of the run in them as an R string: fetch the tables and load them (the command prints
-    only R code), and copy the plot now shown to a temporary png and propose it to the gallery (a proposal only: the person says yes on the confirmation page)."""
-    rid = _r_str(run["id"])
+    """The two lines to paste into the RStudio Console: fetch the tables and load them (the command prints only R code), and copy the plot now shown to a
+    temporary png and propose it to the gallery (a proposal only: the person says yes on the confirmation page). R's `system2` joins its arguments into ONE
+    shell command line, so the run id and the file path are wrapped in `shQuote()`, and the id must be 16 lowercase hexadecimal characters (the form of a run
+    id of the platform): any other id gives "" (no R line at all, the rest of the page is unchanged), so nothing but such an id can ever be in a shell command."""
+    if not isinstance(run["id"], str) or not re.fullmatch(r"[0-9a-f]{16}", run["id"]):
+        return ""
+    rid = "shQuote(%s)" % _r_str(run["id"])
     one = 'eval(parse(text = system2("abf-platform", c("fetch-results", %s, "--r"), stdout = TRUE)))' % rid
     two = ('local({f <- tempfile(fileext = ".png"); dev.copy(png, filename = f); invisible(dev.off()); '
-           'system2("abf-platform", c("publish-figure", %s, f))})' % rid)
+           'system2("abf-platform", c("publish-figure", %s, shQuote(f)))})' % rid)
     return one + "\n" + two
 
 
@@ -193,8 +197,10 @@ def _embed(t, lang, run, url):
     link = '<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>' % (_e(url), _e(t["embed_link"]))
     frame = ('<iframe src="%s" title="%s" width="100%%" height="700" allow="local-network-access" referrerpolicy="no-referrer"></iframe>'
              % (_e(url), _e(t["embed_title"])))
-    return ('<p>%s</p><p>%s</p><p class="muted">%s</p>%s<p>%s</p><pre class="reason">%s</pre><details><summary>%s</summary>%s</details>'
-            % (_e(t["embed_note"]), link, _e(t["embed_blank"]), frame, _e(t["r_note"]), _e(_r_lines(run)), _e(t["terminal_summary"]), _commands(t, lang, run)))
+    lines = _r_lines(run)
+    pasted = '<p>%s</p><pre class="reason">%s</pre>' % (_e(t["r_note"]), _e(lines)) if lines else ""
+    return ('<p>%s</p><p>%s</p><p class="muted">%s</p>%s%s<details><summary>%s</summary>%s</details>'
+            % (_e(t["embed_note"]), link, _e(t["embed_blank"]), frame, pasted, _e(t["terminal_summary"]), _commands(t, lang, run)))
 
 
 def render_downstream(lang, run, outputs, studio, title, *, studio_embed=None):

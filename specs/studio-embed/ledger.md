@@ -94,6 +94,18 @@ Status of the nine points above ("Not verified"):
 
 Not done: item D of the lead's message (the reconnect steps of the WSL section). `tests/desktop_systemd_test.sh` D6 asserts that the section does NOT contain `LAB_SETTINGS_FILE` ("must not be the example"), so adding it would break that existing test; the section is left as it was and the question goes back to the lead.
 
+## Second desktop trial and the adversarial review (round 2)
+
+Lead's trial, same environment: with `--www-enable-origin-check=1` the frame still works (RStudio fully shown). A POST to `/rpc/client_init` with `Origin: https://evil.example` gave 400, with the frame origin (`https://example.com`) gave 400, with `http://127.0.0.1:8790` gave 200.
+
+| # | Finding of the review | Handling |
+|---|---|---|
+| S1 | no origin check on the RStudio port | `--www-enable-origin-check=1` added to the unit, pinned by `studio_embed_deploy_test.sh`, whitelist updated |
+| S2 | what "anyone can use it" means on the computer that runs the platform | stated in the unit header, `docs/OPERATIONS.md` step 12 and `docs/PLATFORM.md`: a shell of the platform's owner (every user's analyses, databases, token files, signing key, agent token, sending analyses to the site and spending the compute allowance); other Windows users reach it too (WSL forwards loopback); pinned by the deploy test |
+| S3 | `ABF_STUDIO_URL` is one value for the deployment and reaches every user's page | stated in `docs/PLATFORM.md`, `docs/OPERATIONS.md` and `deploy/env.example`: only for a deployment with one user; the local network permission is given to the platform's address and is safe only because the platform page runs no script (N4); pinned by the deploy test |
+| S4 | `ABF_PUBLIC_URL` unset or not https; the value was pasted into the command text by systemd | the unit stops with exit 2 and a message (as for `ABF_STUDIO_URL`); the frame origin is read and quoted by the shell; pinned by the deploy test |
+| S5 | `system2` builds one shell command, so the id and the file path must be quoted | `_r_lines` wraps both in `shQuote()` and returns no R line for an id that is not 16 lowercase hex characters (the rest of the page is as usual); the wrong docstring sentence is replaced; `test_tc011`, `tc012`, `tc028` updated (the embed tests now use a 16-hex run id) |
+
 ## git diff --stat origin/v3...HEAD
 
 ```
