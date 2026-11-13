@@ -47,3 +47,4 @@ R2 `delete_figure` 在內建聊天沒有確認視窗、沒有按鈕，答覆只�
 R3 聊天系統提示列出兩個新工具並說明刪圖不能在聊天裡確認；`test_chat_confirm.py::test_tcm_53` 的提示釘住是點名改寫的第四處。
 R4 `publish_figure` 留在 `CHAT_EXCLUDED`（聊天頁沒有圖的位元組，也沒有工具能取得）；lead 回報維護者。
 另：`tools.json` 不含註記，維持一字不動（TC-012）；上面「做什麼」2 裡「快照同步」一語以此為準。可改寫的既有測試以 verifier 報告 B 節清單為限：`test_web_figures.py::test_nothing_in_package_until_pack_pressed`；`test_replace_needs_click.py::test_rnc_the_tool_description_and_parameters_say_a_replace_needs_the_click`（註記那一個斷言）；`test_chat_tools.py` 的 `test_gallery_tools_are_excluded_from_the_browser_chat`、`test_tc001_tc034_*`、`test_tc020_*`、`test_tc052_*`；`test_head_nodefail.py::test_tc046_*`；`test_chat_confirm.py::test_tcm_53_*`（及 327 行的註解）。
+補充裁決（lead，2026-11-13）：釘住 `REQUEST_TOOLS` 集合的是 `test_head_nodefail.py::test_tc048_get_run_stays_a_query_that_needs_no_yes`，不是 tc046（計畫寫錯編號）。准許只改它對 `REQUEST_TOOLS` 的那一句，補上兩個新工具。
