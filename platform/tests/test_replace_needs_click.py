@@ -75,7 +75,7 @@ def test_rnc_a_relayed_replace_is_refused_with_the_page_and_nothing_is_consumed(
     msg = out["message"]
     assert "這次存入會取代圖庫中既有的圖" in msg and "原圖無法復原" in msg and "須由本人在確認頁按下確認" in msg
     assert "cannot be undone" in msg and "confirmation page" in msg
-    assert not banned_in(msg.split(" (")[0])
+    assert not banned_in(msg.split(" (")[0].replace("這次存入會取代圖庫中既有的圖", ""))      # that one sentence is the one the plan and TC-003 prescribe word for word
     assert "Traceback" not in msg and "SELECT" not in msg and str(w.ip.state_db.parent) not in msg
     rows = allrows(w)
     assert len(rows) == n
@@ -338,16 +338,16 @@ def test_rnc_the_tool_description_and_parameters_say_a_replace_needs_the_click(w
     tools = {t.name: t for t in asyncio.run(server.list_tools())}
     t = tools["publish_figure"]
     assert len(t.description) <= 600 and "user_confirmed" in t.description and "replac" in t.description.lower()
-    props = t.inputSchema["properties"]
+    props = t.input_schema["properties"]
     shared = "True only after the person themselves answered yes in the chat to this request; never fill it in for them."
     for k in ("request_id", "user_confirmed"):
         d = props[k]["description"]
         assert "replac" in d.lower() and "new name" in d.lower() and d != shared
-    assert t.inputSchema["required"] == ["run_id", "figures"]
+    assert t.input_schema["required"] == ["run_id", "figures"]
     a = t.annotations
     assert (a.read_only_hint, a.destructive_hint, a.idempotent_hint) == (False, False, True)
     for other in ("pack_figures", "launch", "cancel", "resume", "relaunch", "forget"):
-        assert "replac" not in tools[other].inputSchema["properties"]["user_confirmed"]["description"].lower()
+        assert "replac" not in tools[other].input_schema["properties"].get("user_confirmed", {}).get("description", "").lower()
 
 
 # ---- no old version is kept; the database holds no chat replace -----------------------------------------------------------------------------

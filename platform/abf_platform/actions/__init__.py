@@ -1526,6 +1526,17 @@ def _is_delete(kind, bundle):
     return kind == "gallery_change" and isinstance(bundle, dict) and bundle.get("action") == "delete"
 
 
+_REPLACE_ONLY_ON_THE_PAGE = ("這次存入會取代圖庫中既有的圖，原圖無法復原，須由本人在確認頁按下確認；在聊天裡的回答，以及 user_confirmed 與 request_id，對取代既有的圖都不算數 "
+                            "(this publish would replace a figure that is already in the gallery, and that cannot be undone, so only the person can "
+                            "confirm it, by pressing confirm on the confirmation page; an answer in the chat, user_confirmed and request_id do not count when a "
+                            "figure would be replaced)")
+
+
+def _is_replace(kind, bundle):
+    """A publish_figure request that, when it was made, would replace a figure of the gallery (its bundle names the figures it replaces)."""
+    return kind == "publish_figure" and isinstance(bundle, dict) and bool(bundle.get("replaces"))
+
+
 def _page_url(platform_path, rid):
     base = store.get_meta(platform_path, "web_base_url") or DEFAULT_WEB_BASE
     return "%s/c/%s" % (base.rstrip("/"), rid)
@@ -1561,6 +1572,9 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
     tool = tool or kind
     if user_confirmed is True:
         delete = _is_delete(kind, bundle)
+        replace = _is_replace(kind, bundle)
+        if replace and not (isinstance(request_id, str) and request_id):      # a replacing publish is never carried by a relayed yes either
+            return _no("未送出：%s。請重新提出存圖（不帶 user_confirmed），再請本人打開確認頁按下確認。" % _REPLACE_ONLY_ON_THE_PAGE)
         if delete and not (isinstance(request_id, str) and request_id):      # a deletion is never carried by a relayed yes: no request, and the page is the way
             return _no("未送出：%s。請重新提出刪除（不帶 user_confirmed），再請本人打開確認頁按下確認。" % _DELETE_ONLY_ON_THE_PAGE)
         if not (isinstance(request_id, str) and request_id):
@@ -1569,10 +1583,14 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
             url = _page_url(platform_path, request_id)       # the request stays as it is: pending, not void, not consumed
             return {"ok": False, "sent": False, "message": "未送出：%s。該筆申請仍在等待本人，沒有刪除任何內容。確認頁：%s" % (_DELETE_ONLY_ON_THE_PAGE, url),
                     "confirmation_url": url}
+        if replace and _own_waiting_request(platform_path, request_id, kind, bundle, caller_id, clock):
+            url = _page_url(platform_path, request_id)       # the request stays as it is: pending, not void, not consumed
+            return {"ok": False, "sent": False, "message": "未送出：%s。該筆申請仍在等待本人，沒有存入任何圖。確認頁：%s" % (_REPLACE_ONLY_ON_THE_PAGE, url),
+                    "confirmation_url": url}
         try:
             # a deletion that is not waiting is answered by the old refusals below; were one to reach the approval anyway, with no writer nothing is written
             _, job_id = confirm.approve(platform_path, request_id, CHAT.name, caller_id, clock,
-                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=None if delete else _writer_for(kind))
+                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=None if (delete or replace) else _writer_for(kind))
         except confirm.NotApproved as e:
             if e.status == "already":
                 return _already_done(kind, request_id) if kind == "gallery_change" else (done(request_id) if done else _queued(request_id, e.job_id, what))
