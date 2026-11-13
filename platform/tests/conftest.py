@@ -64,3 +64,39 @@ def short_tmp():
     d = Path(tempfile.mkdtemp(prefix="abf-", dir="/tmp" if os.path.isdir("/tmp") else None))
     yield d
     shutil.rmtree(str(d), ignore_errors=True)
+
+
+# ---- the real home stays untouched (bug test-home-leak) --------------------------------------------------------------------------------
+
+_REAL_STUDIO_JSON = Path(os.path.expanduser("~")) / ".abf" / "studio.json"      # the real home, resolved before any test patches Path.home
+
+
+def studio_fingerprint(path):
+    """(size, mtime_ns) of a file, or None when it is not there. The content is never read: it holds a token."""
+    try:
+        st = os.stat(str(path))
+    except OSError:
+        return None
+    return (st.st_size, st.st_mtime_ns)
+
+
+@pytest.fixture(autouse=True)
+def _studio_config_never_the_real_home(tmp_path):
+    """A safety net under every test: ABF_STUDIO_CONFIG points into the test's own tmp dir. It uses its own MonkeyPatch, not the shared
+    `monkeypatch` fixture, so a test's monkeypatch.undo() cannot remove it."""
+    mp = pytest.MonkeyPatch()
+    mp.setenv("ABF_STUDIO_CONFIG", str(tmp_path / "studio-config-guard" / "studio.json"))
+    yield
+    mp.undo()
+
+
+def pytest_configure(config):
+    config._abf_real_studio_before = studio_fingerprint(_REAL_STUDIO_JSON)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    before = getattr(session.config, "_abf_real_studio_before", None)
+    after = studio_fingerprint(_REAL_STUDIO_JSON)
+    if before != after:
+        sys.stderr.write("\nFAIL: a test changed the real %s (size/mtime differ, or it was created). Tests must leave the real home alone.\n" % _REAL_STUDIO_JSON)
+        session.exitstatus = 1
