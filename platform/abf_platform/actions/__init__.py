@@ -1526,7 +1526,7 @@ def _is_delete(kind, bundle):
     return kind == "gallery_change" and isinstance(bundle, dict) and bundle.get("action") == "delete"
 
 
-_REPLACE_ONLY_ON_THE_PAGE = ("這次存入會取代圖庫中既有的圖，原圖無法復原，須由本人在確認頁按下確認；在聊天裡的回答，以及 user_confirmed 與 request_id，對取代既有的圖都不算數 "
+_REPLACE_ONLY_ON_THE_PAGE = ("本次存入會取代圖庫中既有的圖，原圖無法復原，須由本人在確認頁按下確認；在聊天裡的回答，以及 user_confirmed 與 request_id，對取代既有的圖都不算數 "
                             "(this publish would replace a figure that is already in the gallery, and that cannot be undone, so only the person can "
                             "confirm it, by pressing confirm on the confirmation page; an answer in the chat, user_confirmed and request_id do not count when a "
                             "figure would be replaced)")

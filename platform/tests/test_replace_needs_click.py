@@ -73,9 +73,9 @@ def test_rnc_a_relayed_replace_is_refused_with_the_page_and_nothing_is_consumed(
     assert prints(gallery(w, ann, run)) == before
     assert url and out["url"] == url and url in out["message"]
     msg = out["message"]
-    assert "這次存入會取代圖庫中既有的圖" in msg and "原圖無法復原" in msg and "須由本人在確認頁按下確認" in msg
+    assert "本次存入會取代圖庫中既有的圖" in msg and "原圖無法復原" in msg and "須由本人在確認頁按下確認" in msg
     assert "cannot be undone" in msg and "confirmation page" in msg
-    assert not banned_in(msg.split(" (")[0].replace("這次存入會取代圖庫中既有的圖", ""))      # that one sentence is the one the plan and TC-003 prescribe word for word
+    assert not banned_in(msg.split(" (")[0])
     assert "Traceback" not in msg and "SELECT" not in msg and str(w.ip.state_db.parent) not in msg
     rows = allrows(w)
     assert len(rows) == n

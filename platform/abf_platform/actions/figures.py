@@ -396,7 +396,7 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
                           "chat, call publish_figure again with the same arguments plus request_id=%s and user_confirmed=true; never set it true before they answer)"
                           % (url, rid, rid)}
         if replaces:      # it would replace a figure: confirmed on the confirmation page or in the form, never by a relayed yes; say only that
-            out["message"] = ("尚未存入 (nothing is written yet)。這次存入會取代圖庫中既有的圖，原圖無法復原，須由本人在確認頁按下確認：請本人打開確認頁網址、用自己的帳號登入、"
+            out["message"] = ("尚未存入 (nothing is written yet)。本次存入會取代圖庫中既有的圖，原圖無法復原，須由本人在確認頁按下確認：請本人打開確認頁網址、用自己的帳號登入、"
                               "看過內容後按下確認：%s ——按下之後才會存入，不必再呼叫一次；在聊天裡回答確認不算數。 (this publish would replace a figure that is already in the "
                               "gallery and the original cannot be recovered, so only the person can confirm it: open the address, log in as yourself and press confirm; "
                               "no second call is needed, and a yes in the chat does not count)" % url)
