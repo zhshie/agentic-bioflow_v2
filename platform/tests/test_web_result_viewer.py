@@ -774,7 +774,7 @@ def test_back_from_a_preview_goes_to_the_folder_of_the_file(w):
     r = c.get(purl(rid, "star salmon/notes.txt"))      # a file that has no preview, in a folder whose name needs quoting
     assert r.status_code == 200 and _back(r.text) == [top + "&amp;path=star%20salmon"]
     r = c.get(purl(rid, "pipeline_info/report.html") + "&lang=en")      # still waiting for the site: the waiting page leads back to the folder too
-    assert r.status_code == 200 and _back(r.text) == ["/?lang=en&amp;run=%s&amp;stage=results&amp;tab=outputs&amp;path=pipeline_info" % rid]
+    assert r.status_code == 200 and _back(r.text) == [top + "&amp;path=pipeline_info&amp;lang=en"]
     r = ready(w, c, rid, "plot.png", PNG)      # a file at the top goes back to the top, as before
     assert _back(r.text) == [top]
 
