@@ -578,7 +578,7 @@ def test_tc042_nothing_is_sent_by_uploading_or_looking(up):
 def test_tc043_no_new_table_or_column(up):
     # TC-043
     con = sqlite3.connect(str(up.state))
-    schema = "\n".join(sorted(r[0] or "" for r in con.execute("select sql from sqlite_master"))).replace(", 'lint_pipeline'", "").replace(", 'publish_figure'", "")   # 017c2a: lint_pipeline joins the jobs CHECK list; the rest is the base digest
+    schema = "\n".join(sorted(r[0] or "" for r in con.execute("select sql from sqlite_master"))).replace(", 'lint_pipeline'", "").replace(", 'gallery_change'", "").replace(", 'publish_figure'", "")   # 017c2a: lint_pipeline joins the jobs CHECK list; the rest is the base digest
     assert hashlib.sha256(schema.encode()).hexdigest()[:16] == "38f9a0e10f820974"
 
 

@@ -17,8 +17,9 @@ REQUEST_TOOLS = frozenset({"launch", "launch_pipeline", "cancel", "resume", "rel
 # a query that needs no yes but is not marked read-only: for a lost run it queues one read of the site (ruling R2)
 QUERY_TOOLS = frozenset({"get_run"})
 # tools that exist for the person's own LLM client and are not offered to the browser chat: publish_figure carries the bytes of a figure the
-# LLM client made, which the page does not have (mcp-publish-figure, slice 1)
-CHAT_EXCLUDED = frozenset({"publish_figure"})
+# LLM client made, which the page does not have (mcp-publish-figure, slice 1); pack_figures and delete_figure are for that same client, which
+# names the figures and relays the person's yes (mcp-gallery-actions, slice 3, ruling R1)
+CHAT_EXCLUDED = frozenset({"publish_figure", "pack_figures", "delete_figure"})
 
 CHAT_SYSTEM_PROMPT = """你是這個分析平台裡的小助理，幫實驗室成員查他們的 Nextflow 分析跑得怎麼樣。你只能用下面這些工具。
 

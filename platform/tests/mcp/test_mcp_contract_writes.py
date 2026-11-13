@@ -9,12 +9,13 @@ import pytest
 from helpers import tool_json, tool_text
 from resume_harness import Rig
 
-WRITE_TOOLS = ["cancel", "forget", "launch", "launch_pipeline", "publish_figure", "relaunch", "resume"]
+WRITE_TOOLS = ["cancel", "delete_figure", "forget", "launch", "launch_pipeline", "pack_figures", "publish_figure", "relaunch", "resume"]
 
 # Real write points of the action layer: a call that is only a question must never reach one of them.
 FORBIDDEN = [("abf_platform.confirm", "approve"), ("abf_platform.actions", "approve"), ("abf_platform.actions", "launch"),
              ("abf_platform.actions", "cancel"), ("abf_platform.actions", "forget"), ("abf_platform.jobs", "enqueue_confirmed"),
-             ("abf_platform.jobs", "enqueue_launch"), ("abf_platform.jobs", "enqueue_cancel")]
+             ("abf_platform.jobs", "enqueue_launch"), ("abf_platform.jobs", "enqueue_cancel"),
+             ("abf_platform.actions.figures", "pack_figures"), ("abf_platform.actions.figures", "delete_figure")]      # mcp-gallery-actions TC-092: the two core writes of the gallery
 
 
 def tools_of(index):
@@ -41,7 +42,9 @@ def call_args(rig, tool):
     return {"launch": lambda: rig.w.choices(run="run-new"), "launch_pipeline": lambda: {"pipeline_id": 999999, "run_name": "run-new", "samplesheet_text": "a,b\n1,2\n"},
             "cancel": lambda: {"run_name": "run-c"}, "forget": lambda: {"run_name": "run-f"},
             "resume": lambda: {"run_name": "run-r"}, "relaunch": lambda: {"run_name": "run-r"},
-            "publish_figure": lambda: {"run_id": "id-run-f", "figures": [{"filename": "a.png", "content_base64": "iVBORw0KGgoAAAAA"}]}}[tool]()
+            "publish_figure": lambda: {"run_id": "id-run-f", "figures": [{"filename": "a.png", "content_base64": "iVBORw0KGgoAAAAA"}]},
+            "pack_figures": lambda: {"run_id": "id-run-f", "names": ["a.png"]},      # mcp-gallery-actions TC-092
+            "delete_figure": lambda: {"run_id": "id-run-f", "name": "a.png"}}[tool]()
 
 
 def dump(rig):
@@ -112,6 +115,8 @@ ERROR_INPUTS = {
     "run_outputs": {"run_id": "nope-run-zz"},
     "read_run_file": {"run_id": "nope-run-zz", "path": "nope.txt"},
     "publish_figure": {"run_id": "nope-run-zz", "figures": [{"filename": "a.png", "content_base64": "iVBORw0KGgo="}]},
+    "pack_figures": {"run_id": "nope-run-zz", "names": ["a.png"]},
+    "delete_figure": {"run_id": "nope-run-zz", "name": "a.png"},
     "read_task_log": {"run_name": "nope-run-zz", "task": "nope-task", "which": "out"},
     "find_module": {"q": "zzznomodule"},
     "describe_module": {"name": "nope_module_zz"},

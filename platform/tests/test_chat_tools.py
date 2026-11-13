@@ -45,6 +45,14 @@ def offered_by_rule(tools):
     return {t.name for t in tools if (t.annotations is not None and t.annotations.read_only_hint is True) or t.name in req or t.name in chat_tools().QUERY_TOOLS}
 
 
+def test_gallery_tools_are_excluded_from_the_browser_chat(tmp_path):
+    # mcp-gallery-actions TC-097 (R1): pack_figures and delete_figure are in CHAT_EXCLUDED, the classification check does not raise, and the chat is not offered them
+    m = chat_tools()
+    assert {"pack_figures", "delete_figure"} <= set(m.CHAT_EXCLUDED) and set(m.CHAT_EXCLUDED) == {"publish_figure", "pack_figures", "delete_figure"}
+    m.classify_check(server_tools(tmp_path))
+    assert not {s["name"] for s in specs(tmp_path)} & {"pack_figures", "delete_figure", "publish_figure"}
+
+
 def test_tc001_tc034_the_list_is_what_the_server_has_and_is_read_only_or_a_request_tool(tmp_path):
     # TC-001, TC-034
     names = {s["name"] for s in specs(tmp_path)}
