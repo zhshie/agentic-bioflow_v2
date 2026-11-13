@@ -195,7 +195,7 @@ if [ -n "$BASE" ]; then
   if [ "$nminus" -eq 4 ] && [ "$(printf '%s\n' "$dd" | grep '^-' | grep -cE 'TC-069|want_list=|TC-083|-eq 3|three \.service')" -eq 4 ]; then ok "TC-044 only the TC-069 and TC-083 lines of hosted_deploy_test.sh changed (4 lines changed)"; else bad "TC-044 hosted_deploy_test.sh diff is more than the two named assertions" "removed lines: $nminus"; fi
 else skip "TC-044 hosted_deploy_test.sh diff" "no origin/v3 to compare with"; fi
 if hasre "$(grep -E 'want_list=' tests/hosted_deploy_test.sh)" 'station\.env\.example' && hasre "$(grep -E 'want_list=' tests/hosted_deploy_test.sh)" 'keep-wsl-running\.ps1' && hasre "$(grep -E 'want_list=' tests/hosted_deploy_test.sh)" 'abf-station@\.service\.in'; then ok "TC-044 the TC-069 list names the three new files"; else bad "TC-044 the TC-069 list names the three new files"; fi
-if grep -q 'four \.service\.in' tests/hosted_deploy_test.sh && grep -qE 'wc -l\)" -eq 4' tests/hosted_deploy_test.sh; then ok "TC-044 TC-083 counts four .service.in"; else bad "TC-044 TC-083 counts four .service.in"; fi
+if grep -q 'five \.service\.in' tests/hosted_deploy_test.sh && grep -qE 'wc -l\)" -eq 5' tests/hosted_deploy_test.sh; then ok "TC-044 TC-083 counts five .service.in"; else bad "TC-044 TC-083 counts five .service.in"; fi
 ot=$(bash tests/operations_doc_test.sh 2>&1); orc=$?
 if [ "$orc" -eq 0 ]; then ok "TC-045 tests/operations_doc_test.sh passes"; else bad "TC-045 operations_doc_test.sh" "$(printf '%s\n' "$ot" | grep FAIL | head -n3 | tr '\n' ' ')"; fi
 if [ "$(printf '%s\n' "$ops" | grep -cE '^## ')" -eq 6 ]; then ok "TC-045 OPERATIONS.md still has six ## headings"; else bad "TC-045 six ## headings"; fi
