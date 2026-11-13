@@ -38,3 +38,9 @@ The RED of the publish_figure annotation change (commit 3495ae19) was committed 
      specs/gallery-followups/test-case-overview.md | 54 +++++++++++++++++
      specs/gallery-followups/test-case.md          | 86 +++++++++++++++++++++++++++
      15 files changed, 345 insertions(+), 31 deletions(-)
+
+## After the first CI run (lead, 2026-11-13)
+
+CI on a0e1b402 failed in two places; both fixed by the lead:
+- `platform/tests/test_resume_edit_params_platform.py::test_the_chat_prompt_says_resume_can_carry_params_and_extra_config` pins the `REQUEST_TOOLS` set a second time. Lead ruling: the one set literal gains `pack_figures` and `delete_figure`; nothing else in the test changes.
+- `tests/desktop_systemd_test.sh` TC-047 requires the desktop-systemd bullet within the first 12 lines of `CHANGELOG.md`. The gallery-followups bullet moved to directly after the desktop-systemd bullet; no existing line changed.
