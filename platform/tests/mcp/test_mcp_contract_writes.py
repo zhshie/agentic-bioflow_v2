@@ -35,7 +35,22 @@ def make_rig(tmp_path, monkeypatch):
     rig.first("run-c", status=None, slurm=4242)        # still running: something to cancel
     rig.first("run-f", status="succeeded")             # finished: something to forget
     rig.first("run-r", status="failed")                # failed: something to resume or relaunch
+    seed_gallery(rig, "id-run-f", "a.png")             # a figure in the gallery, not in the package: something to pack or delete
     return rig
+
+
+def seed_gallery(rig, run_id, name):
+    """One figure `name` in the gallery of `run_id` (the ownerless local session's), stored the way publish_figure stores it, not packed."""
+    import os
+    from abf_platform.actions import figures
+    folder = figures.run_folder(rig.state, None, run_id)
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    with open(os.path.join(folder, name), "wb") as f:
+        f.write(bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + bytes(16))      # the PNG signature and padding
+    entry = {"size": 24, "type": "png", "caption": "", "code_file": None, "params_file": None, "created": "2026-11-13T00:00:00Z",
+             "packed": False, "packed_at": None, "request_id": "seed"}
+    with open(os.path.join(folder, "index.json"), "w") as f:
+        json.dump({"version": 1, "figures": {name: entry}}, f)
 
 
 def call_args(rig, tool):
@@ -205,13 +220,22 @@ def test_xfail_marks_are_for_known_tools_only(plat):
     assert set(GAPS) <= set(ERROR_INPUTS)
 
 
-@pytest.mark.parametrize("tool", [t for t in sorted(ERROR_INPUTS)])
+# The tools of ERROR_INPUTS that have no required argument today: a call without arguments is a valid call, so TC-014 has nothing to refuse.
+NO_REQUIRED = {"list_agents", "list_compute_envs", "list_pipelines", "list_runs", "list_used_pipelines", "my_usage"}
+
+
+def test_no_required_tools_are_exactly_the_pinned_set(plat):
+    # TC-014: a tool that gains or loses its required list must change NO_REQUIRED in the same commit, not drop out of TC-014 quietly
+    got = {t["name"] for t in tools_of(plat.index) if t["name"] in ERROR_INPUTS and not t["inputSchema"].get("required")}
+    assert got == NO_REQUIRED, "tools without a required argument changed: %s" % sorted(got ^ NO_REQUIRED)
+
+
+@pytest.mark.parametrize("tool", sorted(set(ERROR_INPUTS) - NO_REQUIRED))
 def test_missing_required_param_is_rejected_without_stack(tmp_path, monkeypatch, tool):
     # TC-014: the SDK refuses a call that leaves out a required argument; the refusal is no stack
     rig = make_rig(tmp_path, monkeypatch)
     schema = next(t for t in tools_of(rig.w.ip.index) if t["name"] == tool)["inputSchema"]
-    if not schema.get("required"):
-        pytest.skip("%s has no required argument" % tool)
+    assert schema.get("required"), "%s has no required argument: add it to NO_REQUIRED" % tool
     _, outs = rig.w.mcp([(tool, {})])
     text = tool_text(outs[0])
     assert outs[0].is_error, "%s accepted a call without %s: %s" % (tool, schema["required"], text[:300])
