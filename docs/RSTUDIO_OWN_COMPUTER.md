@@ -3,7 +3,7 @@
 > **請先讀這一段。**
 > 這是**過渡做法**，**不是**維護者想要的最終目標（把 RStudio 直接嵌在網頁裡）。
 > 「嵌在網頁裡的 RStudio」與「到處都能跑（run anywhere）」是之後另外的卡片，這份文件不處理它們。
-> 另外，目前「網頁內嵌 RStudio」只在**桌面版的 Chrome 類瀏覽器**上驗證過，其他瀏覽器**尚未驗證**。
+> 另外，「網頁內嵌 RStudio」至今只在桌機上用**無頭 Chromium（自動化）**驗證過；**真正的 Chrome 視窗、Firefox、Safari 都沒有人實際驗證過**（維護者的試用還沒回報）。
 >
 > 狀態：**草稿，沒有任何人照這份文件完整走過一遍。** 文中凡是寫「未驗證」的地方，都是只從程式碼推論、沒有實機測過。
 > 本文是依據 `docs/PLATFORM.md`（「Commands on your own computer」與「RStudio in the downstream page」）、
@@ -17,18 +17,18 @@
 1. 把這次分析的結果表格載入 R。
 2. 把你在 RStudio 畫好的圖，送回平台的圖庫（只是「提出申請」，最後仍要你自己到確認頁按下按鈕）。
 
-## 安全規則（逐字，必須遵守）
+## 安全規則（必須遵守）
 
 1. 沒有登入的 RStudio 只能聽 `127.0.0.1`，絕不能聽 `0.0.0.0`，也絕不能透過 `tailscale serve`/`funnel`、反向代理（reverse proxy）或連接埠轉發（port forwarding）讓別人連到。
 2. 只裝在「只有你一個人使用」的電腦，不裝在共用的實驗室工作站或登入節點（login node）。
-3. 每個人、每台電腦各用一把自己的個人權杖（personal token），絕不分享，絕不貼進聊天或電子郵件；電腦遺失或人員離開時要撤銷（revoke）。
+3. 每個人、每台電腦各用一把自己的個人權杖（personal token），絕不分享，絕不貼進聊天、電子郵件或共用文件；電腦遺失或人員離開時要撤銷（revoke）。權杖的交付方式：由管理員當面讓你本人從螢幕上抄或貼，或用密碼管理器的分享功能。**目前沒有其他安全的遠端交付方式**（見文末「還沒驗證的事」）。
 4. 平台無法遠端替你安裝軟體。
 
-關於資料：維護者在 2026-11-13 說過「no data type is barred from download」（任何資料類型都不禁止下載到個人電腦）。
-這句話只談「下載到個人電腦」，**不代表可以對外分享**；要把資料或結果給實驗室以外的人，仍須另外確認。
+關於資料：2026-11-13，維護者被問到「分析結果會被下載到同事的個人電腦，資料可以離開平台到個人電腦嗎？」，他選了「可以，沒有不能下載的類型」（經 Sonnet 小修 session 的提問轉述，不是他自己寫的句子）。
+這個回答只談「下載到個人電腦」，**不代表可以對外分享**；要把資料或結果給實驗室以外的人，仍須另外確認。
 
 說明：本文件的 RStudio Desktop 是在你自己的電腦上、不開任何網路連接埠給別人，所以不會違反第 1 條；
-第 1 條是給「有人想自己架網頁版 RStudio Server」時看的，請不要那樣做。
+第 1 條是給「有人想自己架網頁版 RStudio Server」時看的：在正式的安裝方式（另一份文件，尚未寫）出來之前，請不要自己架。
 
 ## 你需要準備什麼
 
@@ -38,7 +38,7 @@
 | RStudio Desktop | Posit 公司的免費桌面版。 |
 | Python 3.10 或更新 | `abf-platform` 套件要求 `requires-python >= 3.10`（`platform/pyproject.toml`）。 |
 | `abf-platform` 套件 | 命令列工具，來自本專案 `platform/` 資料夾；安裝方式是在專案的複本（clone）裡執行 `pip install ./platform`（建議用虛擬環境）。專案是私有的，要先請擁有者給你讀取權限。目前沒有別的下載方式。 |
-| 你自己的個人權杖 | 由平台管理員產生（`abf-platform pat new --user <你的名字>`），只顯示一次，要透過不是公開聊天室的管道交給你。 |
+| 你自己的個人權杖 | 由平台管理員產生（`abf-platform pat new --user <你的名字>`），只顯示一次；交付方式見安全規則第 3 條（當面或密碼管理器分享，不經聊天、郵件、共用文件）。 |
 | 平台網址 | 管理員給你的 `https://...` 網址，**只要主機名稱，後面不要加路徑**。 |
 | 一個 SUCCEEDED 的 run | 你自己的 run，並且平台到運算站台的連線是開著的。 |
 
@@ -85,6 +85,10 @@ local({f <- tempfile(fileext = ".png"); dev.copy(png, filename = f); invisible(d
 但這樣產生兩個問題，也都**未驗證**：Windows 版 RStudio Desktop 的 `system2` 看不到 WSL 裡的 `abf-platform`
 （要改成在 WSL 內另外裝 R 與 RStudio，或在 R 裡用 `wsl.exe` 呼叫）。目前沒有人試過，所以先不要把這條路當成已知可行。
 
+**Windows 的家目錄提醒（未驗證）**：R 在 Windows 上的 `~` 是「文件」資料夾，而且常被 OneDrive 同步；`abf-platform` 用的家目錄是使用者個人資料夾（`%USERPROFILE%`），兩者不同。
+程式把結果放在 `%USERPROFILE%\abf-results\<run id>`，第一行 R 指令載入表格時用的是**完整的絕對路徑**（已看程式確認：`studio_cli.py` 的 `r_snippet` 寫入的是完整路徑，不是 `~`），所以不會找錯地方。
+但請你確認 `%USERPROFILE%\.abf` 與 `%USERPROFILE%\abf-results` **不在 OneDrive 或其他同步資料夾之下**，否則權杖與結果會被同步到雲端。
+
 ### 原生 Windows 的步驟（未驗證）
 
 1. 安裝 R：到 CRAN 下載 Windows 版 R，一路按下一步。
@@ -129,7 +133,7 @@ local({f <- tempfile(fileext = ".png"); dev.copy(png, filename = f); invisible(d
    你應該看到：`Successfully installed ... abf-platform ...`；`abf-platform --help` 印出用法。
 5. 讓 RStudio 找得到 `abf-platform`。從 Dock 開啟的 RStudio 通常看不到終端機設定的 `PATH`，
    所以不要假設它會找得到；可在 RStudio 的 Console 檢查 `system2("abf-platform", "--help")`，
-   找不到的話，把 `~/abf-venv/bin` 加進 `~/.Renviron` 的 `PATH`，重開 RStudio。（未驗證）
+   找不到的話，在 `~/.Renviron` 檔加入完整的這一行（**保留原本的 PATH**，不要只寫新的路徑，否則整個 PATH 會被蓋掉）：`PATH=${PATH}:${HOME}/abf-venv/bin`，然後重開 RStudio。（未驗證）
    你應該看到：Console 印出用法，而不是 error。
 6. 存下權杖：`abf-platform studio-connect --server https://<平台網址>`，在隱藏提示貼上個人權杖。
    你應該看到：印出網址與「權杖已存在 <路徑>」，權杖本身不會顯示。
@@ -161,4 +165,7 @@ local({f <- tempfile(fileext = ".png"); dev.copy(png, filename = f); invisible(d
 - RStudio Desktop（Windows）的 `system2` 是否找得到 `abf-platform.exe`；以及 WSL 內裝與 Windows 版 RStudio 如何銜接。
 - 整份 Mac 流程，包含 RStudio 從 Dock 開啟時的 `PATH`。
 - 頁面上兩行 R 指令是否一定顯示（依賴 `ABF_STUDIO_URL`）。
+- Windows 上的 `~` 與 OneDrive 同步（見 Windows 一節的提醒）。
+- 權杖的遠端交付：目前沒有安全的遠端交付方式，只有當面或密碼管理器分享。
+- 取得專案複本需要讀取權限，那屬於「改權限」，要維護者本人決定並親手給，平台與 AI 都不會代辦。
 - 以上沒有任何一項是我們實機測過的。
