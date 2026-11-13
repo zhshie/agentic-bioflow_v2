@@ -61,3 +61,11 @@ FAILED tests/mcp/test_mcp_contract_writes.py::test_write_tool_reply_says_not_sen
 ```
 
 恰為 origin/v3 本來就紅的那三個（`pack_figures` 描述 614 字；兩個寫入工具在空圖庫上的答覆不含 `abf-platform`／`http`），與本案無關，未動。`publish_figure` 的 `test_descriptions_within_limit` 與其兩個 `test_write_tool_reply_says_not_sent` 案例通過。
+
+## B1′ 與 B2（對抗審後，lead 裁示；plan.md 最後一節）
+
+- 重現（RED，`bd01eb56`，`test_rnc_b1_*`、`test_rnc_b2_*`）：索引損毀時轉達存圖會覆蓋 a.png 並把索引重寫成只剩一張；a.png 在磁碟上但不在索引時轉達存圖會覆蓋圖與兩個附屬檔。
+- B1′：既有測試 `test_publish_figure.py::test_corrupt_index_json_is_empty_gallery_not_crash`（損毀索引時提出得 pending 加 warning）一字未動、仍通過。索引讀不出來時提出的申請，bundle 多一個 `index_unreadable: true`（`figures.INDEX_FLAG`，只在該情況才有；一般申請的 bundle 與雜湊不變，`test_rnc_b1_a_normal_request_bundle_is_unchanged` 釘住）。`_is_replace` 對它也為真，所以轉達被拒（附確認頁網址、申請維持 pending）；第一次答覆只指向確認頁並帶警告；表單文字、中文摘要與英文確認頁都顯示警告（英文頁經 `request_facts` 在 `replaces` 加一個不可能是檔名的標記 `<index unreadable>`，`web.py` 不動）。表單／確認頁核准行為與現在相同。
+- 核准當下索引才讀不出來、且經對話轉達：`_ask` 的 CHAT 路徑改用 `_chat_writer_for`，在 bundle 加 `_via_chat`，`_commit` 見損毀索引即拒絕、什麼都不寫。表單與確認頁不受影響。
+- B2：`_on_disk` 檢查圖與兩個附屬檔；提出時列入 `replaces`（`replaces_ids` 對索引外的名稱記空字串），`_commit` 在同一次鎖內用同一判斷比對。送出前的畫面標示改看 `replaces`（原看索引）。
+- 已知行為：打包仍可由對話轉達；提出時名稱不存在、之後才出現同名圖時轉達使該申請作廢、什麼都不寫。

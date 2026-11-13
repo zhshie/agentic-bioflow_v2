@@ -1532,9 +1532,25 @@ _REPLACE_ONLY_ON_THE_PAGE = ("本次存入會取代圖庫中既有的圖，原�
                             "figure would be replaced)")
 
 
+_UNREADABLE_ONLY_ON_THE_PAGE = ("圖庫的索引檔目前無法讀取，存入可能取代既有的圖且無法復原，須由本人在確認頁按下確認；在聊天裡的回答，以及 user_confirmed 與 request_id，都不算數 "
+                               "(the gallery index cannot be read, so this publish may replace a figure and that cannot be undone: only the person can confirm it, on the confirmation page; "
+                               "an answer in the chat, user_confirmed and request_id do not count)")
+
+
+def _only_on_the_page(bundle):
+    return _REPLACE_ONLY_ON_THE_PAGE if bundle.get("replaces") else _UNREADABLE_ONLY_ON_THE_PAGE
+
+
+def _chat_writer_for(kind):
+    """The write after a relayed yes: the same writer, told that the yes came through the chat (a publish then never writes into an unreadable index)."""
+    if kind != "publish_figure":
+        return _writer_for(kind)
+    return lambda platform_path, caller_user_id, bundle, rid, now: _figures.write_confirmed(platform_path, caller_user_id, dict(bundle, _via_chat=True), rid, now)
+
+
 def _is_replace(kind, bundle):
     """A publish_figure request that, when it was made, would replace a figure of the gallery (its bundle names the figures it replaces)."""
-    return kind == "publish_figure" and isinstance(bundle, dict) and bool(bundle.get("replaces"))
+    return kind == "publish_figure" and isinstance(bundle, dict) and (bool(bundle.get("replaces")) or bundle.get(_figures.INDEX_FLAG) is True)
 
 
 def _page_url(platform_path, rid):
@@ -1574,7 +1590,7 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
         delete = _is_delete(kind, bundle)
         replace = _is_replace(kind, bundle)
         if replace and not (isinstance(request_id, str) and request_id):      # a replacing publish is never carried by a relayed yes either
-            return _no("未送出：%s。請重新提出存圖（不帶 user_confirmed），再請本人打開確認頁按下確認。" % _REPLACE_ONLY_ON_THE_PAGE)
+            return _no("未送出：%s。請重新提出存圖（不帶 user_confirmed），再請本人打開確認頁按下確認。" % _only_on_the_page(bundle))
         if delete and not (isinstance(request_id, str) and request_id):      # a deletion is never carried by a relayed yes: no request, and the page is the way
             return _no("未送出：%s。請重新提出刪除（不帶 user_confirmed），再請本人打開確認頁按下確認。" % _DELETE_ONLY_ON_THE_PAGE)
         if not (isinstance(request_id, str) and request_id):
@@ -1585,12 +1601,12 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
                     "confirmation_url": url}
         if replace and _own_waiting_request(platform_path, request_id, kind, bundle, caller_id, clock):
             url = _page_url(platform_path, request_id)       # the request stays as it is: pending, not void, not consumed
-            return {"ok": False, "sent": False, "message": "未送出：%s。該筆申請仍在等待本人，沒有存入任何圖。確認頁：%s" % (_REPLACE_ONLY_ON_THE_PAGE, url),
+            return {"ok": False, "sent": False, "message": "未送出：%s。該筆申請仍在等待本人，沒有存入任何圖。確認頁：%s" % (_only_on_the_page(bundle), url),
                     "confirmation_url": url}
         try:
             # a deletion that is not waiting is answered by the old refusals below; were one to reach the approval anyway, with no writer nothing is written
             _, job_id = confirm.approve(platform_path, request_id, CHAT.name, caller_id, clock,
-                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=None if (delete or replace) else _writer_for(kind))
+                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=None if (delete or replace) else _chat_writer_for(kind))
         except confirm.NotApproved as e:
             if e.status == "already":
                 return _already_done(kind, request_id) if kind == "gallery_change" else (done(request_id) if done else _queued(request_id, e.job_id, what))
@@ -2001,7 +2017,23 @@ def describe_request(platform_path, request_id, *, clock=time.time):
 
 def request_facts(platform_path, request_id):
     """The plain facts of one request for the top of the confirmation page (kind, run name, pipeline, version, environment, samples, new folder), or None."""
-    return confirm.facts(platform_path, request_id)
+    facts = confirm.facts(platform_path, request_id)
+    if facts and facts.get("what") == "publish_figure" and _index_flag_of(platform_path, request_id):
+        facts = dict(facts, replaces=list(facts.get("replaces") or []) + [_figures._DAMAGED_MARK])      # so the page in English can show the warning (B1')
+    return facts
+
+
+def _index_flag_of(platform_path, rid):
+    con = store.open_readonly(platform_path)
+    if con is None:
+        return False
+    try:
+        row = con.execute("SELECT bundle_json FROM confirmations WHERE id = ? AND kind = 'publish_figure' AND bundle_json IS NOT NULL", (rid,)).fetchone()
+        return bool(row and json.loads(row["bundle_json"]).get(_figures.INDEX_FLAG) is True)
+    except (sqlite3.Error, TypeError, ValueError, AttributeError):
+        return False
+    finally:
+        con.close()
 
 
 def clean_requests(platform_path, *, caller, clock=time.time):

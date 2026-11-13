@@ -240,7 +240,7 @@ def read_index(folder):
     except FileNotFoundError:
         return {}, None
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return {}, "圖庫的索引檔損毀，已當作空的圖庫；請聯絡平台管理者 (the gallery index is damaged and is read as an empty gallery; tell the platform administrator)"
+        return {}, INDEX_DAMAGED
 
 
 def _owned_run(index_path, platform_path, run_id, caller):
@@ -273,11 +273,24 @@ def list_figures(index_path, platform_path, run_id, *, caller=None, packed_only=
 
 # ---- the request ----------------------------------------------------------------------------------------------------------------
 
-def _screen(run_name, figures, existing, lang="zh"):
+INDEX_FLAG = "index_unreadable"       # set in the bundle of a request filed while the index could not be read (B1'); a normal bundle never has it
+_DAMAGED_MARK = "<index unreadable>"     # rides in the `replaces` list of the page facts (no file name can hold < or >), so the page can show the warning
+INDEX_DAMAGED = "圖庫的索引檔損毀，已當作空的圖庫；請聯絡平台管理者 (the gallery index is damaged and is read as an empty gallery; tell the platform administrator)"
+
+
+def _on_disk(folder, name):
+    """Whether the image or one of its two text files is in the gallery folder, whatever the index says (B2)."""
+    return any(os.path.lexists(os.path.join(folder, name + s)) for s in ("", ".code.txt", ".params.txt"))
+
+
+def _screen(run_name, figures, existing, lang="zh", damaged=False):
     """The text the person reads before pressing Send, in Chinese (the stored screen) or in English (the page in English)."""
     en = lang == "en"
     lines = ["== Confirm adding figures ==" if en else "== 存入圖庫確認 (confirm adding figures) ==", ("Run: %s" if en else "分析：%s") % run_name,
              ("Figures: %d" if en else "圖片：%d 張") % len(figures), ""]
+    if damaged:
+        lines[3:3] = ["Warning: the gallery index is damaged and is read as an empty gallery; saving rewrites the index with only these figures. Tell the platform administrator."
+                      if en else "警告：" + INDEX_DAMAGED]
     for i, f in enumerate(figures, 1):
         lines.append("[%d] %s" % (i, f["name"]))
         lines.append(("Type: %s   Size: %d bytes" if en else "類型：%s　大小：%d 位元組") % (f["type"], f["size"]))
@@ -304,7 +317,9 @@ def screen_for_page(bundle, replaces, lang):
     """The screen text of a stored request in `lang`, for the confirmation page (a gallery_change request, which has an `action`, has its own)."""
     if bundle.get("action") in ("pack", "delete"):
         return gallery_screen(bundle, lang)
-    return _screen(bundle["run_name"], bundle["figures"], set(replaces or ()), lang)
+    names = set(replaces or ())
+    damaged = _DAMAGED_MARK in names
+    return _screen(bundle["run_name"], bundle["figures"], names - {_DAMAGED_MARK}, lang, damaged)
 
 
 def _identity(entry):
@@ -359,15 +374,18 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
                 raise FigureRefused("「%s」與圖庫裡的「%s」只差大小寫，請用相同的檔名 (the name differs from \"%s\" only in case)" % (n, lower[n.lower()], lower[n.lower()]))
         if len(set(existing) | names) > MAX_PER_RUN:
             raise FigureRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
-        replaces = sorted(names & set(existing))
-        ids = {n: _identity(existing[n]) for n in replaces}
+        replaces = sorted(n for n in names if n in existing or _on_disk(folder, n))      # the index and the folder both count (B2)
+        ids = {n: (_identity(existing[n]) if n in existing else "") for n in replaces}
         stored = _own_request(plat, request_id, _caller_id(caller)) if isinstance(request_id, str) and user_confirmed is True else None
         if stored:
             replaces = stored.get("replaces", replaces)          # a repeated call that carries the yes: what the screen said, not what the gallery says now (it changed by that very yes)
             ids = stored.get("replaces_ids")
         bundle = {"run_name": view["name"], "run_id": run_id, "figures": built, "replaces": replaces}
+        damaged = bool(stored.get(INDEX_FLAG)) if stored else bool(problem)
         if ids is not None:
             bundle["replaces_ids"] = ids          # which figure each name was when the screen was made (ruling N4)
+        if damaged:
+            bundle[INDEX_FLAG] = True          # filed while the index could not be read: click-only, like a replace (B1')
         size = len(json.dumps(bundle).encode())
         if size > MAX_BUNDLE_BYTES:
             raise FigureRefused(SIZE_MESSAGE % _mb(size))
@@ -377,7 +395,7 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
                 raise FigureRefused(PENDING_MESSAGE % (_mb(waiting), _mb(size)))
     except FigureRefused as e:
         return refused(str(e))
-    text = _screen(view["name"], built, existing)
+    text = _screen(view["name"], built, set(replaces), damaged=bool(problem))
 
     def done(rid):
         return {"ok": True, "sent": True, "state": "ok", "request_id": rid, "url": None, "count": len(built),
@@ -395,7 +413,11 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
                           "在本人回覆之前不可自己填 true。 (open the address, log in as yourself and press 送出; or, once the person has answered yes in the "
                           "chat, call publish_figure again with the same arguments plus request_id=%s and user_confirmed=true; never set it true before they answer)"
                           % (url, rid, rid)}
-        if replaces:      # it would replace a figure: confirmed on the confirmation page or in the form, never by a relayed yes; say only that
+        if problem and not replaces:      # the index cannot be read, so what this would replace is unknown: the page or the form only (B1')
+            out["message"] = ("尚未存入 (nothing is written yet)。圖庫的索引檔目前無法讀取，存入可能取代既有的圖且無法復原，須由本人在確認頁按下確認：請本人打開確認頁網址、"
+                              "用自己的帳號登入、看過內容後按下確認：%s ——按下之後才會存入，不必再呼叫一次；在聊天裡回答確認不算數。 (the gallery index cannot be read, so this "
+                              "publish may replace a figure and that cannot be undone: only the person can confirm it, on the confirmation page; a yes in the chat does not count)" % url)
+        elif replaces:      # it would replace a figure: confirmed on the confirmation page or in the form, never by a relayed yes; say only that
             out["message"] = ("尚未存入 (nothing is written yet)。本次存入會取代圖庫中既有的圖，原圖無法復原，須由本人在確認頁按下確認：請本人打開確認頁網址、用自己的帳號登入、"
                               "看過內容後按下確認：%s ——按下之後才會存入，不必再呼叫一次；在聊天裡回答確認不算數。 (this publish would replace a figure that is already in the "
                               "gallery and the original cannot be recovered, so only the person can confirm it: open the address, log in as yourself and press confirm; "
@@ -404,6 +426,7 @@ async def request_publish_figure(platform_path, *, run_id, figures, caller=None,
             out["message"] = got["message"].split("還沒送出")[0] + out["message"]
         if problem:
             out["warning"] = problem
+            out["message"] += " ⚠ " + problem
         return out
     out = refused(got.get("message") or "未送出 (not sent)")
     if got.get("confirmation_url"):      # the refused relay of a replacing publish names the page of that very request
@@ -531,6 +554,8 @@ def _commit(folder, built, bundle, rid, now):
     """The part of write_confirmed that reads and replaces index.json; it runs with the gallery lock held."""
     _sweep_tmp(folder)
     existing, problem = read_index(folder)
+    if problem and bundle.get("_via_chat"):      # a relayed yes never writes into an index that cannot be read (B1')
+        raise jobs.JobRefused("圖庫的索引檔目前無法讀取，沒有寫入任何圖，請由本人在確認頁按下確認 (the gallery index cannot be read; nothing was written, the person must confirm on the confirmation page)")
     if len(set(existing) | {f["name"] for f, _ in built}) > MAX_PER_RUN:
         raise jobs.JobRefused(FULL_MESSAGE % (MAX_PER_RUN, MAX_PER_RUN))
     lower = {k.lower(): k for k in existing}
@@ -541,11 +566,13 @@ def _commit(folder, built, bundle, rid, now):
             raise jobs.JobRefused("「%s」與圖庫裡的「%s」只差大小寫，沒有寫入任何圖，請用相同的檔名重新提出 (the name differs from \"%s\" only in case; nothing was written)" % (f["name"], hit, hit))
         if hit is not None:
             replacing.add(hit)
+        if _on_disk(folder, f["name"]):      # the folder counts as well as the index, under the same lock hold as the write (B2)
+            replacing.add(f["name"])
     if sorted(replacing) != sorted(bundle.get("replaces", [])):
         raise jobs.JobRefused("圖庫在申請送出後有變動，會被取代的圖與確認畫面上寫的不同，沒有寫入任何圖，請重新提出 "
                               "(the gallery changed after the request was made: what would be replaced is not what the screen said; nothing was written)")
     ids = bundle.get("replaces_ids")
-    if ids is not None and any(ids.get(n) != _identity(existing[n]) for n in replacing):
+    if ids is not None and any(ids.get(n) != _identity(existing.get(n, {})) for n in replacing):
         raise jobs.JobRefused("要取代的圖在申請送出後已被換過，與確認畫面上寫的不是同一張，沒有寫入任何圖，請重新提出 "
                               "(a figure this request would replace is no longer the one the screen showed; nothing was written)")
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
