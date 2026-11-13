@@ -34,7 +34,9 @@ def listed(script, **extra):
 
 
 def _all_files():
-    return sorted("tests/" + p.name for p in (PLATFORM_DIR / "tests").glob("test_*.py"))
+    # every test_*.py under platform/tests, subfolders included (tests/mcp/ was once run by no shard): a new subfolder with test files
+    # that no shard collects makes this list longer than the union of the entries
+    return sorted("tests/" + p.relative_to(PLATFORM_DIR / "tests").as_posix() for p in (PLATFORM_DIR / "tests").rglob("test_*.py"))
 
 
 def _files(entries):
@@ -286,7 +288,7 @@ def test_ps31_the_comments_no_longer_say_two_entries():
 def _collected(script):
     r = subprocess.run(["bash", str(script)], env=_clean_env(ABF_PYTEST_ARGS="--collect-only -q"), capture_output=True, text=True, timeout=600)
     assert r.returncode == 0 and "platform tests: pytest exit 0" in r.stdout, r.stdout[-600:]
-    return sorted({"tests/" + m.group(1) for m in re.finditer(r"^tests/(test_\w+\.py)::", r.stdout, re.M)})
+    return sorted({"tests/" + m.group(1) for m in re.finditer(r"^tests/((?:\w+/)*test_\w+\.py)::", r.stdout, re.M)})
 
 
 def test_ps13_ps14_each_entry_collects_its_own_files_and_together_all(warm):  # noqa: F811
@@ -325,7 +327,7 @@ def test_tcf3_03_nothing_may_be_skipped_on_ci_in_any_entry(tmp_path, warm):  # n
 
 
 def _ids(text):
-    return [m.group(0) for m in re.finditer(r"^tests/test_\w+\.py::\S.*$", text, re.M)]
+    return [m.group(0) for m in re.finditer(r"^tests/(?:\w+/)*test_\w+\.py::\S.*$", text, re.M)]
 
 
 def test_sc01_the_ten_entries_collect_what_the_whole_directory_collects(warm):  # noqa: F811
