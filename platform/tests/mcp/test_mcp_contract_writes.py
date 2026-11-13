@@ -35,7 +35,22 @@ def make_rig(tmp_path, monkeypatch):
     rig.first("run-c", status=None, slurm=4242)        # still running: something to cancel
     rig.first("run-f", status="succeeded")             # finished: something to forget
     rig.first("run-r", status="failed")                # failed: something to resume or relaunch
+    seed_gallery(rig, "id-run-f", "a.png")             # a figure in the gallery, not in the package: something to pack or delete
     return rig
+
+
+def seed_gallery(rig, run_id, name):
+    """One figure `name` in the gallery of `run_id` (the ownerless local session's), stored the way publish_figure stores it, not packed."""
+    import os
+    from abf_platform.actions import figures
+    folder = figures.run_folder(rig.state, None, run_id)
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    with open(os.path.join(folder, name), "wb") as f:
+        f.write(bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + bytes(16))      # the PNG signature and padding
+    entry = {"size": 24, "type": "png", "caption": "", "code_file": None, "params_file": None, "created": "2026-11-13T00:00:00Z",
+             "packed": False, "packed_at": None, "request_id": "seed"}
+    with open(os.path.join(folder, "index.json"), "w") as f:
+        json.dump({"version": 1, "figures": {name: entry}}, f)
 
 
 def call_args(rig, tool):
