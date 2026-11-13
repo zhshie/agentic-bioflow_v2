@@ -509,13 +509,13 @@ def test_tc080_the_token_is_not_in_any_failure_either_with_debug(server, tmp_pat
 
 def test_tc081_json_does_not_crash_is_valid_and_has_no_token(server, tmp_path, capsys, monkeypatch):
     # TC-081
-    patch_session(monkeypatch, FakeSite(files={"ASV_table.tsv": "a\tb\n"}))
-    rc, out, err = main(["--json", "studio-connect", "--server", "https://platform.example", "--token-stdin", "--no-check"], capsys,
-                        stdin=SECRET + "\n", monkeypatch=monkeypatch)
-    assert rc == 0 and json.loads(out)["ok"] is True and SECRET not in out + err
-    rc, out, err = main(["--json", "fetch-results", "r1", "--dir", str(tmp_path / "j")], capsys)
-    assert rc == 0 and json.loads(out)["ok"] is True and SECRET not in out + err
-    monkeypatch.undo()
+    with monkeypatch.context() as faked:          # a targeted restore: a bare monkeypatch.undo() also drops the _world fixture's home patch
+        patch_session(faked, FakeSite(files={"ASV_table.tsv": "a\tb\n"}))
+        rc, out, err = main(["--json", "studio-connect", "--server", "https://platform.example", "--token-stdin", "--no-check"], capsys,
+                            stdin=SECRET + "\n", monkeypatch=faked)
+        assert rc == 0 and json.loads(out)["ok"] is True and SECRET not in out + err
+        rc, out, err = main(["--json", "fetch-results", "r1", "--dir", str(tmp_path / "j")], capsys)
+        assert rc == 0 and json.loads(out)["ok"] is True and SECRET not in out + err
     write_config(tmp_path, server["url"], token="abf_pat_" + "x" * 43)
     rc, out, err = main(["--json", "fetch-results", "r1"], capsys)
     assert rc == 3 and json.loads(err)["ok"] is False and "abf_pat_" + "x" * 43 not in out + err

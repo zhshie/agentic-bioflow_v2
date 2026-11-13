@@ -83,20 +83,16 @@ miss=""; for w in "platform's owner" 'signing key' 'agent token' 'Windows' 'only
 if [ -z "$miss" ]; then ok "S2 S3 PLATFORM.md names the consequences and the one-user rule"; else bad "S2 S3 PLATFORM.md" "missing:$miss"; fi
 if grep -E '^#.*(one user|single)' "$ENVEX" >/dev/null && grep -E '^#.*every user' "$ENVEX" >/dev/null; then ok "S3 env.example says the setting is for a deployment with one user"; else bad "S3 env.example one-user sentence"; fi
 
-# ---------- TC-033: the two tests that count files were rewritten, nothing else under deploy/ ----------
-if git rev-parse --git-dir >/dev/null 2>&1; then
-  base=$(git merge-base origin/v3 HEAD 2>/dev/null || true)
-  if [ -n "$base" ]; then
-    added=$(git diff --name-only --diff-filter=A "$base" -- deploy/ | tr '\n' ' ')
-    if [ "$added" = "deploy/systemd/abf-rstudio.service.in " ]; then ok "TC-033 deploy/ gains exactly the one file"; else bad "TC-033 files added under deploy/" "$added"; fi
-    # TC-034
-    changed=$(git diff --name-only "$base")
-    forbidden=$(printf '%s\n' "$changed" | grep -E '^(\.github/|hooks/|\.specify/memory/constitution\.md|\.claude-plugin/plugin\.json|platform/abf_platform/(confirm|store)\.py|platform/abf_station/|platform/pyproject\.toml|pyproject\.toml|requirements)' || true)
-    if [ -z "$forbidden" ]; then ok "TC-034 none of the files the plan forbids is changed, no new dependency"; else bad "TC-034 forbidden files changed" "$forbidden"; fi
-    rfiles=$(git ls-files | grep -iE '\.deb$|rserver\.conf|rstudio.*\.(tar|zip|rpm)$|/rserver$' || true)
-    if [ -z "$rfiles" ]; then ok "TC-034 no RStudio file in the repository"; else bad "TC-034 RStudio files" "$rfiles"; fi
-  else skip "TC-033 TC-034 diff checks" "no origin/v3 to compare with"; fi
-else skip "TC-033 TC-034" "no git"; fi
+# ---------- TC-033 TC-034: what is under deploy/, and no RStudio file in the repository ----------
+# (That the branch added exactly one file under deploy/ and changed none of the files the plan forbids was a comparison with its base; it was
+#  made once at review and is recorded in specs/studio-embed/ledger.md, "Checks against the base". After the merge there is no base to compare.)
+if [ -f "$HERE/../deploy/systemd/abf-rstudio.service.in" ]; then ok "TC-033 the unit template is under deploy/systemd/"; else bad "TC-033 the unit template is missing"; fi
+if git -C "$HERE/.." rev-parse --git-dir >/dev/null 2>&1; then
+  rfiles=$(git -C "$HERE/.." ls-files | grep -iE '\.deb$|rserver\.conf|rstudio.*\.(tar|zip|rpm)$|/rserver$' || true)
+else
+  rfiles=$(cd "$HERE/.." && find . -path ./.git -prune -o -type f -print | grep -iE '\.deb$|rserver\.conf|rstudio.*\.(tar|zip|rpm)$|/rserver$' || true)
+fi
+if [ -z "$rfiles" ]; then ok "TC-034 no RStudio file in the repository"; else bad "TC-034 RStudio files" "$rfiles"; fi
 
 # ---------- TC-035: OPERATIONS ----------
 miss=""
