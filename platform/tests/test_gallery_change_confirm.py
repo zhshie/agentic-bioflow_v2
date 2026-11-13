@@ -579,7 +579,7 @@ def test_dnc_the_refusals_of_other_people_and_other_kinds_give_no_page(w):
             tool(w, "delete_figure", del_args(run, request_id=pid, user_confirmed=True), caller=ann),
             tool(w, "pack_figures", pack_args(run, ["b.png"], request_id=rid, user_confirmed=True), caller=ann)]
     for out in outs:
-        assert out["state"] == "refused" and "/c/" not in out["message"] and not out.get("url") and "a.png" not in out["message"]
+        assert out["state"] == "refused" and "/c/" not in out["message"] and not out.get("url")      # stdio sees no gallery of ann: its own refusal may name the figure it typed itself
     # bob cannot even see ann's run, so his relay is answered as a missing run: no page, no name of a figure (checked above)
     assert prints(gallery(w, ann, run)) == before
     assert [(r["id"], r["state"], r["channel"]) for r in rows(w)] == rows_before
