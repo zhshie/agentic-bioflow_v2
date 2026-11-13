@@ -418,8 +418,9 @@ def launch_card(platform_path, run_name, *, caller=None):
         bundle = content[0] if content else None
         if isinstance(bundle, dict):
             if not out.get("kept"):
-                params = bundle.get("params")
-                out.update(kept=True, pipeline=bundle.get("pipeline"), revision=bundle.get("revision"), params=dict(params) if isinstance(params, dict) else {})
+                # Turned back by the site: `launch_prefill` leaves this launch out on purpose, so what it withholds stays withheld. Only what the
+                # confirmation page already showed the owner is put back (pipeline, revision, sample count); parameters are not (the card shows "—").
+                out.update(kept=True, pipeline=bundle.get("pipeline"), revision=bundle.get("revision"), params=None)
             resume = bundle.get("resume")
             source = resume["origin"] if isinstance(resume, dict) and isinstance(resume.get("origin"), dict) else bundle
             sheet = source.get("samplesheet")

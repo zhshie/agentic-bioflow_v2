@@ -182,6 +182,30 @@ def test_tc011_the_refusal_stays_above_and_the_card_does_not_repeat_it(w):
     assert rows(t)["管線"] == "nf-core/rnaseq"
 
 
+SECRET_PARAM = {"genome": "GRCh38-private-marker", "outdir": "/secret/place/out"}
+
+
+def test_tc011b_a_refused_launch_puts_back_only_what_the_confirmation_showed(w):
+    # TC-011 (narrowed by the reviewer): pipeline, version, sample count and time come back; parameter values and paths do not
+    _, rid = sent(w, status="running", params=SECRET_PARAM, job_state="refused", result={"message": "no"}, finished=w.clock.t - 60)
+    t = log_in(w).get(url(rid)).text
+    r = rows(t)
+    assert r["管線"] == "nf-core/rnaseq" and r["版本"] == "3.14.0" and r["樣本數"] == "3" and r["送出時間"] == "01-15 16:00"
+    assert r["已變更的參數"] == "—"
+    assert "GRCh38-private-marker" not in card(t) and "/secret/place" not in card(t)
+
+
+def test_tc017b_somebody_elses_refused_run_shows_nothing(w):
+    # TC-017 for a launch the site turned back: another user gets 404 and none of the content, in either language
+    _, rid = sent(w, status="running", params=SECRET_PARAM, job_state="refused", result={"message": "no"}, finished=w.clock.t - 60)
+    w.user("zed")
+    c = log_in(w, "zed")
+    for lang in ("", "en"):
+        r = c.get(url(rid, lang))
+        assert r.status_code == 404
+        assert "nf-core/rnaseq" not in r.text and "GRCh38-private-marker" not in r.text and "3.14.0" not in r.text
+
+
 def test_tc012_english_refusal(w):
     # TC-012
     reason = "The site has no resources for this pipeline."
