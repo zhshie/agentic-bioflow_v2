@@ -379,6 +379,56 @@ def launch_prefill(platform_path, run_name, *, caller=None):
         con.close()
 
 
+_MASK = "••••••"
+_TOKEN_SHAPE = re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}")      # a GitHub token: not among compute_envs' shapes (that list is pinned), but never to be shown
+
+
+def _shown_params(params):
+    """The parameters as the launch card may show them: the value of one whose name or whose value looks like a credential is a mask."""
+    return {k: (_MASK if common.is_secret_name(k) or compute_envs.looks_like_credential(str(v)) or _TOKEN_SHAPE.search(str(v)) else v)
+            for k, v in params.items()}
+
+
+def launch_card(platform_path, run_name, *, caller=None):
+    """What the launch stage card of a run's page shows (issue #387): `launch_prefill`'s answer (pipeline, revision, parameters, `launched_at`)
+    plus `samples` (the rows of the samplesheet that was sent; None when there is none or the content is no longer kept) and `job_id` (the
+    platform job number the confirmation page named; None when that job is not there). The content of the newest launch is shown even when
+    the site turned it back (the card says what was sent; `launch_prefill` leaves such a launch out, it is about what to send again).
+    A parameter whose name or value looks like a credential has its value replaced by a mask. The same answer as `launch_prefill` for a run
+    that is not the caller's. Reads only; it asks no site."""
+    out = dict(launch_prefill(platform_path, run_name, caller=caller), samples=None, job_id=None)
+    if not out.get("found"):
+        return out
+    con = store.open_readonly(platform_path)
+    if con is None:
+        return out
+    try:
+        row = jobs.latest_launch(con, run_name)
+        job = None
+        job_id = jobs._col(row, "job_id") if row is not None else None
+        if job_id is not None:
+            job = con.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            out["job_id"] = job_id if job is not None else None
+        content = jobs.launch_content(con, row, job) if row is not None and not jobs.run_forgotten(con, run_name) else None
+        bundle = content[0] if content else None
+        if isinstance(bundle, dict):
+            if not out.get("kept"):
+                params = bundle.get("params")
+                out.update(kept=True, pipeline=bundle.get("pipeline"), revision=bundle.get("revision"), params=dict(params) if isinstance(params, dict) else {})
+            resume = bundle.get("resume")
+            source = resume["origin"] if isinstance(resume, dict) and isinstance(resume.get("origin"), dict) else bundle
+            sheet = source.get("samplesheet")
+            if isinstance(sheet, list):
+                out["samples"] = max(len(sheet) - 1, 0)
+    except (sqlite3.Error, KeyError, TypeError):
+        pass
+    finally:
+        con.close()
+    if out.get("kept") and isinstance(out.get("params"), dict):
+        out["params"] = _shown_params(out["params"])
+    return out
+
+
 _USED_PIPELINES_LIMIT = 20
 
 

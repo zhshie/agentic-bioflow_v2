@@ -22,7 +22,7 @@ from . import web_downstream
 from . import web_finished
 
 STAGES = ("launch", "running", "results", "downstream", "finished")
-PLACEHOLDER = ("launch", "downstream")      # stages whose page is still to come: a grey "coming later" line
+PLACEHOLDER = ("downstream",)      # stages whose page is still to come: a grey "coming later" line
 LIST_CAP = 100
 REASON_CAP = 80
 REFRESH_SECONDS = 15
@@ -60,6 +60,8 @@ STRINGS = {
         "c_next_text": "請開啟確認頁，核對將刪除的資料夾後再決定。",
         "f_step": "步驟", "f_reason": "原因", "f_next": "之後", "confirm_suffix": "（確認頁）",
         "r_stopped": "已取消", "r_site": "站台無回應",
+        "launch_pipeline": "管線", "launch_revision": "版本", "launch_samples": "樣本數", "launch_params": "已變更的參數", "launch_when": "送出時間",
+        "launch_job": "工作編號", "launch_state": "狀態", "launch_defaults": "沿用預設", "launch_gone": "該次送出的內容已不保留。",
         "stage_launch": "送出", "stage_running": "執行中", "stage_results": "結果", "stage_downstream": "下游", "stage_finished": "完成",
         "state_running": "執行中", "state_succeeded": "完成", "state_failed": "失敗", "state_lost": "失敗", "state_unknown": "未知",
         "count_succeeded": "完成", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",
@@ -136,6 +138,9 @@ STRINGS = {
         "c_next_text": "Open the confirmation page, check which folder will be deleted, then decide.",
         "f_step": "Step", "f_reason": "Reason", "f_next": "Next", "confirm_suffix": " (confirmation page)",
         "r_stopped": "Cancelled", "r_site": "Site not responding",
+        "launch_pipeline": "Pipeline", "launch_revision": "Version", "launch_samples": "Samples", "launch_params": "Changed parameters", "launch_when": "Launched",
+        "launch_job": "Job number", "launch_state": "Status", "launch_defaults": "All parameters use their defaults",
+        "launch_gone": "The content of this launch is no longer kept.",
         "stage_launch": "Launch", "stage_running": "Running", "stage_results": "Results", "stage_downstream": "Downstream",
         "stage_finished": "Finished",
         "state_running": "Running", "state_succeeded": "Done", "state_failed": "Failed", "state_lost": "Failed", "state_unknown": "Unknown",
@@ -541,12 +546,14 @@ def _task_card(t, run):
     return out
 
 
-def _stage_card(t, run, stage, lang="zh", outputs=None, finished=None, user_name="", studio=None, gallery=None, studio_embed=None):
+def _stage_card(t, run, stage, lang="zh", outputs=None, finished=None, user_name="", studio=None, gallery=None, studio_embed=None, sent=None):
     if stage == "downstream" and run["status"] == "succeeded":
         return web_downstream.render_downstream(lang, run, outputs, studio, t["stage_downstream"], studio_embed=studio_embed)
     if stage == "finished" and run["status"] == "succeeded":
         return web_finished.render_finished(lang, run, finished, outputs, user_name, gallery)
-    if stage == "finished":
+    if stage == "launch":      # what was sent, whatever the state of the run: the run has passed this stage or is at it, never "not reached"
+        inner = _launch_card(t, run, sent)
+    elif stage == "finished":
         inner = '<p>— <span class="muted">%s</span></p>' % esc(t["not_reached"])
     elif stage in PLACEHOLDER:
         inner = '<p>— %s</p>' % _later(t)
@@ -555,6 +562,31 @@ def _stage_card(t, run, stage, lang="zh", outputs=None, finished=None, user_name
     else:
         inner = _task_card(t, run)
     return '<section class="card"><h2>%s</h2>%s</section>' % (esc(t["stage_" + stage]), inner)
+
+
+def _launch_card(t, run, sent):
+    """The body of the launch stage: what was sent (pipeline, revision, samples, changed parameters), when, the platform job number and the
+    state of the run (the same word as the badge). `sent` is the answer of the action `launch_card`; a missing value is a dash."""
+    sent = sent or {}
+    dash = "—"
+    note = ""
+    if sent.get("found") and not sent.get("kept"):
+        note = '<p class="muted" role="status"><span>—</span> %s</p>' % esc(t["launch_gone"])
+    kept = bool(sent.get("found") and sent.get("kept"))
+    params = sent.get("params") if kept else None
+    if params is None:
+        shown = esc(dash)
+    elif params:
+        shown = "".join("<code>%s</code>" % esc("%s: %s" % (k, ("true" if v else "false") if isinstance(v, bool) else v)) for k, v in params.items())
+    else:
+        shown = '<span class="muted">— %s</span>' % esc(t["launch_defaults"])
+    samples = sent.get("samples") if kept else None
+    when = taipei_time(sent.get("launched_at")) if sent.get("found") else None
+    cells = [(t["launch_pipeline"], esc((sent.get("pipeline") if kept else None) or dash)), (t["launch_revision"], esc((sent.get("revision") if kept else None) or dash)),
+             (t["launch_samples"], esc(dash if samples is None else samples)), (t["launch_params"], shown),
+             (t["launch_when"], esc(when or dash)), (t["launch_job"], esc(sent.get("job_id") if sent.get("job_id") is not None else dash)),
+             (t["launch_state"], esc(_state(t, run["status"])))]
+    return note + '<dl class="prov">%s</dl>' % "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), v) for k, v in cells)
 
 
 def _epoch(iso):
@@ -896,7 +928,7 @@ def _running_body(t, selected, lang, tab_param, stage_param, now, acts=None):
     return '%s%s%s<nav class="rtabs">%s</nav>%s' % (_sum_cards(t, selected, now), cost_row(t, selected), _tasks_bar(t, selected), links, tab_body(t, lang, selected, tab))
 
 
-def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None, finished=None, user_name="", studio=None, gallery=None, studio_embed=None):
+def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=None, flash=None, outputs=None, finished=None, user_name="", studio=None, gallery=None, studio_embed=None, sent=None):
     own = stage_of(selected["status"])
     current = pick_stage(stage_param, own)
     explicit = pick_stage(stage_param, None)
@@ -930,7 +962,7 @@ def _run_page(t, selected, stage_param, lang, tab_param=None, now=None, acts=Non
     elif current == "results" and status == "succeeded":
         inner = _results_body(t, lang, selected, pick_results_tab(tab_param), now, outputs)
     else:
-        inner = _stage_card(t, selected, current, lang, outputs, finished, user_name, studio, gallery, studio_embed)
+        inner = _stage_card(t, selected, current, lang, outputs, finished, user_name, studio, gallery, studio_embed, sent)
     note = '<p class="bad" role="alert">%s</p>' % esc(flash) if flash else ""
     views = '<nav class="views"><a href="%s" aria-current="page">%s</a>%s</nav>' % (_url(lang, selected["id"]), esc(t["main_window"]), _grey(t, "terminal"))
     return ('<main class="main" data-pane="middle"><div class="head"><h1>%s</h1>%s%s<p class="meta">%s</p></div>%s%s'
@@ -1008,7 +1040,7 @@ def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, pa
     return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)
 
 
-def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None, refusal=None, studio=None, gallery=None, studio_embed=None):
+def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None, refusal=None, studio=None, gallery=None, studio_embed=None, sent=None):
     """GET /: the page of a logged-in user. `runs` are newest first (as list_runs gives them, with their `failure`); `selected` is the
     detail of one run (get_run, with its `failure`), or None for the empty page of a person with no run. `act_csrf(run_id)` gives the CSRF
     token of that run's buttons (spec 012b); without it no button is drawn. `flash` is one plain line of refusal shown at the top of the
@@ -1024,7 +1056,7 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
         if tab == "outputs":      # the page reloads itself to the address without `relist`, so a Read-again click is not repeated every 15 seconds
             refresh_url = _url(pick_lang(lang), run_id, stage, tab="outputs", sub=(outputs or {}).get("sub"))
     acts = lambda t, lang_: Acts(t, lang_, act_csrf) if act_csrf else None
-    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name, studio, gallery, studio_embed)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
+    middle = (lambda t, lang_: _run_page(t, selected, stage_param, lang_, tab, now, acts(t, lang_), flash, outputs, finished, name, studio, gallery, studio_embed, sent)) if selected is not None         else (lambda t, lang_: _empty_page(t, lang_))
     if refusal:
         inner = middle
         middle = lambda t, lang_: inner(t, lang_).replace('data-pane="middle">', 'data-pane="middle">' + refusal_block(refusal, lang_), 1)

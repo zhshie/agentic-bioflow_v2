@@ -94,7 +94,7 @@ def test_tc001_the_card_shows_what_was_sent(w):
     assert list(r) == list(ZH)
     assert r["管線"] == "nf-core/rnaseq" and r["版本"] == "3.14.0" and r["樣本數"] == "3"
     assert "genome: GRCh38" in r["已變更的參數"] and "skip_qc: true" in r["已變更的參數"]
-    assert "之後開放" not in middle(t) and "該次分析尚未進行至此階段" not in middle(t)
+    assert "之後開放" not in card(t) and "該次分析尚未進行至此階段" not in card(t)
     assert re.search(r'<section class="card"><h2>送出</h2>', middle(t))
 
 
@@ -107,7 +107,7 @@ def test_tc002_english(w):
     assert r["Pipeline"] == "nf-core/rnaseq" and r["Version"] == "3.14.0" and r["Samples"] == "3"
     assert "genome: GRCh38" in r["Changed parameters"] and "skip_qc: true" in r["Changed parameters"]
     assert no_cjk(middle(t)), cjk(middle(t))
-    assert "Coming later" not in middle(t)
+    assert "Coming later" not in card(t, "Launch")
 
 
 def test_tc003_the_time_is_the_time_send_was_pressed(w):
@@ -127,6 +127,7 @@ def test_tc004_a_fixed_moment_never_relative(w):
     seen = []
     for later in (5 * 60, 3 * 86400):
         w.clock.t = LAUNCHED + later
+        c = log_in(w)      # the session of the first look is long over after three days
         for lang in ("", "en"):
             t = c.get(url(rid, lang)).text
             seen.append(rows(t, lang)["Launched" if lang else "送出時間"])
@@ -190,10 +191,12 @@ def test_tc012_english_refusal(w):
     assert reason not in card(t, "Launch") and no_cjk(middle(t))
 
 
-def test_tc013_a_run_the_platform_did_not_send(w):
-    # TC-013, TC-034
+def test_tc013_a_run_the_platform_did_not_send(w, monkeypatch):
+    # TC-013, TC-034 (a run with no hand-off row is nobody's, so its page would be 404: the answer "no record of a launch" is given to the page directly)
+    from abf_platform import actions
     ann = w.user("ann")
-    rid = seed(w, "foreign", "succeeded", ann, launch_row=False)
+    rid = seed(w, "foreign", "succeeded", ann)
+    monkeypatch.setattr(actions, "launch_prefill", lambda *a, **k: {"found": False, "kept": False})
     c = log_in(w)
     for lang in ("", "en"):
         r = c.get(url(rid, lang))
@@ -201,7 +204,7 @@ def test_tc013_a_run_the_platform_did_not_send(w):
         cells = rows(r.text, lang)
         assert list(cells) == list(EN if lang else ZH)
         assert [v for k, v in cells.items() if k not in ("Status", "狀態")] == ["—"] * 6, cells
-        assert "之後開放" not in r.text and "Coming later" not in middle(r.text)
+        assert "之後開放" not in card(r.text, "Launch" if lang else "送出") and "Coming later" not in card(r.text, "Launch" if lang else "送出")
 
 
 def test_tc014_content_deleted_leaves_dashes_a_note_and_the_time(w):

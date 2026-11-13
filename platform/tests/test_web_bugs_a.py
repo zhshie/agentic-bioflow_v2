@@ -247,9 +247,11 @@ def test_stage_launch_has_its_own_card(w):
     c = login(w, "ann")
     zh = pane(c.get("/?run=id-s1&stage=launch").text, "middle")
     assert "012b" not in zh and "016" not in zh
-    assert '<section class="card"><h2>送出</h2>' in zh and '<span class="later">之後開放</span>' not in zh and "<dt>工作編號</dt><dd>" in zh
+    card_zh = zh.split('<section class="card"><h2>送出</h2>')[1].split("</section>")[0]
+    assert "之後開放" not in card_zh and "<dt>工作編號</dt><dd>" in card_zh
     en = pane(c.get("/?run=id-s1&stage=launch&lang=en").text, "middle")
-    assert '<section class="card"><h2>Launch</h2>' in en and '<span class="later">Coming later</span>' not in en and no_cjk(en)
+    card_en = en.split('<section class="card"><h2>Launch</h2>')[1].split("</section>")[0]
+    assert "Coming later" not in card_en and no_cjk(en)
     assert "<dt>Job number</dt><dd>" in en
     assert "012b" not in en and "016" not in en
 
