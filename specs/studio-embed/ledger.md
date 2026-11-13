@@ -140,3 +140,16 @@ Lead's trial, same environment: with `--www-enable-origin-check=1` the frame sti
  tests/studio_embed_deploy_test.sh                  | 128 +++++
  29 files changed, 1431 insertions(+), 38 deletions(-)
 ```
+
+## Checks against the base (lead, 2026-11-13, at d343a3c9 against `origin/v3`)
+
+CI showed that three tests compared the branch with its base and skipped where there is none; nothing may be skipped on CI, and after the merge
+such a comparison is empty. They are therefore done once here, with git, and the tests are removed (TC-023, TC-027) or made base-free (TC-026,
+the `platform/abf_station/` line of TC-018).
+
+- `git diff --name-only origin/v3...HEAD` names no file under `platform/abf_station/`, `.github/`, `hooks/`, no `plugin.json`, no constitution,
+  and none of `confirm.py`, `store.py`, `test_studio_publish.py`, `test_web_downstream.py`, `test_web_result_viewer.py` (grep found nothing).
+- The acceptance verifier checked the same at dee653ca, and that the two golden files differ from the base in the `fetch-results` row only;
+  the commits after dee653ca touch neither golden file.
+- Under the real user service manager (systemd 249) the unit started: `rserver` owned by the user, listening on `127.0.0.1:8790` only, answering
+  with `frame-ancestors <ABF_PUBLIC_URL>`; the system `rstudio-server` service is disabled and inactive. This closes point 6 (systemd quoting).
