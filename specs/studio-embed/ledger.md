@@ -110,16 +110,16 @@ Lead's trial, same environment: with `--www-enable-origin-check=1` the frame sti
 
 ```
  CHANGELOG.md                                       |   1 +
- deploy/env.example                                 |   7 +
- deploy/systemd/abf-rstudio.service.in              |  21 +
- docs/OPERATIONS.md                                 |  23 +
- docs/PLATFORM.md                                   |  14 +-
+ deploy/env.example                                 |   9 +
+ deploy/systemd/abf-rstudio.service.in              |  26 +
+ docs/OPERATIONS.md                                 |  25 +
+ docs/PLATFORM.md                                   |  20 +-
  docs/TESTING.md                                    |  14 +
  platform/abf_platform/cli.py                       |  22 +-
  platform/abf_platform/studio_cli.py                |  38 +-
  platform/abf_platform/web.py                       |  18 +-
  platform/abf_platform/web_board.py                 |  12 +-
- platform/abf_platform/web_downstream.py            | 104 +++-
+ platform/abf_platform/web_downstream.py            | 111 +++-
  platform/tests/__golden__/cli_help_top.txt         |   2 +-
  platform/tests/__golden__/cli_tree.txt             |   2 +-
  .../studio_embed_today/read_en_nostudio.txt        |  11 +
@@ -130,13 +130,13 @@ Lead's trial, same environment: with `--www-enable-origin-check=1` the frame sti
  .../studio_embed_today/unread_en_studio.txt        |  11 +
  .../studio_embed_today/unread_zh_nostudio.txt      |  11 +
  .../studio_embed_today/unread_zh_studio.txt        |  11 +
- platform/tests/test_studio_embed.py                | 590 +++++++++++++++++++++
- specs/studio-embed/ledger.md                       |  70 +++
+ platform/tests/test_studio_embed.py                | 600 +++++++++++++++++++++
+ specs/studio-embed/ledger.md                       | 142 +++++
  specs/studio-embed/plan.md                         |  57 ++
  specs/studio-embed/test-case-overview.md           |  50 ++
  specs/studio-embed/test-case.md                    |  94 ++++
  tests/desktop_systemd_test.sh                      |   2 +-
  tests/hosted_deploy_test.sh                        |   8 +-
- tests/studio_embed_deploy_test.sh                  | 110 ++++
- 29 files changed, 1309 insertions(+), 38 deletions(-)
+ tests/studio_embed_deploy_test.sh                  | 128 +++++
+ 29 files changed, 1431 insertions(+), 38 deletions(-)
 ```
