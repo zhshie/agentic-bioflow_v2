@@ -757,3 +757,33 @@ def test_svg_with_internal_dtd_subset_and_image_csp(w):
     r = c.get(purl(rid, "fig.svg", "image"))
     assert r.status_code == 200 and r.headers["content-type"] == "image/svg+xml"
     assert r.headers["x-frame-options"] == "DENY" and "frame-ancestors 'none'" in csp_of(r)
+
+
+# ---- the way back goes to the folder the file is in (maintainer, 2026-11-13: from a folder, "back" went to the top of the results) -----------------
+
+def _back(text):
+    return [h for h in re.findall(r'href="([^"]+)"', text) if "tab=outputs" in h]
+
+
+def test_back_from_a_preview_goes_to_the_folder_of_the_file(w):
+    ann, c, rid = world(w)
+    top = "/?run=%s&amp;stage=results&amp;tab=outputs" % rid
+    r = ready(w, c, rid, "multiqc/plots/plot.png", PNG)
+    assert r.status_code == 200 and "<img" in r.text
+    assert _back(r.text) == [top + "&amp;path=multiqc/plots"]
+    r = c.get(purl(rid, "star salmon/notes.txt"))      # a file that has no preview, in a folder whose name needs quoting
+    assert r.status_code == 200 and _back(r.text) == [top + "&amp;path=star%20salmon"]
+    r = c.get(purl(rid, "pipeline_info/report.html") + "&lang=en")      # still waiting for the site: the waiting page leads back to the folder too
+    assert r.status_code == 200 and _back(r.text) == [top + "&amp;path=pipeline_info&amp;lang=en"]
+    r = ready(w, c, rid, "plot.png", PNG)      # a file at the top goes back to the top, as before
+    assert _back(r.text) == [top]
+
+
+def test_back_from_a_download_that_waits_or_failed_goes_to_the_folder_of_the_file(w):
+    ann, c, rid = world(w)
+    top = "/?run=%s&amp;stage=results&amp;tab=outputs" % rid
+    r = c.get(file_url(rid, "multiqc/multiqc_data/big.txt"))
+    assert r.status_code == 200 and "正在向站台取得檔案" in r.text and _back(r.text) == [top + "&amp;path=multiqc/multiqc_data"]
+    reply_file(w, "error", dict(ok=False, error="no such file"))
+    r = c.get(file_url(rid, "multiqc/multiqc_data/big.txt"))
+    assert top + "&amp;path=multiqc/multiqc_data" in _back(r.text) and top not in _back(r.text)

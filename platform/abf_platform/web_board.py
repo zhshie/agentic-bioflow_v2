@@ -1432,13 +1432,19 @@ def _mb(size):
     return "%d.%d MB" % (tenths // 10, tenths % 10)
 
 
+def outputs_back(lang, run_id, path):
+    """The address of the Outputs tab in the folder that holds the file `path`: where the person came from. A file at the top goes to the top."""
+    folder = path.rpartition("/")[0].strip("/") if isinstance(path, str) else ""
+    return _url(lang, run_id, "results", tab="outputs", sub=folder or None)
+
+
 def render_file_page(answer, run_id, lang="zh", route="/run/file"):
     """(http status, whole page) for a download that is not the file itself: waiting, or the one sentence of what went
     wrong with the way on. Every state has a symbol and words; the sentence stands first, the links under it."""
     lang = pick_lang(lang)
     t = STRINGS[lang]
     path = answer.get("path") or ""
-    back = '<a href="%s">%s</a>' % (_url(lang, run_id, "results", tab="outputs"), esc(t["f_back"]))
+    back = '<a href="%s">%s</a>' % (outputs_back(lang, run_id, "" if answer.get("code") == "bad_path" else path), esc(t["f_back"]))      # a path that is not valid names no folder
     if answer.get("state") == "loading":
         body = '<p class="ostat state-running"><span class="sym">◌</span> %s</p><p>%s</p>' % (esc(t["f_loading"]), back)
         return 200, document(t["f_title"], body, refresh=True, lang=lang, refresh_url=_url(lang, run_id, path=route, sub=path))
