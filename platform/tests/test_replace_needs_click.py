@@ -364,3 +364,108 @@ def test_rnc_no_old_version_is_kept_and_no_chat_replace_in_the_database(w):
     for r in allrows(w):
         if r["kind"] == "publish_figure" and json.loads(r["bundle_json"]).get("replaces"):
             assert r["channel"] != "CHAT" and not (r["state"] == "confirmed" and r["channel"] is None)
+
+
+# ---- B1 (an index that cannot be read) and B2 (a file on disk counts as replaced), from the adversarial review ------------------------------------
+
+DAMAGED = b"{not json"
+
+
+def damage(w, ann, run):
+    (gallery(w, ann, run) / "index.json").write_bytes(DAMAGED)
+
+
+def test_rnc_b1_a_publish_asked_with_an_unreadable_index_cannot_be_relayed(w):
+    # B1' (request time): still accepted as pending with the warning, but click-only
+    ann, run = gal(w)
+    damage(w, ann, run)
+    before = prints(gallery(w, ann, run))
+    figs = [fig("a.png", NEW, code="new code\n")]
+    first = propose(w, ann, run, figs)
+    assert first["state"] == "pending" and first["warning"] and first["warning"] in first["summary"]
+    m = first["message"]
+    assert first["url"] in m and "user_confirmed" not in m and "request_id" not in m and first["warning"] in m
+    n = len(allrows(w))
+    for _ in range(3):
+        out = relay(w, ann, run, figs, first["request_id"])
+        assert out["state"] == "refused" and out["url"] == first["url"] and first["url"] in out["message"]
+    assert prints(gallery(w, ann, run)) == before and len(allrows(w)) == n and state_of(w, first["request_id"]) == ["pending"]
+    assert (gallery(w, ann, run) / "index.json").read_bytes() == DAMAGED
+
+
+def test_rnc_b1_the_person_can_still_approve_it_on_the_page_and_in_the_form_and_sees_the_warning(w):
+    ann, run = gal(w)
+    damage(w, ann, run)
+    figs = [fig("n.png", NEW)]
+    first = propose(w, ann, run, figs)
+    from test_confirm_page import logged_in
+    page = logged_in(w, "ann").get("/c/" + first["request_id"] + "?lang=en")
+    assert "damaged" in page.text
+    press(w, "ann", first["request_id"])
+    assert sorted(index_of(w, ann, run)) == ["n.png"] and [r["channel"] for r in allrows(w) if r["id"] == first["request_id"]] == ["PAGE"]
+    ann2, run2 = gal(w, name="ann2", run_name="r2")
+    damage(w, ann2, run2)
+    seen = []
+    out = tool_json(w.call("publish_figure", args(run2, figs), caller=ann2, answer=form_answer(seen=seen)))
+    assert out["state"] == "ok" and sorted(index_of(w, ann2, run2)) == ["n.png"]
+    assert "損毀" in str(seen[0])
+
+
+def test_rnc_b1_a_relay_at_approval_finds_the_index_unreadable_and_writes_nothing(w):
+    ann, run = gal(w)
+    figs = [fig("new.png", NEW)]
+    first = propose(w, ann, run, figs)            # the index was readable when it was asked
+    damage(w, ann, run)
+    before = prints(gallery(w, ann, run))
+    out = relay(w, ann, run, figs, first["request_id"])
+    assert out["state"] == "refused"
+    assert prints(gallery(w, ann, run)) == before and not (gallery(w, ann, run) / "new.png").exists()
+
+
+def test_rnc_b1_a_normal_request_bundle_is_unchanged(w):
+    ann, run = gal(w)
+    first = propose(w, ann, run, [fig("new.png", NEW)])
+    r = [x for x in allrows(w) if x["id"] == first["request_id"]][0]
+    assert sorted(json.loads(r["bundle_json"])) == ["figures", "replaces", "replaces_ids", "run_id", "run_name"]
+
+
+def _disk_only(w, ann, run, *leaves):
+    folder = gallery(w, ann, run)
+    idx = json.loads((folder / "index.json").read_text())
+    idx["figures"].pop("a.png", None)
+    (folder / "index.json").write_text(json.dumps(idx))
+    for p in folder.iterdir():
+        if p.name.startswith("a.png") and p.name not in leaves:
+            p.unlink()
+
+
+@pytest.mark.parametrize("leaves", [("a.png", "a.png.code.txt", "a.png.params.txt"), ("a.png.code.txt",), ("a.png.params.txt",)])
+def test_rnc_b2_a_file_on_disk_but_not_in_the_index_counts_as_replaced(w, leaves):
+    ann, run = gal(w)
+    _disk_only(w, ann, run, *leaves)
+    before = prints(gallery(w, ann, run))
+    figs = [new_a()]
+    first = propose(w, ann, run, figs)
+    assert "覆蓋既有同名圖" in first["summary"]
+    r = [x for x in allrows(w) if x["id"] == first["request_id"]][0]
+    assert json.loads(r["bundle_json"])["replaces"] == ["a.png"]
+    out = relay(w, ann, run, figs, first["request_id"])
+    assert out["state"] == "refused" and out["url"] == first["url"]
+    assert prints(gallery(w, ann, run)) == before and state_of(w, first["request_id"]) == ["pending"]
+    press(w, "ann", first["request_id"])          # the person's own click replaces it
+    assert (gallery(w, ann, run) / "a.png").read_bytes() == NEW
+
+
+def test_rnc_b2_a_file_that_appears_on_disk_after_the_request_is_not_overwritten(w):
+    ann, run = gal(w)
+    figs = [fig("new.png", NEW)]
+    first = propose(w, ann, run, figs)
+    (gallery(w, ann, run) / "new.png").write_bytes(b"theirs")
+    out = relay(w, ann, run, figs, first["request_id"])
+    assert out["state"] == "refused" and (gallery(w, ann, run) / "new.png").read_bytes() == b"theirs"
+    second = propose(w, ann, run, [fig("new.png", NEW + b"2")])
+    assert "覆蓋既有同名圖" in second["summary"]
+    first2 = propose(w, ann, run, [fig("other.png", NEW)])
+    (gallery(w, ann, run) / "other.png.params.txt").write_text("theirs")
+    c, r = press(w, "ann", first2["request_id"])
+    assert r.status_code == 409 and (gallery(w, ann, run) / "other.png.params.txt").read_text() == "theirs"
