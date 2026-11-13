@@ -484,10 +484,52 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         link = "/?run_name=" + urllib.parse.quote(str(run_name), safe="") if run_name else "/"
         return "<div class=\"acts\"><a class=\"nv\" href=\"%s\">%s</a></div>" % (_esc(link), "View the run" if lang == "en" else "查看分析")
 
+    def change_line(facts, lang):
+        """The sentence after a gallery_change was done: what the package holds now, or which figure was deleted. No job number."""
+        e = facts.get("effect") or {}
+        if facts.get("action") == "delete":
+            return ("Deleted %s." if lang == "en" else "已刪除 %s。") % e.get("name", "")
+        result = e.get("result") or []
+        if lang == "en":
+            return "Packed. The delivery package now holds %d figure%s: %s." % (len(result), "" if len(result) == 1 else "s", ", ".join(result)) if result else \
+                "Packed. The delivery package is now empty."
+        return "已打包。交付包現有 %d 張：%s。" % (len(result), "、".join(result)) if result else "已打包。交付包現為空。"
+
+    def change_title(facts, lang):
+        pack = facts.get("action") != "delete"
+        return ("Confirm the delivery package" if pack else "Confirm deleting a figure") if lang == "en" else ("打包確認" if pack else "刪除確認")
+
+    def change_page(req, sid, rid, lang):
+        """The page of a gallery_change request (pack the delivery package, or delete one figure): what will happen, and after the yes, what did. No job, no image."""
+        en = lang == "en"
+        facts = actions.request_facts(platform_path, rid) or {}
+        pack = facts.get("action") != "delete"
+        title = change_title(facts, lang)
+        text = actions.screen_for_page(facts, None, "en") if en and facts.get("effect") else (req["summary"] or "")
+        shown = "<details open><summary>%s</summary><pre>%s</pre></details>" % (_PLAIN[lang]["full"], _esc(text))
+        if req["state"] == "pending":
+            intro = (("<p>Everything that will change in the delivery package is shown below. If it is correct, press \"Send\"; nothing is changed until you press it.</p>" if pack else
+                      "<p>The figure that will be deleted is shown below. If it is correct, press \"Confirm delete\"; nothing is deleted until you press it.</p>") if en else
+                     ("<p>以下為將對交付包做的全部變更。確認無誤後，請按「送出」；按下後才會變更圖庫。</p>" if pack else
+                      "<p>以下為將刪除的圖與檔案。確認無誤後，請按「確認刪除」；按下後才會刪除。</p>"))
+            button = ("Send" if pack else "Confirm delete") if en else ("送出" if pack else "確認刪除")
+            return _page(title, "%s%s<form method=\"post\" action=\"/c/%s\"><input type=\"hidden\" name=\"csrf\" value=\"%s\">"
+                         "<button type=\"submit\">%s</button></form>" % (intro, shown, rid, _esc(csrf(sid, rid)), button), lang=lang)
+        if req["state"] == "confirmed":
+            return _page(title, "<p class=\"ok\">%s</p>%s%s" % (_esc(change_line(facts, lang)), shown, gallery_link(facts.get("run_name"), lang)), lang=lang)
+        if req["state"] == "expired":
+            return _page(title, "<p class=\"bad\">%s</p>" % ("This request has expired (10 minutes). Nothing was changed. Please ask the AI to propose it again." if en else
+                                                              "該申請已逾時（10 分鐘），圖庫沒有變更。請要求 AI 重新提出。"), 410, lang=lang)
+        reason = _esc(req["void_reason"] or "-") if not en else "-"
+        return _page(title, "<p class=\"bad\">%s</p>" % (("This request was voided. Nothing was changed. Please ask the AI to propose it again." if en else
+                                                          "該申請已作廢：%s。圖庫沒有變更。請要求 AI 重新提出。" % reason)), 409, lang=lang)
+
     def state_page(req, sid, rid, lang="zh"):
         clean = req["kind"] == "clean_work"
         figs = req["kind"] == "publish_figure"
         en = lang == "en"
+        if req["kind"] == "gallery_change":
+            return change_page(req, sid, rid, lang)
         if figs:
             return figures_page(req, sid, rid, lang)
         if en:
@@ -563,6 +605,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         facts = actions.request_facts(platform_path, rid) or {}
         run_name = facts.get("run_name") if req["kind"] != "clean_work" else None
         figs = req["kind"] == "publish_figure"
+        chg = req["kind"] == "gallery_change"
 
         def sent(job_id):
             """The page after Send (launch, resume, relaunch, cancel): the job number, what happens next, and the way to the run's page."""
@@ -574,6 +617,16 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             _, job_id = actions.approve(platform_path, rid, confirmed_by=actions.PAGE,
                                         caller=actions.Caller(user["user_id"], user["name"], user["lab"]), clock=clock)
         except actions.NotApproved as e:
+            if chg:
+                title = change_title(facts, lang)
+                if e.status == "already":
+                    return _page(title, "<p class=\"ok\">%s</p>%s" % (_esc(change_line(facts, lang)), gallery_link(run_name, lang)), lang=lang)
+                code = {"not_found": 404, "not_yours": 403, "expired": 410}.get(e.status, 409)
+                if lang == "en":
+                    why = {"expired": "the request has expired", "not_found": "the request was not found", "not_yours": "the request is not yours"}.get(
+                        e.status, "the gallery has changed since the question was asked, or cannot be read or written")
+                    return _page("Not changed", "<p class=\"bad\">Not changed: %s. Nothing was changed. Please ask the AI to propose it again.</p>" % why, code, lang=lang)
+                return _page("未變更", "<p class=\"bad\">未變更：%s。</p>" % _esc(e), code)
             if figs:
                 if e.status == "already":
                     return _page("Confirm adding figures" if lang == "en" else "存入圖庫確認",
@@ -593,6 +646,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             if req["kind"] == "clean_work":
                 return _page("未送出", "<p class=\"bad\">未送出：%s。</p>" % _esc(e), code)
             return _page("未送出", "<p class=\"bad\">未送出：%s。請重新送出。</p>" % _esc(e), code)
+        if chg:
+            return _page(change_title(facts, lang), "<p class=\"ok\">%s</p>%s" % (_esc(change_line(facts, lang)), gallery_link(run_name, lang)), lang=lang)
         if figs:
             return _page("Added to the gallery" if lang == "en" else "已存入圖庫", "<p class=\"ok\">%s</p>%s" % (_esc(gallery_line(facts.get("count"), lang)), gallery_link(run_name, lang)), lang=lang)
         if req["kind"] == "clean_work":

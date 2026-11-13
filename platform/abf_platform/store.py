@@ -213,12 +213,13 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 # The confirmation kinds are launch, cancel, clean_work (the person's yes to deleting a run's work folder; kept apart so a
-# cancel confirmation cannot stand for it) and publish_figure (the person's yes to adding figures to a run's private gallery; it queues no job).
-# A platform.db made before clean_work or publish_figure gets this table rebuilt by _migrate_confirmation_kinds.
+# cancel confirmation cannot stand for it), publish_figure (the person's yes to adding figures to a run's private gallery; it queues no job) and
+# gallery_change (the person's yes to packing or deleting figures of that gallery; it queues no job).
+# A platform.db made before clean_work, publish_figure or gallery_change gets this table rebuilt by _migrate_confirmation_kinds.
 _CONFIRMATIONS_TABLE = """CREATE TABLE %(name)s (
     id TEXT PRIMARY KEY,
     sha256 TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work', 'publish_figure')),
+    kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work', 'publish_figure', 'gallery_change')),
     created_at REAL NOT NULL,
     used_at REAL,
     caller_user_id INTEGER,
@@ -604,7 +605,7 @@ def _add_confirmation_state(con):
 
 def _confirmations_current(con):
     row = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'confirmations'").fetchone()
-    return row is None or ("'clean_work'" in row[0] and "'publish_figure'" in row[0])
+    return row is None or ("'clean_work'" in row[0] and "'publish_figure'" in row[0] and "'gallery_change'" in row[0])
 
 
 def _migrate_confirmation_kinds(con):

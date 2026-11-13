@@ -111,7 +111,7 @@ def test_confirm_through_each_channel_writes_exactly_the_requested_figures(w, ch
     assert len(r) == 1 and r[0]["state"] == "confirmed" and r[0]["channel"] == channel
     assert w.sql("SELECT * FROM jobs WHERE kind NOT IN ('launch_nextflow', 'cancel_run') AND confirmation_id IS NOT NULL") == []
     from abf_platform import confirm
-    assert not [p for p in folder.iterdir() if p.name.startswith(".tmp-")] and confirm.NO_JOB_KINDS == ("publish_figure",)
+    assert not [p for p in folder.iterdir() if p.name.startswith(".tmp-")] and confirm.NO_JOB_KINDS == ("publish_figure", "gallery_change")
 
 
 def test_one_request_covers_the_whole_list(w):
@@ -332,7 +332,7 @@ def test_confirmations_check_migration(tmp_path):
     # an older table with only clean_work
     con = sqlite3.connect(str(db))
     con.execute("PRAGMA foreign_keys = OFF")
-    old_sql = t.check_of(con, "confirmations").replace(", 'publish_figure'", "")
+    old_sql = t.check_of(con, "confirmations").replace(", 'gallery_change'", "").replace(", 'publish_figure'", "")
     assert "publish_figure" not in old_sql
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c1', 'x', 'clean_work', 1)")
     con.execute("INSERT INTO confirmations (id, sha256, kind, created_at) VALUES ('c2', 'x', 'launch', 1)")
@@ -389,7 +389,7 @@ def test_existing_kinds_unchanged(w):
     # TC-078
     from abf_platform import confirm, jobs
     assert confirm.JOB_KIND == {"launch": "launch_nextflow", "cancel": "cancel_run", "clean_work": "clean_work"}
-    assert confirm.NO_JOB_KINDS == ("publish_figure",) and jobs.CONFIRMED
+    assert confirm.NO_JOB_KINDS == ("publish_figure", "gallery_change") and jobs.CONFIRMED
     ann = w.user("ann")
     o = w.launch(caller=ann, answer=form_answer())
     assert o["sent"] is True and o["job_id"]
@@ -720,7 +720,7 @@ def test_documents_describe_the_tool(w):
     platform_md = (repo / "docs" / "PLATFORM.md").read_text(encoding="utf-8")
     testing_md = (repo / "docs" / "TESTING.md").read_text(encoding="utf-8")
     changelog = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert "Twenty-three tools" in platform_md and "publish_figure" in platform_md and "NO_JOB_KINDS" in platform_md and "index.json" in platform_md
+    assert "Twenty-five tools" in platform_md and "publish_figure" in platform_md and "NO_JOB_KINDS" in platform_md and "index.json" in platform_md
     i = platform_md.index("`publish_figure` (mcp-publish-figure, slice 1)")
     para = platform_md[i:i + 4000].split("\n", 1)[0]
     assert "confirmation" in para or "presses 送出" in para
@@ -942,3 +942,30 @@ def test_n6_the_stored_request_of_another_person_is_not_read(w, monkeypatch):
     got = call(w, bob, bob_run, [fig("a.png")], request_id=mine["request_id"], user_confirmed=True)
     assert got["state"] == "refused" and mine["request_id"] not in seen
     assert [r["state"] for r in rows(w)] == ["pending"]
+
+
+def test_n2_n5_n6_hold_for_the_gallery_change_requests_too(w, monkeypatch):
+    # N2, N5, N6 on request_pack_figures / request_delete_figure (gallery slice 3 shares the rules)
+    from abf_platform import actions, confirm
+    ann, bob = w.user("ann"), w.user("bob")
+    run, bob_run = seed(w, "r1", "succeeded", ann), seed(w, "r2", "succeeded", bob)
+    press(w, "ann", call(w, ann, run, [fig("a.png")])["request_id"])
+
+    def ask(fn, caller, rid, **kw):
+        return asyncio.run(getattr(actions, fn)(w.ip.state_db, run_id=rid, caller=caller, clock=w.clock, index_path=w.ip.index, **kw))
+    got = ask("request_pack_figures", ann, "\ud800", names=["a.png"])
+    assert got["state"] == "refused"
+    json.dumps(got).encode("utf-8")
+    got = ask("request_delete_figure", ann, run, name="\ud800.png")
+    assert got["state"] == "refused"
+    json.dumps(got).encode("utf-8")
+    got = ask("request_delete_figure", ann, "r\n" + "z" * 300, name="a.png")
+    assert got["state"] == "refused" and "\n" not in got["reason"] and len(got["reason"]) < 400
+    mine = ask("request_pack_figures", ann, run, names=["a.png"])
+    assert mine["state"] == "pending"
+    seen = []
+    real = confirm.facts
+    monkeypatch.setattr(confirm, "facts", lambda p, rid: (seen.append(rid), real(p, rid))[1])
+    other = ask("request_pack_figures", bob, bob_run, names=["a.png"], request_id=mine["request_id"], user_confirmed=1)
+    assert other["state"] == "refused" and mine["request_id"] not in seen
+    assert (gallery(w, ann, run) / "index.json").exists() and json.loads((gallery(w, ann, run) / "index.json").read_text())["figures"]["a.png"]["packed"] is False

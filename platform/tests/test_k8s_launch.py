@@ -1405,7 +1405,7 @@ def test_the_schema_of_the_platform_is_that_of_the_base(ip):
         rows = sorted(con.execute("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").fetchall())
     finally:
         con.close()
-    assert len(rows) == 7 and digest(repr(rows).replace(", 'lint_pipeline'", "").replace(", 'publish_figure'", "")) == "1d9448eb1cea8a7cccbb1a6f5bd13fef90142cc2e1b0bc7d68c5f2409ef708bb"      # 017c2a: lint_pipeline joins the CHECK list; the rest of the schema is the base digest
+    assert len(rows) == 7 and digest(repr(rows).replace(", 'lint_pipeline'", "").replace(", 'gallery_change'", "").replace(", 'publish_figure'", "")) == "1d9448eb1cea8a7cccbb1a6f5bd13fef90142cc2e1b0bc7d68c5f2409ef708bb"      # 017c2a: lint_pipeline joins the CHECK list; the rest of the schema is the base digest
     assert [p for p in PLATFORM_DIR.rglob("*") if "migrat" in p.name.lower()] == []
     assert "No migration needed" in (REPO_ROOT / "specs" / "k8s-launch" / "ledger.md").read_text(encoding="utf-8")
 
@@ -1435,7 +1435,7 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert len(got) == 34 and digest(repr(got)) == "63dabb2accd8a810ff764ded6d9dd35983e318b0d4f20852b81f551ed7069757"      # resume-edit-web adds GET /act/{verb}/edit; web-run-tasks-log adds GET /run/log (30 -> 31); web-result-viewer adds GET /run/preview, /run/image, /run/report (31 -> 34)
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
-    names = [n for n in names if n not in ("request_publish_figure", "list_figures", "screen_for_page")]      # mcp-publish-figure adds these three (and nothing else) to the action layer
+    names = [n for n in names if n not in ("request_publish_figure", "list_figures", "screen_for_page", "request_pack_figures", "request_delete_figure")]      # mcp-publish-figure adds these three, mcp-gallery-actions the last two (and nothing else) to the action layer
     assert len(names) == 60 and digest(repr(names)) == "49b160116a812f893f51786365283176959c1e2b48396f3db60e26d721757cfb"      # web-run-tasks-log adds task_log_view (59 -> 60); pipe-reg-store adds four registration actions (54 -> 58, 012b-2 adds preview_samplesheet); cost-page-by-environment adds run_usage (58 -> 59); mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
     assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
 

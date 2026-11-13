@@ -1508,6 +1508,15 @@ def _chat_refusal(status, tool):
     return "未送出：平台沒有接受這次確認。%s。" % again
 
 
+_ALREADY_DONE = ("這筆申請先前已經確認並執行過；圖庫目前的狀態請重新查詢 (this request was already confirmed and carried out earlier; "
+                "look at the gallery again for how it stands now)")
+
+
+def _already_done(kind, request_id):
+    """A gallery_change whose id is used again: say only that, never repeat what was done then (the id is not a way to read the gallery)."""
+    return {"ok": True, "sent": False, "state": "ok", "request_id": request_id, "url": None, "message": _ALREADY_DONE}
+
+
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None, request_id=None,
                user_confirmed=False, done=None):
     """The yes of a person for a bundle that is built and checked: through the form, else by the page, else (CHAT) the person's own
@@ -1522,15 +1531,20 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
             return _no("未送出：user_confirmed=true 要同時帶 request_id（第一次呼叫回的申請編號）。%s。" % _CHAT_NEXT)
         try:
             _, job_id = confirm.approve(platform_path, request_id, CHAT.name, caller_id, clock,
-                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=_figures.write_confirmed)
+                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=_writer_for(kind))
         except confirm.NotApproved as e:
             if e.status == "already":
-                return done(request_id) if done else _queued(request_id, e.job_id, what)
+                return _already_done(kind, request_id) if kind == "gallery_change" else (done(request_id) if done else _queued(request_id, e.job_id, what))
+            if kind == "gallery_change" and e.status in ("failed", "write_failed"):      # the writer says why in its own words: the gallery changed, or could not be read or written
+                return _no("未送出：%s" % e)
             return _no(_chat_refusal(e.status, tool))
         return done(request_id) if done else _queued(request_id, job_id, what)
     nobody =("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單）。請改用終端機指令 `abf-platform %s`，或用帶權杖的 HTTP 連線 "
               "(no one can say yes here: use the terminal command, or HTTP with a token)" % tool)
-    if done is not None:
+    if kind == "gallery_change":
+        nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單），無法確認，圖庫沒有任何變更。請改用 abf-platform 的帶權杖 HTTP 連線 (http) "
+                  "(no one can say yes here, so nothing was changed: use HTTP with a token)")
+    elif done is not None:
         nobody = ("這裡沒有人可以按「送出」（本機 stdio 的客戶端不能跳出表單），無法確認，沒有存入任何圖。請改用 abf-platform 的帶權杖 HTTP 連線 (http) "
                   "(no one can say yes here, so nothing was stored: use HTTP with a token)")
     if caller is None and not form:
@@ -1546,10 +1560,10 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
                 confirm.void(platform_path, rid, why)
                 return _no("未送出：%s (not sent)" % why)
             try:
-                _, job_id = confirm.approve(platform_path, rid, ELICITED.name, caller_id, clock, writer=_figures.write_confirmed)
+                _, job_id = confirm.approve(platform_path, rid, ELICITED.name, caller_id, clock, writer=_writer_for(kind))
             except confirm.NotApproved as e:
                 if e.status == "already":
-                    return done(rid) if done else _queued(rid, e.job_id, what)
+                    return _already_done(kind, rid) if kind == "gallery_change" else (done(rid) if done else _queued(rid, e.job_id, what))
                 return _no("未送出：%s。請從 AI 重新送出 (nothing was queued; send it again from the AI)" % e)
             return done(rid) if done else _queued(rid, job_id, what)
         if caller is None:         # the client claims forms but this call cannot show one, and there is nobody to log in
@@ -1901,13 +1915,19 @@ async def request_relaunch(platform_path, *, run_name, caller=None, person=None,
                                   user_confirmed)
 
 
+def _writer_for(kind):
+    """The write that runs after a person's yes, by the kind of the request: a gallery_change has its own, publish_figure keeps the one it had."""
+    return _figures.write_gallery_change if kind == "gallery_change" else _figures.write_confirmed
+
+
 def approve(platform_path, request_id, *, confirmed_by, caller=None, clock=time.time, deadline_seconds=None, offline_after=None):
     """A person said yes to a pending request: through their client's form (ELICITED) or by pressing the button of the page as
     the user who made it (PAGE). Returns (request id, job id); NotApproved when nothing was queued."""
     if not (confirmed_by is ELICITED or confirmed_by is PAGE):
         raise jobs.JobRefused("no human confirmation channel")
+    asked = confirm.describe(platform_path, request_id, clock)
     return confirm.approve(platform_path, request_id, confirmed_by.name, _caller_id(caller), clock, deadline_seconds, offline_after,
-                           writer=_figures.write_confirmed)
+                           writer=_writer_for(asked["kind"] if asked else None))
 
 
 def find_approved(platform_path, kind, bundle, *, caller=None, clock=time.time):
@@ -2068,5 +2088,7 @@ def remove_pipeline_registration(platform_path, *, ce, pipeline, revision, confi
 # ---- publish_figure (mcp-publish-figure, slice 1): figures proposed by the user's own model, stored only after the person's yes ------------------
 
 request_publish_figure = _figures.request_publish_figure
+request_pack_figures = _figures.request_pack_figures          # mcp-gallery-actions (slice 3): propose a package or a delete; the yes is a person's, on a channel
+request_delete_figure = _figures.request_delete_figure
 list_figures = _figures.list_figures
 screen_for_page = _figures.screen_for_page

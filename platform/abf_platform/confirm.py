@@ -28,7 +28,7 @@ KEEP_UNSENT_SECONDS = 7 * 86400    # a void request, or a pending one past its t
 CLEAN_PENDING_SECONDS = 7 * 86400  # a clean_work request is a reminder, not a question to answer now: it lives a week
 MAX_OPEN_CLEAN = 50               # open clean_work requests one caller may have; they do not use up MAX_OPEN_PENDING
 JOB_KIND = {"launch": "launch_nextflow", "cancel": "cancel_run", "clean_work": "clean_work"}
-NO_JOB_KINDS = ("publish_figure",)  # a person's yes that queues no job: approve() flips the row and calls the writer the action layer passes, in the same transaction
+NO_JOB_KINDS = ("publish_figure", "gallery_change")  # a person's yes that queues no job: approve() flips the row and calls the writer the action layer passes, in the same transaction
 
 
 class NotApproved(jobs.JobRefused):
@@ -127,6 +127,8 @@ def void(state_path, rid, reason):
 
 def _without_content(bundle):
     """publish_figure: the bundle without the image bytes of its figures (name, type, size, sha256, caption, code, params and replaces stay)."""
+    if "figures" not in bundle:       # gallery_change: its bundle holds names only, no image bytes; it is kept as it is
+        return dict(bundle)
     return dict(bundle, figures=[{k: v for k, v in f.items() if k != "content_base64"} for f in bundle.get("figures", [])])
 
 
@@ -415,6 +417,8 @@ def facts(state_path, rid):
         if row["kind"] == "publish_figure":
             return {"what": "publish_figure", "run_name": bundle["run_name"], "count": len(bundle["figures"]),
                     "figures": bundle["figures"], "replaces": bundle.get("replaces", [])}
+        if row["kind"] == "gallery_change":       # the whole bundle (names, what would happen, the gallery as it was asked): it holds no image bytes
+            return dict(bundle, what="gallery_change")
         what = "resume" if "resume" in bundle else "relaunch" if "relaunch" in bundle else "launch"
         source = bundle["resume"]["origin"] if what == "resume" else bundle
         out = {"what": what, "run_name": bundle["run_name"], "pipeline": source["pipeline"], "revision": source["revision"],

@@ -26,6 +26,8 @@ WEB_ONLY = {
     "run_usage": "the cost row of the run page (cost-page-by-environment): one run of the caller, in its environment's unit; a read, not an MCP tool",
     "list_figures": "mcp-publish-figure: reads the caller's own private gallery of one run; the gallery page is slice 2",
     "screen_for_page": "mcp-publish-figure: the confirmation page shows the publish_figure screen in the page's language",
+    "request_pack_figures": "mcp-gallery-actions: what the MCP tool pack_figures calls; the page's own button calls the core pack_figures of actions/figures.py (TC-072)",
+    "request_delete_figure": "mcp-gallery-actions: what the MCP tool delete_figure calls; the page's own button calls the core delete_figure of actions/figures.py (TC-072)",
     "describe_request": "the confirmation page shows one pending request to the person it was made for",
     "approve": "the button of the confirmation page: the PAGE channel's yes",
     "platform_path_for": "the page finds platform.db from the index path, the way every entry does",

@@ -68,7 +68,7 @@ def test_tc154_tc161_there_are_still_three_channels_three_kinds_of_confirmation_
     assert confirm.JOB_KIND == {"launch": "launch_nextflow", "cancel": "cancel_run", "clean_work": "clean_work"}
     assert jobs.CONFIRMED == {"launch_nextflow": "launch", "cancel_run": "cancel", "clean_work": "clean_work"}
     assert jobs.KINDS == ("preflight", "list_site_files", "launch_nextflow", "cancel_run", "fetch_run_records", "read_task_log", "clean_work", "put_upload", "pipeline_files", "read_run_file", "lint_pipeline")      # results-files: plus read_run_file; run-diag-tools: plus read_task_log; cloud-cleanup-b: plus clean_work; byte-channel-a: plus put_upload; release-lookup-job: plus pipeline_files
-    assert store.STATE_SCHEMA.count("kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work', 'publish_figure'))") == 1
+    assert store.STATE_SCHEMA.count("kind TEXT NOT NULL CHECK (kind IN ('launch', 'cancel', 'clean_work', 'publish_figure', 'gallery_change'))") == 1
 
 
 def test_tc161_the_confirmation_table_of_a_new_file_takes_no_third_kind(tmp_path):
