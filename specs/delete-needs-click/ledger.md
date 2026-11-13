@@ -49,4 +49,19 @@ TC-001～004、010：`test_dnc_a_relayed_delete_is_refused_with_the_page_and_not
 
 （見本檔最後一次提交時的輸出，附於下）
 
-STAT_PLACEHOLDER
+```
+ CHANGELOG.md                                   |   1 +
+ docs/PLATFORM.md                               |   4 +-
+ docs/TESTING.md                                |   4 +-
+ platform/abf_platform/actions/__init__.py      |  45 ++++-
+ platform/abf_platform/actions/figures.py       |   9 +-
+ platform/abf_platform/mcp_server.py            |  13 +-
+ platform/tests/mcp/snapshots/tools.json        |   4 +-
+ platform/tests/test_gallery_change.py          |  10 +-
+ platform/tests/test_gallery_change_confirm.py  | 232 ++++++++++++++++++++++++-
+ specs/delete-needs-click/ledger.md             |  52 ++++++
+ specs/delete-needs-click/plan.md               |  56 ++++++
+ specs/delete-needs-click/test-case-overview.md |  80 +++++++++
+ specs/delete-needs-click/test-case.md          | 105 +++++++++++
+ 13 files changed, 596 insertions(+), 19 deletions(-)
+```
