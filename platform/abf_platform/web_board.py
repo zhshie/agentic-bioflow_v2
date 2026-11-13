@@ -20,6 +20,7 @@ from . import site_link
 from . import web_devmode
 from . import web_downstream
 from . import web_finished
+from . import web_live
 
 STAGES = ("launch", "running", "results", "downstream", "finished")
 PLACEHOLDER = ("launch", "downstream")      # stages whose page is still to come: a grey "coming later" line
@@ -956,14 +957,21 @@ def _right(t, selected, acts=None, lang="zh"):
             % (esc(t["this_analysis"]), esc(selected["name"]), inner, _grey(t, "ask_here")))
 
 
-def document(title, body, refresh=False, board=False, lang="zh", refresh_url=None):
+def document(title, body, refresh=False, board=False, lang="zh", refresh_url=None, live=None):
     """A whole page. Only the board asks for the meta refresh; a page that is not the board gets the narrow single column.
-    `refresh_url` (already escaped) is the address the refresh goes to, when it must not be the address the page was asked for."""
+    `refresh_url` (already escaped) is the address the refresh goes to, when it must not be the address the page was asked for.
+    `live` (default: the same as `refresh`) puts the one script of live-sync at the end of the body; the meta refresh then sits inside <noscript>, so a browser
+    without scripts does what it always did. A page may carry the script without a refresh (the finished stage with figures)."""
+    live = refresh if live is None else live
     head = ("<meta http-equiv=\"refresh\" content=\"%d%s\">" % (REFRESH_SECONDS, ";url=" + refresh_url if refresh_url else "")) if refresh else ""
+    if live and head:
+        head = "<noscript>%s</noscript>" % head
     wrapped = body if board else '<main class="narrow">%s</main>' % body
+    tail = web_live.SCRIPT_TAG if live else ""
+    go = ' data-live-u="%s"' % refresh_url if live and refresh_url else ""
     return ("<!doctype html><html lang=\"%s\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">%s"
-            "<title>%s</title><style>%s</style></head><body>%s</body></html>"
-            % ("en" if lang == "en" else "zh-Hant", head, esc(title), STYLE, wrapped))
+            "<title>%s</title><style>%s</style></head><body%s>%s%s</body></html>"
+            % ("en" if lang == "en" else "zh-Hant", head, esc(title), STYLE, go, wrapped, tail))
 
 
 def default_run(runs):
@@ -999,13 +1007,13 @@ def _empty_page(t, lang):
             % (esc(t["no_analyses"]), _url(lang, path="/launch"), esc(t["new_analysis"])))
 
 
-def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, path="/", refresh=False, tab=None, refresh_url=None):
+def _frame(name, csrf, runs, lang, here, middle, right, run=None, stage=None, path="/", refresh=False, tab=None, refresh_url=None, live=None):
     lang = pick_lang(lang)
     t = STRINGS[lang]
     bar = ('<div class="devbar" role="status"><span aria-hidden="true">!</span><span>%s</span></div>' % esc(web_devmode.banner(lang))) if DEV_MODE.get() else ""
     body = '%s%s<div class="wb">%s%s%s</div>' % (_mast(t, name, lang, run, stage, path, tab), bar + site_link.bar_html(site_link.SITE_DOWN_AGENTS.get(), lang), _left(t, runs, run, lang, csrf, here), middle(t, lang),
                                                   right(t, lang))
-    return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url)
+    return document(t["title"], body, refresh=refresh, board=True, lang=lang, refresh_url=refresh_url, live=live)
 
 
 def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", tab_param=None, now=None, act_csrf=None, flash=None, outputs=None, finished=None, refusal=None, studio=None, gallery=None):
@@ -1030,7 +1038,8 @@ def render_board(name, csrf, runs, selected=None, stage_param=None, lang="zh", t
         middle = lambda t, lang_: inner(t, lang_).replace('data-pane="middle">', 'data-pane="middle">' + refusal_block(refusal, lang_), 1)
     return _frame(name, csrf, runs, lang, "run", middle, lambda t, lang_: _right(t, selected, acts(t, lang_), lang_), run_id, stage,
                   refresh=not flash and not (selected is not None and selected["status"] == "succeeded" and (stage == "downstream" or (stage == "finished" and (gallery or {}).get("figures")))),
-                  tab=tab, refresh_url=refresh_url)
+                  tab=tab, refresh_url=refresh_url,
+                  live=not flash and not (selected is not None and selected["status"] == "succeeded" and stage == "downstream"))      # live-sync: the finished stage with figures carries the script but no refresh
 
 
 # ---- spec 012b: the launch form -----------------------------------------------------------------------------------------------------------

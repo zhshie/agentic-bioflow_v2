@@ -5,6 +5,7 @@ No database, no file and no network is touched here: `web.py` reads `launch_pref
 caller and hands the answers in. Every word of this stage is in the two tables below (zh and en, same keys). Each state is a symbol plus
 words; the colour only helps. Nothing here downloads, writes or asks the site for anything: the download block only makes links to the existing `/run/file`.
 """
+import hashlib
 import html
 
 STRINGS = {
@@ -193,12 +194,18 @@ def _clip(text):
     return shown, shown != text
 
 
+def _key(name):
+    """A short word made of a figure's name, for the ids of its tick box and its delete form (the same name always gives the same word)."""
+    return hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:8]
+
+
 def _figure(t, run, f, n):
     """One figure of the gallery: the picture (an <img> loaded from /run/figure), its words, its state, its tick box and its delete button.
     The button belongs to a delete form that sits outside the pack form (form=), so no form is inside another."""
     base = f["url"]      # `/run/figure?run=&name=`, made by the route that read the gallery (this module makes no address from a name)
     name = _e(f["name"])
-    box = "pick-%d" % n
+    n = _key(f["name"])      # live-sync: the ids of the tick box and of the delete form belong to the figure, not to its place in the list, so a new figure does not change the others
+    box = "pick-%s" % n
     size = f.get("size")
     size_text = "%.1f KB" % (size / 1024) if isinstance(size, int) and size >= 0 else "—"
     state = _state(True, t["g_packed"]) if f.get("packed") else _state(False, t["g_unpacked"])
@@ -214,7 +221,7 @@ def _figure(t, run, f, n):
             '<p><code>%s</code> <span class="muted">%s</span></p>%s<p class="muted">%s</p><p>%s</p>'
             '<p><input type="checkbox" id="%s" name="fig" value="%s"> <label for="%s">%s</label></p>'
             '<p><a href="%s&amp;download=1">%s</a></p>%s'
-            '<p class="muted">%s</p><p><button type="submit" form="del-%d">%s</button></p></figcaption></figure></li>'
+            '<p class="muted">%s</p><p><button type="submit" form="del-%s">%s</button></p></figcaption></figure></li>'
             % (_e(base), _e(f["caption"] or f["name"]), name, _e(size_text), caption, _e(t["g_label"]), state, box, name, box,
                _e(t["g_pick"] % f["name"]), _e(base), _e(t["g_download"]), details, _e(t["g_del_note"]), n, _e(t["g_del_btn"] % f["name"])))
 
@@ -238,8 +245,8 @@ def _gallery(t, lang, run, gallery):
                 '<p><button type="submit">%s</button></p></form>'
                 % (_hidden(csrf=token.get("pack")), _hidden(run=run["id"]), en, "".join(_figure(t, run, f, i) for i, f in enumerate(figs)),
                    _e(t["g_pack_note"]), _e(t["g_pack_btn"])))
-        dels = "".join('<form id="del-%d" method="post" action="/run/figure/delete">%s%s%s%s</form>'
-                       % (i, _hidden(csrf=token.get("delete")), _hidden(run=run["id"]), _hidden(name=f["name"]), en) for i, f in enumerate(figs))
+        dels = "".join('<form id="del-%s" method="post" action="/run/figure/delete">%s%s%s%s</form>'
+                       % (_key(f["name"]), _hidden(csrf=token.get("delete")), _hidden(run=run["id"]), _hidden(name=f["name"]), en) for f in figs)
         body = pack + dels
     return '<section class="card"><h2>%s</h2>%s%s</section>' % (_e(t["g_title"]), note, body)
 

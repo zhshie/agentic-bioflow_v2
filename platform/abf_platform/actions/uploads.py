@@ -377,3 +377,28 @@ def upload_batch_status(platform_path, caller, batch, *, clock=time.time):
         _save(area, rec)
         _keep_sheet(area, rec, text)
     return dict(out, status="registered")
+
+
+def upload_batch_look(platform_path, caller, batch, *, clock=time.time):
+    """The same answer as `upload_batch_status`, from what is there now, and nothing is registered or written (live-sync: a look at the progress page). A batch
+    whose files are all in but whose Dataset is not registered yet says `registering`, which is what the real page would settle by registering it."""
+    if caller is None:
+        return {"ok": False, "found": False}
+    try:
+        area = _area(platform_path, caller)
+    except Exception:
+        return {"ok": False, "found": False}
+    rec = _load(area, batch)
+    if rec is None or rec.get("owner") != caller.name:
+        return {"ok": False, "found": False}
+    items = _states(platform_path, rec, clock())
+    out = {"ok": True, "found": True, "batch": batch, "name": rec["name"], "version": rec["version"], "ce": rec["ce"], "files": items,
+           "superseded": bool(rec.get("superseded"))}
+    if rec.get("registered"):
+        return dict(out, status="registered")
+    if _failed(items):
+        return dict(out, status="failed")
+    if not all(i["state"] == "done" for i in items):
+        return dict(out, status="running")
+    return dict(out, status="registering")
+

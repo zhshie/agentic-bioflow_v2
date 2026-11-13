@@ -558,6 +558,7 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
     job = None if relist else jobs.latest_listing(plat, ce, path)
     if job is None:
         if not enqueue:
+            answer["would_queue"] = True      # live-sync: the page would ask the site here; a look (`enqueue=False`) says so and asks nothing
             return answer
         try:
             jobs.enqueue_listing(plat, ce, path, status.now, caller_user_id=_caller_id(caller))
@@ -565,6 +566,10 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
             answer.update(state="error", reason=_with_agent(str(e), agent))
         return answer
     result = job["result"] or {}
+    if not enqueue and not relist and _listing_is_error(job):      # live-sync: the same test, for a look: it says the page would ask again, and asks nothing
+        ref = job["finished_at"] or job["deadline_at"]
+        if ref is not None and status.now() - ref >= jobs.LISTING_ERROR_RETRY_SECONDS:
+            answer["would_queue"] = True
     if enqueue and not relist and _listing_is_error(job):      # an error is the last try that failed, not an answer: ask again after a while
         ref = job["finished_at"] or job["deadline_at"]
         if ref is not None and status.now() - ref >= jobs.LISTING_ERROR_RETRY_SECONDS:
@@ -607,11 +612,12 @@ def run_outputs(index_path, platform_path, run_id, *, caller=None, relist=False,
 _FILE_CODES = ("not_found", "not_a_file", "too_large", "not_on_site", "site_unreachable", "changed", "bad_answer")
 
 
-def run_file(index_path, platform_path, run_id, path, *, caller=None, retry=False):
+def run_file(index_path, platform_path, run_id, path, *, caller=None, retry=False, enqueue=True):
     """One file below `<run folder>/results` for download. Returns {found: False, message} for a run that is not the caller's or not there (queues
     nothing), else {state: loading|ready|error, code, reason, name, size, data, site_path, max_bytes}. `code` of an error is one of bad_path, no_launch,
     not_on_site, agent_offline, refused, no_answer, not_found, not_a_file, too_large, site_unreachable, changed, bad_answer, failed. `data` is the
-    bytes (only when ready). `retry` asks again even when an answer from the last minutes is there (a job that is still running is never doubled)."""
+    bytes (only when ready). `retry` asks again even when an answer from the last minutes is there (a job that is still running is never doubled).
+    `enqueue=False` only looks (live-sync): where it would queue the read it answers `loading` with `would_queue` True and queues nothing."""
     view = status.get_run(index_path, run_id, status.now()) if isinstance(run_id, str) else None
     plat = platform_path_for(index_path, platform_path)
     if view is None or (caller is not None and view["name"] not in jobs.owned_run_names(plat, caller.user_id)):
@@ -649,6 +655,9 @@ def run_file(index_path, platform_path, run_id, path, *, caller=None, retry=Fals
                 return error("no_answer")
         elif not retry and now - (job["finished_at"] or 0) < jobs.RUN_FILE_CACHE_SECONDS:
             return _file_answer(answer, job)
+    if not enqueue:
+        answer.update(state="loading", would_queue=True)
+        return answer
     try:
         jobs.enqueue_read_run_file(plat, view["name"], path, status.now, caller_user_id=_caller_id(caller))
     except jobs.RunFileRefused as e:
@@ -892,6 +901,7 @@ def pipeline_files(platform_path, pipeline, revision, *, parts=None, compute_env
                 answer.update(state="ready", checked_at=job["finished_at"], **views)
                 return answer
     if not enqueue:
+        answer["would_queue"] = True      # live-sync: a look says the page would ask the site here
         return answer
     refusal = _pf_queue(platform_path, repo, revision, asked, compute_env, caller_id)
     return _pf_error(answer, "no_agent", refusal) if refusal else answer
@@ -901,7 +911,7 @@ def _no_fetch(repo):
     raise LookupError("this platform does not connect out; the agent reads the tags")
 
 
-def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, enqueue=True):
+def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, enqueue=True, write_cache=True):
     """The newest release of a pipeline that can be launched as it is (a plain numbered tag), for a new project to pin. Returns {state:
     loading|ready|error, pipeline, revision, source: fetched|cache|stale-cache|none, checked_at, why, error, releases}; `releases` is every
     usable tag, newest first (`revision` is its first item; [] while loading or after an error; an older cache entry holds only [revision]). Like pipeline_files it never waits.
@@ -944,7 +954,7 @@ def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, en
             part = (info.get("parts") or {}).get("tags") if isinstance(info.get("parts"), dict) else None
             if isinstance(part, dict) and part.get("status") == "ok" and isinstance(part.get("text"), str):
                 tags = _releases.parse_ls_remote(part["text"])
-                found = _releases.lookup(repo, lambda _repo: tags, cache_path=cache, clock=status.now, ttl=ttl)
+                found = _releases.lookup(repo, lambda _repo: tags, cache_path=cache if write_cache else None, clock=status.now, ttl=ttl)      # live-sync: a look writes no cache file
                 if found["source"] == "fetched":
                     return ready(found)
                 failure = ("no_release", found["why"])
@@ -957,6 +967,7 @@ def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, en
         why = why or _PF_REASONS[code]
         return ready(old, why) if old is not None else fail(code, why)
     if not enqueue:
+        answer["would_queue"] = True
         return answer
     refusal = _pf_queue(platform_path, repo, None, ["tags"], compute_env, caller_id)
     if refusal:

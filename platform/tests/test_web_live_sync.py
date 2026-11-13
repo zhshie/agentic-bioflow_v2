@@ -17,7 +17,7 @@ from helpers import PLATFORM_DIR, REPO_ROOT
 from human_harness import World
 from test_web_board import login, pane, seed
 
-STYLE = "'sha256-15f0b560af24184065cbe6b0e6cc6cd6517cacbf1f7746ef7770b50b7b96a46c'"      # D13 pins the style sheet: no new CSS in this task
+STYLE = "'sha256-FfC1YK8kGEBly+aw5sxs1lF8rL8fd0bvd3C1C3uWpGw='"      # D13 pins the style sheet: no new CSS in this task; this is its hash today
 BASE = "default-src 'none'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" % STYLE
 IMG = "default-src 'none'; img-src 'self'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" % STYLE
 ADD = "; script-src 'self'; connect-src 'self'"
@@ -144,8 +144,9 @@ def test_tc038_tc039_tc066_tc061_the_script_text(w):
     code = re.sub(r"/\*.*?\*/|(?m:^\s*//.*$)", "", text, flags=re.S)
     for pattern in banned:
         assert not re.search(pattern, code), pattern
-    for m in re.finditer(r"fetch\s*\(([^)]*)\)", code):
-        assert re.match(r"\s*(['\"]/|[A-Za-z_]\w*\s*\()", m.group(1)) or "'/" in m.group(1) or '"/' in m.group(1), m.group(1)
+    assert len(re.findall(r"\bfetch\s*\(", code)) == 1      # one place asks the network; every address it is given starts with a slash
+    asked = re.findall(r"\bget\s*\(\s*(['\"])([^'\"]*)\1", code)
+    assert asked and all(path.startswith("/live/") for _quote, path in asked), asked
     assert "'GET'" in code or '"GET"' in code
 
 
@@ -170,8 +171,7 @@ def test_tc015_tc033_tc037_tc041_tc042_tc043_board_pages(w):
         assert r.status_code == 200, url
         t = tags(r.text)
         assert t.scripts == 1 and t.srcs == [{"src": "/static/live.js"}] and t.on == [], url
-        assert t.meta_out == [] and t.meta_in_noscript in (["15"], ["15;url=" + urllib.parse.unquote(t.meta_in_noscript[0][3:])]) if t.meta_in_noscript else False, url
-        assert META15 in r.text or "refresh" in r.text
+        assert t.meta_out == [] and len(t.meta_in_noscript) == 1 and re.fullmatch(r"15(;url=.+)?", t.meta_in_noscript[0]), (url, t.meta_in_noscript)
         assert r.headers["content-security-policy"] == csp + ADD, url
     # the empty board of a person with no run
     r = cz.get("/")
@@ -275,7 +275,7 @@ def test_tc002_tc003_tc013_the_version_moves_only_for_the_region_that_changed(w)
     assert a["s"] == "ok" and a == version(c, u).json()
     con = sqlite3.connect(str(w.ip.index))
     with con:
-        con.execute("UPDATE runs SET final_status = 'succeeded', ended_at = ? WHERE id = ?", (int(NOW), ids["run"]))
+        con.execute("UPDATE runs SET n_succeeded = 3, n_running = 0 WHERE id = ?", (ids["run"],))
     con.close()
     b = version(c, u).json()
     va, vb = vmap(a), vmap(b)
@@ -404,34 +404,44 @@ def test_tc025_the_waiting_page_of_a_run_that_is_not_in_the_index_yet(w):
 
 # ---- the server keeps the reloads to one in 15 seconds ---------------------------------------------------------------------------------
 
-def test_tc022_tc023_a_launch_page_waiting_for_the_site_queues_no_more_than_today(tmp_path, monkeypatch):
-    # TC-022, TC-023
-    from test_web_guided_launch import ready, rig  # noqa: F401
-    from test_web_guided_launch import Rig
-    r = Rig(tmp_path, monkeypatch)
+def minute(tmp_path, monkeypatch, tag, look, answer_at=None, seconds=100):
+    """How many reads of the site a launch page that waits for the site makes in `seconds`: today (a whole page every 15 seconds) or with the script (a look every 2)."""
+    from abf_platform import status
+    from test_web_guided_launch import Rig, ready
+    now = [time.time()]
+    monkeypatch.setattr(status, "now", lambda: now[0])
+    monkeypatch.setenv("ABF_PLATFORM_DEADLINE_PIPELINE_FILES", "10")
+    (tmp_path / tag).mkdir()
+    r = Rig(tmp_path / tag, monkeypatch)
     _, c = ready(r)
     u = "/launch?pipeline=nf-core/ampliseq&revision=2.18.0"
-
-    def queued():
-        return len(r.w.sql("SELECT * FROM jobs WHERE kind = 'read_pipeline_files'")) if r.w.sql("SELECT 1 FROM jobs LIMIT 1") or True else 0
-    c.get(u)
-    first = queued()
-    assert first >= 1
-    clock = r.w.clock
-    base = clock.t if hasattr(clock, "t") else time.time()
-    today = 0
-    for step in range(4):          # today: a whole page every 15 seconds for a minute
-        clock.t = base + 15 * (step + 1)
-        c.get(u)
-    today = queued() - first
-    mine_before = queued()
-    for step in range(30):         # now: a look every 2 seconds for a minute
-        clock.t = base + 60 + 2 * (step + 1)
-        v = version(c, u)
-        assert v.status_code == 200
-        if v.json()["s"] == "reload":
+    assert c.get(u).status_code == 200
+    start, step, answered = now[0], (2 if look else 15), False
+    for k in range(1, seconds // step + 1):
+        now[0] = start + k * step
+        if answer_at is not None and not answered and now[0] - start >= answer_at:
+            answered = True
+            r.w.sql  # noqa: B018
+            con = sqlite3.connect(str(r.w.ip.state_db))
+            with con:
+                con.execute("UPDATE jobs SET state = 'done', finished_at = ?, result_json = ? WHERE kind = 'pipeline_files'", (now[0], json.dumps({"ok": True, "parts": {}})))
+            con.close()
+        if look:
+            got = version(c, u)
+            assert got.status_code == 200
+            if got.json()["s"] == "reload":
+                c.get(u)
+        else:
             c.get(u)
-    assert queued() - mine_before <= max(today, 1)
+    return len(r.w.sql("SELECT * FROM jobs WHERE kind = 'pipeline_files'"))
+
+
+def test_tc022_tc023_a_launch_page_waiting_for_the_site_queues_no_more_than_today(tmp_path, monkeypatch):
+    # TC-022, TC-023
+    for tag, answer_at in (("silent", None), ("answered", 20)):
+        today = minute(tmp_path, monkeypatch, tag + "-old", False, answer_at)
+        mine = minute(tmp_path, monkeypatch, tag + "-new", True, answer_at)
+        assert 1 <= mine <= today, (tag, mine, today)
 
 
 # ---- the other pages ------------------------------------------------------------------------------------------------------------------
@@ -476,12 +486,13 @@ def test_tc027_tc030_a_look_at_the_resume_page_never_asks_for_a_resume(tmp_path,
     # TC-027, TC-030
     from test_web_guided_launch import ready, rig  # noqa: F401
     from test_web_guided_launch import Rig
-    from test_web_guided_launch_2 import Fake
+    from test_web_guided_launch_2 import Fake, loading_files
     from test_web_resume_edit import make_run, edit_url, finish_run, A
     r = Rig(tmp_path, monkeypatch)
     f = Fake()
+    f.files = loading_files()
     monkeypatch.setattr(A(), "pipeline_files", f.pipeline_files)
-    monkeypatch.setattr(A(), "latest_release", f.latest_release)
+    monkeypatch.setattr(A(), "latest_release", lambda *a, write_cache=True, **kw: f.latest_release(*a, **kw))      # the look passes write_cache=False
     ann, c = ready(r)
     rid = make_run(r, ann)
     calls = []
@@ -516,7 +527,7 @@ def test_tc026_a_look_at_the_launch_page_reads_nothing_from_the_site(tmp_path, m
         seen.append(("pf", kw.get("enqueue", True)))
         return real_pf(*a, **kw)
 
-    def lr(*a, **kw):
+    def lr(*a, write_cache=True, **kw):
         seen.append(("lr", kw.get("enqueue", True)))
         return real_lr(*a, **kw)
     monkeypatch.setattr(A(), "pipeline_files", pf)

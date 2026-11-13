@@ -18,7 +18,7 @@ abf-station = "abf_station.cli:main"
 
 [tool.setuptools]
 packages = ["abf_platform", "abf_platform.actions", "abf_station", "abf_launch"]
-package-data = {"abf_platform" = ["skills/*/SKILL.md", "data/*.json", "data/*.json.gz"]}
+package-data = {"abf_platform" = ["skills/*/SKILL.md", "data/*.json", "data/*.json.gz", "data/*.js"]}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
