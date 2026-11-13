@@ -1317,6 +1317,23 @@ Needs a running platform, a user with a finished run whose gallery holds `a.png`
 4. *The wording (TC-038).* Read the refusal and the first answer in Chinese and in English. Answer: can you tell why this cannot be confirmed in the chat, that the original cannot be recovered, and where to go next; is the Chinese formal written language (no spoken forms, no job numbers, no code words).
 5. *The record (TC-036).* Read `specs/replace-needs-click/ledger.md` next to `git diff origin/v3...HEAD`. Pass: the only existing test file changed is `platform/tests/mcp/snapshots/tools.json` (the two parameter descriptions of `publish_figure`), and the ledger records the local result of `platform/tests/mcp/`.
 
+## live-sync: the pages update themselves (the maintainer and the reviewer check by hand)
+
+The browser cases of `specs/live-sync/test-case.md` (TC-001, 004, 005, 006, 007, 008, 009, 011, 014, 017, 018, 019, 032, 034, 035, 040) are one script that starts a throwaway platform, drives Chromium and stops. It never skips quietly (exit 3 when Playwright or Chromium is missing):
+
+```bash
+python3 scripts/dev/check_live_sync.py --platform-python ~/abf-venv/bin/python        # all 16, about 6 minutes
+python3 scripts/dev/check_live_sync.py --only TC-001,TC-014 --chromium-path /usr/bin/chromium
+```
+
+By hand, on a real platform (log in, open the board):
+1. E1: open `/?run=<a running run>`; let the run finish (or change its row). Within 3 seconds the badge and the list row change; the page does not flash and the scroll position stays. (If the Outputs listing of that run was never asked for, the page loads whole once: that is the known limit.)
+2. E2: open the finished stage of a succeeded run that has two or more figures, tick two boxes, ask the AI to store a new figure (and press Send on its confirmation page). The new figure appears in the gallery, even above the ticked ones; the two boxes stay ticked.
+3. E3: open `/launch?pipeline=nf-core/ampliseq&revision=<a tag>` and leave it a minute: the site is asked no more often than before (look at the jobs list: one read per 15 seconds at most, and none while the first is still waiting).
+4. E4: turn scripts off for the site in the browser; the board still reloads every 15 seconds.
+5. Open `/login`, a confirmation page and `/settings`: view the source; there is no `<script`.
+Also check `git diff --name-only origin/v3...HEAD` touches none of `.github/`, `hooks/`, the constitution, `plugin.json`, `platform/abf_station/`, `confirm.py`, `store.py` (TC-065).
+
 ## studio-embed: the maintainer checks RStudio in the page, on his own computer
 
 Automatic tests: `platform/tests/test_studio_embed.py` (the setting, the page, the CSP, `fetch-results --r`) and `tests/studio_embed_deploy_test.sh` (the unit, `env.example` and the docs, by shape). They cannot start RStudio or a browser; these steps do, and the result of each goes into `specs/studio-embed/ledger.md` (which of these steps passed, what each browser showed, the message of a blocked frame, the `allow` word that was needed, whether `www-same-site` or `www-frame-origin` had to change). First follow docs/OPERATIONS.md, "Desktop platform in WSL", step 12, with a succeeded run to look at.

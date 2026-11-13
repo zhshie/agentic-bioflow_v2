@@ -585,9 +585,10 @@ def test_g09_limits(rig, fk):
         for lang in ("", "&lang=en"):
             r = c.get(SEL + lang)
             t = r.text
-            assert "<script" not in t and "style=" not in t and len(re.findall(r"<style\b", t)) == 1 and "<link" not in t
+            from helpers import live_rules
+            assert live_rules(t, r.headers["content-security-policy"]) and "style=" not in t and len(re.findall(r"<style\b", t)) == 1 and "<link" not in t      # live-sync: only the loading state carries the script
             csp = r.headers["content-security-policy"]
-            assert csp == "default-src 'none'; img-src 'self'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" % web_board.style_source()      # guided-launch-2d: /launch alone gains img-src 'self' (the picture of the diagram)
+            assert csp == "default-src 'none'; img-src 'self'; style-src %s; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" % web_board.style_source() + ("; script-src 'self'; connect-src 'self'" if 'http-equiv="refresh"' in t else "")      # guided-launch-2d: /launch alone gains img-src 'self' (the picture of the diagram)
     for sel in (".pgroup", ".ptbl", ".scols", ".req"):
         for _, body in re.findall(r"([^{}]*%s[^{}]*)\{([^}]*)\}" % re.escape(sel), web_board.STYLE):
             assert "#" not in body and "rgb" not in body, body

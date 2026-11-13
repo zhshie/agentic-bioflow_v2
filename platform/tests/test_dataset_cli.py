@@ -179,7 +179,7 @@ def test_the_group_adds_only_its_three_commands_and_options_and_no_other_door(w)
     assert not mine & {"retry", "confirm", "yes", "y", "force", "assume-yes", "no-confirm"}
     assert cli.ADOPTING == ("serve", "web", "mcp", "ce")
     assert not [o for o in seen[("launch",)] if "dataset" in o]
-    routes = sorted(set(re.findall(r'Route\("([^"]*)"', (PKG / "web.py").read_text(encoding="utf-8"))) - set(("/run/figure", "/run/figure/delete", "/run/figures/pack")))      # mcp-publish-figure-gallery adds these three
+    routes = sorted(set(re.findall(r'Route\("([^"]*)"', (PKG / "web.py").read_text(encoding="utf-8"))) - set(("/run/figure", "/run/figure/delete", "/run/figures/pack", "/static/live.js", "/live/version", "/live/content")))      # mcp-publish-figure-gallery adds these three
     assert routes == ["/", "/.well-known/oauth-authorization-server", "/act/{verb}", "/act/{verb}/edit", "/c/{rid}", "/consent/{rid}", "/launch", "/launch/diagram", "/login", "/logout", "/run/file", "/run/image", "/run/log", "/run/preview", "/run/report", "/settings", "/settings/inventory", "/settings/personal", "/settings/pipelines", "/settings/pipelines/confirm", "/upload", "/upload/{batch}", "/usage", "/welcome"]
 
 

@@ -68,13 +68,14 @@ from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
-from starlette.requests import ClientDisconnect
-from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from starlette.requests import ClientDisconnect, Request
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
-from . import actions, oauth, site_link, store, web_board, web_cost, web_launch, web_preview, web_refusal, web_settings
+from . import actions, oauth, site_link, store, web_board, web_cost, web_launch, web_live, web_preview, web_refusal, web_settings
 from . import uploads_web, web_downstream, web_finished, web_upload
+from .actions.uploads import upload_batch_look      # live-sync: the progress of a batch as it is now, registering nothing (a look at the page)
 from .actions.figures import delete_figure, gallery_view, pack_figures, read_figure      # the gallery of a run (read, pack, delete): the action layer's own module; the routes only call these
 
 COOKIE = "abf_web"
@@ -108,6 +109,7 @@ FINISHED_HEADERS = dict(_HEADERS, **{      # the finished stage of a succeeded r
     "Content-Security-Policy": _HEADERS["Content-Security-Policy"].replace("style-src", "img-src 'self'; style-src", 1)})
 FIGURE_HEADERS = dict(_HEADERS, **{      # one figure of the gallery: a picture only, whatever the bytes are (sandbox, no script, no framing), never kept by a cache
     "Cache-Control": "private, no-store", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"})
+LIVE_HEADERS = dict(_HEADERS, **{"Cache-Control": "private, no-store"})      # live-sync: what the script asks is never kept by any cache
 FIGURE_404 = "找不到這張圖 (figure not found)"
 HOME = "/"                  # where a login with no (or a refused) `next` goes: a constant, so there is no open redirect
 
@@ -166,6 +168,19 @@ def _page(title, body, status=200, form_action=None, lang="zh"):
     if form_action:        # the consent form ends in a redirect to the connector, which a form-action rule also covers
         headers = dict(_HEADERS, **{"Content-Security-Policy": _HEADERS["Content-Security-Policy"].replace("form-action 'self'", "form-action 'self' " + form_action)})
     return HTMLResponse(web_board.document(title, "<h1>%s</h1>%s" % (_esc(title), body), lang=lang), status_code=status, headers=headers)
+
+
+async def _html(doc, status_code=200, headers=None, force=False):
+    """An HTML answer of a page that may carry the script of live-sync: such a page gets its marks (the body's `data-live`) and the two sources in its policy,
+    any other page goes out as it is."""
+    headers = headers if headers is not None else _HEADERS
+    made = web_live.recall_page(doc, headers, force)      # the same render a moment ago (the look that follows a page): not read again
+    if made is None:
+        made = await run_in_threadpool(web_live.decorate_with_layout, doc, headers, force)      # reading a page is work for a thread, not for the loop
+        if made[2] is not None:      # only a page that carries the script is looked at
+            web_live.remember_page(doc, headers, force, made)      # kept here, on the loop
+    doc, headers = made[0], made[1]
+    return HTMLResponse(doc, status_code=status_code, headers=headers)
 
 
 def _login_form(next_path="", message="", status=200):
@@ -686,11 +701,15 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     def read_outputs(run_id, caller, outputs_tab, relist, subpath=None):
         """The output folder of a succeeded run's results stage, from the action (it never waits for the site). Only the Outputs tab asks
         the site; the other tabs only look, for the name of the environment on the card. `subpath` is a folder below results (results-files)."""
+        look = web_live.looking()      # live-sync: a look never queues a listing and never lists again; where the page would, it says so
         try:
-            return actions.run_outputs(index_path, platform_path, run_id, caller=caller, relist=relist and outputs_tab, enqueue=outputs_tab,
-                                       subpath=subpath if outputs_tab else None)
+            got = actions.run_outputs(index_path, platform_path, run_id, caller=caller, relist=relist and outputs_tab and not look, enqueue=outputs_tab and not look,
+                                      subpath=subpath if outputs_tab else None)
         except sqlite3.Error:
             return None
+        if look and outputs_tab and isinstance(got, dict) and got.get("would_queue"):      # only the Outputs tab ever asks the site; the other tabs only look, today too
+            web_live.note("queue")
+        return got
 
     def read_finished(view, caller):
         """What the finished stage shows of how the run was sent: the action `launch_prefill` (reads only)."""
@@ -758,7 +777,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             refusal = None
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
                                      act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio, gallery=gallery, studio_embed=embed)
-        return HTMLResponse(doc, status_code=code, headers=headers)
+        return await _html(doc, code, headers, force=headers is FINISHED_HEADERS and not flash)      # the finished stage with figures never reloaded, and carries the script all the same
 
     async def board(request):
         sid, user = user_of(request)
@@ -784,14 +803,20 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         lang = web_board.pick_lang(request.query_params.get("lang"))
         run = request.query_params.get("run") or ""
         path = request.query_params.get("path") or ""
+        look = web_live.looking()      # live-sync: a look asks no read and never retries; a file that is there is the end of the waiting page, not a body to send
         answer = await run_in_threadpool(lambda: actions.run_file(index_path, platform_path, run, path, caller=caller,
-                                                                  retry=request.query_params.get("retry") == "1"))
+                                                                  retry=request.query_params.get("retry") == "1" and not look, **({"enqueue": False} if look else {})))
         if answer.get("found") is False:
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        if look and answer.get("would_queue"):
+            web_live.note("queue")
         if answer["state"] == "ready":
+            if look:
+                web_live.note("go")
+                return Response(b"", status_code=204, headers=_HEADERS)
             return Response(answer["data"], headers=web_board.download_headers(answer["name"], _HEADERS))
         code, doc = web_board.render_file_page(answer, run, lang)
-        return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+        return await _html(doc, code, _HEADERS)
 
     async def run_log_get(request):
         """The log of one failed task of the caller's own run, as a page (web-run-tasks-log). The action reads the answer of the agent's job or queues
@@ -822,6 +847,11 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                     path=request.query_params.get("path") or "", retry=request.query_params.get("retry") == "1"), None
 
     def read_answer(ctx, retry=False):
+        if web_live.looking():      # live-sync: a look asks no read and never retries
+            got = actions.run_file(index_path, platform_path, ctx["run"], ctx["path"], caller=ctx["caller"], enqueue=False)
+            if got.get("would_queue"):
+                web_live.note("queue")
+            return got
         return actions.run_file(index_path, platform_path, ctx["run"], ctx["path"], caller=ctx["caller"], retry=retry)
 
     async def run_preview_get(request):
@@ -841,7 +871,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return HTMLResponse(web_board.render_not_found(ctx["user"]["name"], lang), status_code=404, headers=_HEADERS)
         if answer["state"] != "ready":
             code, doc = web_board.render_file_page(answer, run, lang, route="/run/preview")
-            return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+            return await _html(doc, code, _HEADERS)
         kind = web_preview.kind_of(path, answer["data"])
         if kind is None:
             return HTMLResponse(web_preview.render_none(run, path, lang), headers=_HEADERS)
@@ -894,7 +924,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if not sent:
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
         runs = await run_in_threadpool(read_runs, caller)
-        return HTMLResponse(web_board.render_waiting(user["name"], csrf(sid, "logout"), runs, lang, name), headers=_HEADERS)
+        return await _html(web_board.render_waiting(user["name"], csrf(sid, "logout"), runs, lang, name))
 
     # ---- spec 012b: write actions from the web. Every route here only ASKS: it calls a request_* action for the logged-in caller and sends
     # the browser to the confirmation page /c/<id>, where the person presses 送出. Nothing is confirmed or queued from here.
@@ -958,7 +988,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         runs = await run_in_threadpool(read_runs, caller)
         doc = web_launch.edit_page_html(user["name"], csrf(sid, "logout"), runs, lang, view["id"], head, files, first, csrf(sid, "act:" + view["id"]),
                                             given=given, extra=extra, error=error, code_post=post)
-        return HTMLResponse(doc, status_code=code, headers=_HEADERS)
+        return await _html(doc, code, _HEADERS)
 
     async def edit_get(request):
         sid, user = user_of(request)
@@ -973,6 +1003,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if view is None:
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
         if web_board._failure_of(view) is None:      # a run that did not fail: the refusal the run page gives, on the run's page
+            if web_live.looking():      # live-sync: a look never asks for a resume; it says the page is no longer this one
+                web_live.note("go")
+                return Response(b"", status_code=204, headers=_HEADERS)
             answer = await actions.request_resume(platform_path, run_name=view["name"], caller=caller, clock=clock, index_path=index_path)
             done = to_confirmation(answer)
             if done is not None:
@@ -1040,6 +1073,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         a diagram is there) the picture. Each call only reads or queues one job; the answer to a POST that did not pass (`enqueue=False`) only
         looks: a form that was refused makes no request, not even this one. Returns (files, image, latest, revision)."""
         files = image = latest = None
+        look = web_live.looking()      # live-sync: a look reads what is there and never queues a read of the site, nor writes the release cache
+        enqueue = enqueue and not look
         if full and src == "new":
             latest = actions.latest_release(platform_path, full, caller=caller, compute_env=ce_name, enqueue=enqueue)
             if not revision and latest.get("state") == "ready" and latest.get("revision"):
@@ -1049,6 +1084,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             diagram = files.get("diagram") if files.get("state") == "ready" else None
             if isinstance(diagram, dict) and diagram.get("status") == "ok":
                 image = actions.pipeline_files(platform_path, full, revision, parts=["image"], caller=caller, compute_env=ce_name, enqueue=enqueue)
+        if look and any(isinstance(a, dict) and a.get("would_queue") for a in (latest, files, image)):
+            web_live.note("queue")
         return files, image, latest, revision
 
     async def launch_page(sid, user, caller, lang, values, errors, notes, source=None, code=200, guide=None):
@@ -1093,7 +1130,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         runs = await run_in_threadpool(read_runs, caller)
         doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, source,
                                       guide, files, image, latest)
-        return HTMLResponse(doc, status_code=code, headers=LAUNCH_HEADERS)
+        return await _html(doc, code, LAUNCH_HEADERS)
 
     async def launch_get(request):
         sid, user = user_of(request)
@@ -1444,11 +1481,14 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return unauth(request)
         caller = actions.Caller(user["user_id"], user["name"], user["lab"])
         lang = web_board.pick_lang(request.query_params.get("lang"))
-        view = await run_in_threadpool(lambda: actions.upload_batch_status(platform_path, caller, request.path_params["batch"], clock=clock))
+        look = upload_batch_look if web_live.looking() else actions.upload_batch_status      # live-sync: a look registers no Dataset
+        view = await run_in_threadpool(lambda: look(platform_path, caller, request.path_params["batch"], clock=clock))
         if not view.get("found"):
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
+        if view.get("status") == "registering":      # every file is in: the real page registers the Dataset now, a look only says so
+            web_live.note("queue")
         runs = await run_in_threadpool(read_runs, caller)
-        return HTMLResponse(web_upload.render_progress(user["name"], csrf(sid, "logout"), runs, lang, view), headers=LAUNCH_HEADERS)
+        return await _html(web_upload.render_progress(user["name"], csrf(sid, "logout"), runs, lang, view), 200, LAUNCH_HEADERS)
 
     async def settings_page(sid, user, caller, lang, flash_of=None, given=None, code=200):
         """The settings page for one logged-in user. `flash_of(envs)` says a notice or a failure; `given` is what a refused form held."""
@@ -1691,7 +1731,126 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         gone = consent_gone(provider.consent_request(rid)) if status in ("decided", "expired") else None
         return gone or _page("未處理", "<p class=\"bad\">未變更任何內容。請返回連接器重新開始。</p>", 403 if status == "user" else 404)
 
-    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
+    # ---- live-sync: the script and the two read-only answers it asks for (three routes; the answers have the login and owner checks of the pages they look at).
+    LIVE_PAGES = {"/": board, "/launch": launch_get, "/act/resume/edit": edit_get, "/run/file": run_file_get, "/run/preview": run_preview_get}
+    UPLOAD_PAGE = re.compile(r"^/upload/[0-9a-f]{32}\Z")
+    reload_asked = web_live.Recent(web_live.MEMORY_CAP)      # (user, page) -> when this app last told that page to load whole: the server keeps it to one in RELOAD_SECONDS, whatever the script does
+    looked_at = web_live.Recent(web_live.ANSWER_CAP)      # (login, route, question) -> (when, the answer): the floor of LOOK_FLOOR_SECONDS
+
+    def live_target(raw):
+        """(path, query) of a page the script may ask about, else None. Only the pages that carry the script, by their exact path."""
+        if not raw or len(raw) > 4000 or not raw.startswith("/") or raw.startswith("//") or "\\" in raw or any(ord(ch) < 32 or ord(ch) == 127 for ch in raw):
+            return None
+        parts = urllib.parse.urlsplit(raw)
+        if parts.scheme or parts.netloc or parts.fragment:
+            return None
+        return (parts.path, parts.query) if parts.path in LIVE_PAGES or UPLOAD_PAGE.match(parts.path) else None
+
+    def may_reload(user_id, key):
+        now = clock()
+        last = reload_asked.get((user_id, key))
+        if last is not None and 0 <= now - last < web_live.RELOAD_SECONDS:
+            return False
+        reload_asked.put((user_id, key), now)
+        return True
+
+    def live_answer(payload, status=200):
+        return JSONResponse(payload, status_code=status, headers=LIVE_HEADERS)
+
+    async def live_look(request):
+        """(early answer, the page as it is now): runs the handler of the page the script asks about, as that person, in look mode. Another person's page, a
+        missing one and a page that is not one of the six are one answer; without a login it is a plain 401, never a redirect."""
+        sid, user = user_of(request)
+        if user is None:
+            return to_welcome(request) or live_answer({"s": "auth"}, 401), None      # a temporary-password login is sent to the password page, as every page does
+        raw = request.query_params.get("u") or ""
+        target = live_target(raw)
+        lang = web_board.pick_lang((urllib.parse.parse_qs(target[1]).get("lang") or [""])[0]) if target else "zh"
+        missing = HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=LIVE_HEADERS)
+        if target is None:
+            return missing, None
+        path, query = target
+        handler = LIVE_PAGES.get(path) or upload_batch_get
+        params = {"batch": path.rsplit("/", 1)[1]} if UPLOAD_PAGE.match(path) else ({"verb": "resume"} if path == "/act/resume/edit" else {})
+        scope = dict(request.scope, path=path, raw_path=path.encode("utf-8"), query_string=query.encode("utf-8"), path_params=params, method="GET")
+        state = {}
+        mark = web_live.LOOK.set(state)
+        try:
+            response = await handler(Request(scope, request.receive))
+        finally:
+            web_live.LOOK.reset(mark)
+        if response.status_code == 404:
+            return missing, None
+        body = bytes(response.body).decode("utf-8", "replace")
+        return None, {"user": user, "key": hashlib.sha1(raw.encode("utf-8")).hexdigest(), "state": state, "doc": body, "headers": response.headers,
+                      "scripted": web_live.SCRIPT_TAG in body, "page": response.status_code == 200}
+
+    async def page_layout(doc):
+        """The regions of a page: from the memory when this very text was read a moment ago, else read in a thread and kept (the memory is touched on the loop only)."""
+        lay = web_live.recall(doc)
+        if lay is None:
+            lay = await run_in_threadpool(web_live.layout, doc)
+            web_live.remember(doc, lay)
+        return lay
+
+    async def live_script(request):
+        return Response(web_live.script_bytes(), media_type="text/javascript", headers=_HEADERS)
+
+    async def looked(request, answer):
+        """The floor of the looks: the same login asking the same route the same question inside LOOK_FLOOR_SECONDS is given the answer it was given a moment
+        ago, as it was (status, body, headers), and nothing is run. The answer is kept under the login's own key and is given to nobody else; only an answer of
+        200 is kept (a 401, a 303 or a 404 is never anyone's saved answer), and a request without a live login goes straight to `answer`."""
+        sid, user = user_of(request)
+        if user is None:
+            return await answer(request)
+        key = (sid, request.url.path, hashlib.sha1(request.url.query.encode("utf-8")).hexdigest())
+        now, kept = clock(), looked_at.get(key)
+        if kept is not None and 0 <= now - kept[0] < web_live.LOOK_FLOOR_SECONDS:
+            return Response(kept[1], status_code=kept[2], headers=kept[3])
+        response = await answer(request)
+        if response.status_code == 200 and len(response.body) <= web_live.ANSWER_MAX_BYTES:
+            looked_at.put(key, (now, bytes(response.body), 200, dict(response.headers)))
+        return response
+
+    async def live_version(request):
+        return await looked(request, version_answer)
+
+    async def live_content(request):
+        return await looked(request, content_answer)
+
+    async def version_answer(request):
+        early, page = await live_look(request)
+        if early is not None:
+            return early
+        wants = bool(page["state"].get("queue") or page["state"].get("go") or not page["page"])
+        if wants and may_reload(page["user"]["user_id"], page["key"]):
+            return live_answer({"s": "reload"})
+        if not page["page"]:
+            return live_answer({"s": "wait"})
+        # a page that has stopped asking for a refresh (everything it waited for has come) is shown in place one last time, and the script then stops
+        headers = page["headers"] if page["scripted"] else web_live.with_script(page["headers"])
+        try:
+            lay = await page_layout(page["doc"])
+        except RecursionError:      # a page too deeply nested to follow: the script is told to load it whole (at most every 15 seconds)
+            return live_answer({"s": "reload"} if may_reload(page["user"]["user_id"], page["key"]) else {"s": "wait"})
+        return live_answer(dict(web_live.info_of(lay, headers), s="ok", **({} if page["scripted"] else {"x": 1})))
+
+    async def content_answer(request):
+        early, page = await live_look(request)
+        if early is not None:
+            return early
+        if not page["page"] or page["state"].get("go"):
+            return live_answer({"s": "reload"})
+        want = {n for n in (request.query_params.get("n") or "").split(",")[:300] if n}
+        try:
+            lay = await page_layout(page["doc"])
+        except RecursionError:
+            return live_answer({"s": "reload"})
+        got = [r for c in lay for r in c["regions"] if r["name"] in want]
+        return live_answer({"s": "ok", "r": {r["name"]: r["html"] for r in got}, "v": {r["name"]: r["hash"] for r in got}})      # the version of each region comes with it: the script checks it is the one it planned for
+
+    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/static/live.js", live_script, methods=["GET"]),
+                            Route("/live/version", live_version, methods=["GET"]), Route("/live/content", live_content, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
                             Route("/settings/personal", personal_post, methods=["POST"]),
                             Route("/settings/pipelines", pipelines_post, methods=["POST"]),
                             Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]),
@@ -1725,4 +1884,5 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     app.add_middleware(BaseHTTPMiddleware, dispatch=add_headers)
     app.state.csrf_token = csrf_token
+    app.state.clock = clock
     return app

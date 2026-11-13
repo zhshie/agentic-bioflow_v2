@@ -91,6 +91,7 @@ All screens are swept (web-wording-sweep, 2026-10-29): `test_web_wording_sweep.p
 
 ## Constraints
 Single stylesheet, no inline style, no external resources, 15-second refresh. JS only where marked: the terminal page (ttyd), the studio iframe, MultiQC embed, chat send, drag-and-drop upload, client-side pipeline search. Language by `?lang=en` server-side; every screen exists in English. Owner rule: each person sees only their own analyses and terminals. No Galaxy/Seqera logos, names, brand colours or code (ADR 0004).
+  - live-sync (2026-11-13): the maintainer allowed one more script, `/static/live.js`, on the pages that reload every 15 seconds; see docs/PLATFORM.md, "Live updates".
 
 ## Open
 - The automatic resume and relayed OTP join the constitution (MAJOR) with the PR that builds them and their tests (ADR 0011, "Consequences").

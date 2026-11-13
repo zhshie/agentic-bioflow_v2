@@ -39,6 +39,13 @@ def snap(r):
     return (r.status_code, hashlib.sha256(mask(r.text).encode("utf-8")).hexdigest()[:16])
 
 
+def snap_board(r):
+    """The board as before live-sync: the board now carries the one script, so the three additions of live-sync (the <noscript> around the refresh, the script tag,
+    the body's data-live attributes) are taken off before the old hash is compared (the confirmation pages keep `snap`, unchanged)."""
+    from helpers import strip_live
+    return snap(type("R", (), {"status_code": r.status_code, "text": strip_live(r.text)})())
+
+
 def tables(w):
     return (w.sql("SELECT * FROM confirmations"), w.sql("SELECT * FROM jobs WHERE kind IN ('launch_nextflow', 'cancel_run', 'clean_work')"))
 
@@ -419,7 +426,7 @@ def test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was(w, statu
         with con:
             con.execute("UPDATE runs SET last_message_at = ?", (FIXED - 10,))
         con.close()
-    got = {"%s-%s" % (status, lang): snap(board(w, "ann", lang)) for lang in ("zh", "en")}
+    got = {"%s-%s" % (status, lang): snap_board(board(w, "ann", lang)) for lang in ("zh", "en")}
     assert got == {k: v for k, v in BASE_BOARD.items() if k.startswith(status)}, repr(got)
 
 
@@ -491,7 +498,7 @@ def test_no_inline_style_no_external_resource_and_the_same_headers_as_a_launch_p
         for url in re.findall(r'(?:src|href)="([^"]*)"', r.text):
             assert url.startswith("/") or url.startswith("#"), url
         for h in ("content-security-policy", "x-frame-options", "cache-control", "referrer-policy", "x-content-type-options"):
-            assert r.headers[h] == ref[h]
+            assert r.headers[h] == (ref[h] + "; script-src 'self'; connect-src 'self'" if h == "content-security-policy" and 'http-equiv="refresh"' in r.text else ref[h])      # live-sync
 
 
 def test_the_web_sources_have_no_program_start():

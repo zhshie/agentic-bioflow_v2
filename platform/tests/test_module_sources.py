@@ -190,4 +190,4 @@ def test_module_sources_source_has_no_network_or_program_words():
 def test_package_data_gets_exactly_one_more_glob():
     # TC-083
     text = (PLATFORM / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'package-data = {"abf_platform" = ["skills/*/SKILL.md", "data/*.json", "data/*.json.gz"]}' in text
+    assert 'package-data = {"abf_platform" = ["skills/*/SKILL.md", "data/*.json", "data/*.json.gz", "data/*.js"]}' in text

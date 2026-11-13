@@ -699,7 +699,7 @@ def test_tc049_other_pages_are_as_before(rig, fk):
         csp = r.headers.get("content-security-policy", "")
         assert "img-src" not in csp, url
         if "/launch/diagram" not in url:
-            assert csp == base_csp(), url
+            assert csp == base_csp() + ("; script-src 'self'; connect-src 'self'" if 'http-equiv="refresh"' in r.text else ""), url      # live-sync: `/` reloads itself
     login_page = rig.w.web().get("/login")
     assert "img-src" not in login_page.headers.get("content-security-policy", "")
     svg = b"<svg xmlns='http://www.w3.org/2000/svg'></svg>"
@@ -831,7 +831,8 @@ def test_tc054_every_state_has_a_symbol_and_words(rig, fk, monkeypatch):
 def test_tc055_no_script_no_style_attribute(rig, fk, lang):
     # TC-055
     for state, page in all_pages(rig, fk, lang).items():
-        assert "<script" not in page and " style=" not in page and len(re.findall(r"<style\b", page)) == 1 and "<link" not in page, state
+        from helpers import live_rules
+        assert live_rules(page) and " style=" not in page and len(re.findall(r"<style\b", page)) == 1 and "<link" not in page, state      # live-sync: the loading state carries the one script
 
 
 def test_tc056_phone_rules():

@@ -269,7 +269,8 @@ def test_fs11_constraints_hold(w):
             forget(w, "ann-done")
         r = c.get(url(rid))
         t = r.text
-        assert "<script" not in t and "style=" not in t and t.count("<style>") == 1
+        from helpers import one_live_script
+        assert one_live_script(t) and "style=" not in t and t.count("<style>") == 1      # live-sync
         digest = base64.b64encode(hashlib.sha256(style_of(t).encode("utf-8")).digest()).decode("ascii")
         assert "style-src 'sha256-%s'" % digest in r.headers["content-security-policy"]
         assert re.search(r'<meta http-equiv="refresh" content="15', t)

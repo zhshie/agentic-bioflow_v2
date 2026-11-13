@@ -217,4 +217,5 @@ def test_style_no_inline_no_script(w):  # TC-050
     ann, c, ids = std(w)
     for url in ("/?run=%s" % ids["done"], "/?run=%s&stage=running&tab=info&lang=en" % ids["running"], "/usage?month=2026-10"):
         text = c.get(url).text
-        assert "style=" not in text and "<script" not in text, url
+        from helpers import live_rules
+        assert "style=" not in text and live_rules(text), url      # live-sync: the two run pages reload themselves and carry the one script; /usage has none

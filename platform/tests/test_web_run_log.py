@@ -209,8 +209,8 @@ def test_tc015_to_018_021_the_text_is_a_page_escaped_with_the_same_headers(w):
     assert re.search(r"<pre>line one\nline two &lt;script&gt;alert\(1\)&lt;/script&gt;</pre>", r.text)
     assert "<script>alert(1)</script>" not in r.text
     assert r.headers["content-type"].startswith("text/html") and "content-disposition" not in r.headers
-    home = c.get("/")
-    assert r.headers["content-security-policy"] == home.headers["content-security-policy"]
+    from abf_platform import web
+    assert r.headers["content-security-policy"] == web._HEADERS["Content-Security-Policy"]      # live-sync: `/` now carries the script; the log page keeps today's policy
     assert "已截斷" in r.text and "FASTQC" in r.text
     assert "Cut" in c.get(log_url(rid, extra="&lang=en")).text
 
@@ -294,7 +294,8 @@ def test_tc034_tabs_have_no_inline_style_or_external_resource(w):
     ann, c, rid = world(w)
     for tab in ("tasks", "logs"):
         t = c.get("/?run=%s&tab=%s" % (rid, tab)).text
-        assert "style=" not in t and "<script" not in t and t.count("<style>") == 1
+        from helpers import one_live_script
+        assert "style=" not in t and one_live_script(t) and t.count("<style>") == 1      # live-sync: the run page reloads itself
         assert not re.search(r'(src|href)="(https?:)?//', t)
 
 

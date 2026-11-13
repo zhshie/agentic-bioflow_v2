@@ -52,6 +52,7 @@ The maintainer's words (2026-10-22 and 10-23):
      station agent, from the confirmed job id, never from free text, so the person sees it run.
    - What the person types is not limited: the person is the human channel.
    - The terminal page is an exception to the web's no-JavaScript rule, like the studio embed.
+   - live-sync (2026-11-13): the maintainer allowed one more script on the pages that reload every 15 seconds; see docs/PLATFORM.md, "Live updates".
 5. **Passphrase and OTP through the page.** When the ssh master is gone, the person may type the
    passphrase and the one-time code into the web terminal. The platform relays those keystrokes
    and never stores, logs or echoes them.

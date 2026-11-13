@@ -533,7 +533,8 @@ def test_tc060_to_tc062_no_inline_style_no_new_class_same_headers(rig, fx):
     from abf_platform import web, web_board
     ann, c, rid = setup(rig, fx)
     for name, t in page_states(rig, c, fx, rid).items():
-        assert not re.search(r"\sstyle=|<script|\son\w+=|<link|@import", t), name
+        from helpers import live_rules
+        assert not re.search(r"\sstyle=|\son\w+=|<link|@import", t) and live_rules(t), name      # live-sync: the loading state carries the one script
         assert t.count("<style>") == 1
         assert not re.search(r'(src|action|href)="https?://', t)
         classes = {x for m in re.findall(r'class="([^"]*)"', t) for x in m.split()}

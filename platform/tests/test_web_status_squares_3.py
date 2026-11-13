@@ -191,7 +191,8 @@ def test_ss05_constraints(w):
     c, ids = four(w)
     for lang in ("zh", "en"):
         for text in pages(c, ids, lang):
-            assert "<script" not in text and " style=" not in text and not re.search(r"\son[a-z]+=", text) and text.count("<style>") == 1
+            from helpers import live_rules
+            assert live_rules(text) and " style=" not in text and not re.search(r"\son[a-z]+=", text) and text.count("<style>") == 1      # live-sync: the pages that reload themselves carry the one script; the downstream stage and /settings none
             if lang == "en":
                 assert no_cjk(text)
         resp = c.get("/?run=%s%s" % (ids["failed"], q(lang)))

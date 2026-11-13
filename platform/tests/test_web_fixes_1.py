@@ -152,7 +152,8 @@ def test_f08_constraints_hold(w):
     for key in ("resume", "running"):
         r = c.get("/?run=" + ids[key])
         t = r.text
-        assert "<script" not in t and "style=" not in t and 'rel="stylesheet"' not in t and t.count("<style>") == 1
+        from helpers import one_live_script
+        assert one_live_script(t) and "style=" not in t and 'rel="stylesheet"' not in t and t.count("<style>") == 1      # live-sync: the one script
         digest = base64.b64encode(hashlib.sha256(re.search(r"<style>(.*?)</style>", t, re.S).group(1).encode()).digest()).decode()
         assert "sha256-" + digest in r.headers["content-security-policy"]
         assert '<meta http-equiv="refresh" content="15">' in t

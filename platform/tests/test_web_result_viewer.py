@@ -125,7 +125,9 @@ def test_tc007_listings_gain_only_plain_links(w):
     ann, c, rid = world(w)
     before = pages(w, c, rid)
     for kind, text in before.items():
-        for tag in ("<img", "<iframe", "<script", "<form", "<button", "style="):
+        from helpers import live_rules
+        assert live_rules(text)      # live-sync: these pages reload themselves and carry the one script (the loop below is about everything else)
+        for tag in ("<img", "<iframe", "<form", "<button", "style="):
             assert tag not in pane(text, "middle") and (tag in ("<form", "<button") or tag not in text), (kind, tag)
         assert text.count("<style>") == 1
     sec = section(before["finished"], "交付包")
@@ -324,7 +326,7 @@ def test_tc070_071_074_075_other_pages_keep_the_base_headers(w):
     assert hashlib.sha256(web_board.STYLE.encode("utf-8")).hexdigest() == STYLE_SHA256
     for url in ("/", "/settings", "/usage", "/login", "/?run=%s&stage=finished" % rid, "/?run=%s&stage=results&tab=outputs" % rid, file_url(rid, "plot.png")):
         r = c.get(url)
-        assert csp_of(r) == base or url == "/login", url
+        assert csp_of(r) == (base + "; script-src 'self'; connect-src 'self'" if 'http-equiv="refresh"' in r.text else base) or url == "/login", url      # live-sync
         assert "img-src" not in csp_of(r) and "frame-src" not in csp_of(r), url
         assert r.headers["x-frame-options"] == "DENY" and "frame-ancestors 'none'" in csp_of(r)
     prev = ready(w, c, rid, "plot.png", PNG)
@@ -442,7 +444,8 @@ def test_tc046_no_other_page_has_frame_src(w):
     answered(w, c, rid, "summary_report.html", error={"error": "site_unreachable", "message": "x"})
     got.append(c.get(purl(rid, "summary_report.html")))
     for r in got:
-        assert "frame-src" not in csp_of(r) and "script-src" not in csp_of(r) and "<iframe" not in r.text
+        from helpers import live_rules
+        assert "frame-src" not in csp_of(r) and live_rules(r.text, csp_of(r)) and "<iframe" not in r.text      # live-sync: a file that is still waited for carries the one script, a ready page none
 
 
 def test_tc047_048_049_050_report_route_headers(w):
