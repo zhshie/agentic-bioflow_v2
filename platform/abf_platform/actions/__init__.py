@@ -1517,7 +1517,7 @@ def _already_done(kind, request_id):
     return {"ok": True, "sent": False, "state": "ok", "request_id": request_id, "url": None, "message": _ALREADY_DONE}
 
 
-DELETE_ONLY_ON_THE_PAGE = ("刪除無法復原，須由本人在確認頁按下確認；在聊天裡的回答，以及 user_confirmed 與 request_id，對刪除都不算數 "
+_DELETE_ONLY_ON_THE_PAGE = ("刪除無法復原，須由本人在確認頁按下確認；在聊天裡的回答，以及 user_confirmed 與 request_id，對刪除都不算數 "
                            "(a deletion cannot be undone, so only the person can confirm it, by pressing confirm on the confirmation page; "
                            "an answer in the chat, user_confirmed and request_id do not count for a deletion)")
 
@@ -1562,12 +1562,12 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
     if user_confirmed is True:
         delete = _is_delete(kind, bundle)
         if delete and not (isinstance(request_id, str) and request_id):      # a deletion is never carried by a relayed yes: no request, and the page is the way
-            return _no("未送出：%s。請重新提出刪除（不帶 user_confirmed），再請本人打開確認頁按下確認。" % DELETE_ONLY_ON_THE_PAGE)
+            return _no("未送出：%s。請重新提出刪除（不帶 user_confirmed），再請本人打開確認頁按下確認。" % _DELETE_ONLY_ON_THE_PAGE)
         if not (isinstance(request_id, str) and request_id):
             return _no("未送出：user_confirmed=true 要同時帶 request_id（第一次呼叫回的申請編號）。%s。" % _CHAT_NEXT)
         if delete and _own_waiting_request(platform_path, request_id, kind, bundle, caller_id, clock):
             url = _page_url(platform_path, request_id)       # the request stays as it is: pending, not void, not consumed
-            return {"ok": False, "sent": False, "message": "未送出：%s。該筆申請仍在等待本人，沒有刪除任何內容。確認頁：%s" % (DELETE_ONLY_ON_THE_PAGE, url),
+            return {"ok": False, "sent": False, "message": "未送出：%s。該筆申請仍在等待本人，沒有刪除任何內容。確認頁：%s" % (_DELETE_ONLY_ON_THE_PAGE, url),
                     "confirmation_url": url}
         try:
             # a deletion that is not waiting is answered by the old refusals below; were one to reach the approval anyway, with no writer nothing is written
