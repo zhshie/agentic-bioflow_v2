@@ -36,7 +36,7 @@ _READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempo
 # get_run: asks no one's yes, but a lost run makes it queue one read of the site and write that job to platform.db (ruling R2), so not read-only
 _QUERY = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 _WRITES = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
-_PUBLISH = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)   # publish_figure: same name replaces, so the same call twice leaves the same gallery
+_PUBLISH = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False)   # publish_figure: a same-name publish replaces a figure (destructive); idempotent because the same call twice leaves the same gallery
 _STOPS = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False)
 _DELETES = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False)   # delete_figure: the figure and its code and parameters go for good (after a person's yes)
 _PACK = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False)   # pack_figures: the result is the set named, so the same call twice leaves the same package

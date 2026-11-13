@@ -68,9 +68,7 @@
 
   function changed(c) {
     if (c.tagName === 'SELECT') {
-      for (var i = 0; i < c.options.length; i++) {
-        if (c.options[i].selected !== c.options[i].defaultSelected) { return true; }
-      }
+      /* A drop-down shows its first option when none is marked, so "selected differs from the page" is true before anyone touched it: only a change event counts. */
       return false;
     }
     if (c.type === 'checkbox' || c.type === 'radio') { return c.checked !== c.defaultChecked; }

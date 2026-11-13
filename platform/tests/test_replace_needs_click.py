@@ -345,7 +345,7 @@ def test_rnc_the_tool_description_and_parameters_say_a_replace_needs_the_click(w
         assert "replac" in d.lower() and "new name" in d.lower() and d != shared
     assert t.input_schema["required"] == ["run_id", "figures"]
     a = t.annotations
-    assert (a.read_only_hint, a.destructive_hint, a.idempotent_hint) == (False, False, True)
+    assert (a.read_only_hint, a.destructive_hint, a.idempotent_hint) == (False, True, True)    # gallery-followups TC-009: publish_figure can overwrite a figure, so it is marked destructive
     for other in ("pack_figures", "launch", "cancel", "resume", "relaunch", "forget"):
         assert "replac" not in tools[other].input_schema["properties"].get("user_confirmed", {}).get("description", "").lower()
 

@@ -212,13 +212,18 @@ def login(browser, plat, js=True):
     return ctx, page
 
 
+def nap(page, seconds):
+    """Wait `seconds` while Playwright goes on delivering the page's events (a plain sleep would hold them back, and every count would read zero)."""
+    page.wait_for_timeout(int(seconds * 1000))
+
+
 def until(page, expr, arg=None, timeout=6.0):
     """Wait for a page function to say yes. The waiting call of Playwright that takes a string is not used: it evaluates the string, which the policy of these pages (no unsafe-eval) refuses."""
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         if page.evaluate(expr, arg):
             return True
-        time.sleep(0.2)
+        page.wait_for_timeout(200)
     return False
 
 
@@ -289,7 +294,7 @@ def tc005_007_008(browser, plat, want):
     page.goto(plat.base + "/?run=id-live-run")
     page.wait_for_selector("main[data-pane=middle] .badge")
     start = time.monotonic()
-    time.sleep(22)
+    nap(page, 22)
     plat.keep_alive()
     versions, contents = watch.live("version"), watch.live("content")
     if "TC-005" in want:
@@ -299,9 +304,9 @@ def tc005_007_008(browser, plat, want):
         out["TC-007"] = (len(gaps) >= 9 and all(1.5 <= g <= 3.0 for g in gaps), "gaps between asks: %s" % ", ".join("%.2f" % g for g in gaps))
     if "TC-008" in want:
         hide(page, True)
-        time.sleep(0.5)
+        nap(page, 0.5)
         n0 = len(watch.live("version"))
-        time.sleep(10)
+        nap(page, 10)
         n1 = len(watch.live("version"))
         hide(page, False)
         t0 = time.monotonic()
@@ -310,7 +315,7 @@ def tc005_007_008(browser, plat, want):
             if len(watch.live("version")) > n1:
                 asked = time.monotonic() - t0
                 break
-            time.sleep(0.05)
+            nap(page, 0.05)
         out["TC-008"] = (n1 - n0 <= 1 and asked is not None and asked <= 1.0, "asks while hidden: %d; first ask after coming back: %s" % (n1 - n0, "%.2f s" % asked if asked is not None else "none in 2 s"))
     ctx.close()
     return out
@@ -321,17 +326,17 @@ def tc009(browser, plat):
     watch = Watch(page, plat.base)
     page.goto(plat.base + "/?run=id-live-run")
     page.wait_for_selector("main[data-pane=middle] .badge")
-    time.sleep(3)
+    nap(page, 3)
     page.route("**/live/version*", lambda r: r.abort())
     t_fail = time.monotonic()
-    time.sleep(62)
+    nap(page, 62)
     plat.keep_alive()
     stamps = [t for t in watch.live("version") if t >= t_fail]
     gaps = [b - a for a, b in zip(stamps, stamps[1:])]
     page.unroute("**/live/version*")
-    time.sleep(1)
+    nap(page, 1)
     t_ok = time.monotonic()
-    time.sleep(34)
+    nap(page, 34)
     back = [t for t in watch.live("version") if t >= t_ok]
     fast = [b - a for a, b in zip(back, back[1:])]
     grows = len(gaps) >= 4 and all(b >= a - 0.3 for a, b in zip(gaps, gaps[1:])) and max(gaps) <= 31.5 and gaps[-1] >= 25
@@ -351,9 +356,9 @@ def tc011(browser, plat):
         page.wait_for_url("**/login*", timeout=6000)
     except Exception:
         pass
-    time.sleep(1)
+    nap(page, 1)
     loads1 = watch.loads
-    time.sleep(8)
+    nap(page, 8)
     ctx.close()
     return {"TC-011": ("/login" in page.url and loads1 == loads0 + 1 and watch.loads == loads1, "ended at %s, page loads %d -> %d -> %d" % (page.url, loads0, loads1, watch.loads))}
 
@@ -436,7 +441,7 @@ def tc034_035(browser, plat, want):
         watch = Watch(page, plat.base)
         page.goto(plat.base + "/?run=id-live-run")
         loads0 = watch.loads
-        time.sleep(35)
+        nap(page, 35)
         plat.keep_alive()
         out["TC-034"] = (watch.loads - loads0 >= 2 and not watch.live("version"), "page loads in 35 s without scripts: %d, live asks: %d" % (watch.loads - loads0, len(watch.live("version"))))
         ctx.close()
@@ -445,7 +450,7 @@ def tc034_035(browser, plat, want):
         watch = Watch(page, plat.base)
         page.goto(plat.base + "/?run=id-live-run")
         loads0 = watch.loads
-        time.sleep(35)
+        nap(page, 35)
         plat.keep_alive()
         out["TC-035"] = (watch.loads == loads0, "page loads in 35 s with scripts: %d (the first one counted: %d)" % (watch.loads - loads0 + 1, 1))
         ctx.close()
@@ -456,10 +461,10 @@ def tc040(browser, plat):
     ctx, page = login(browser, plat)
     watch = Watch(page, plat.base)
     page.goto(plat.base + "/?run=id-live-run")
-    time.sleep(30)
+    nap(page, 30)
     plat.keep_alive()
-    page.goto(plat.base + "/launch?pipeline=nf-core/ampliseq&revision=2.18.0&src=used")
-    time.sleep(30)
+    page.goto(plat.base + "/launch?pipeline=nf-core/ampliseq&revision=2.19.0&src=used")
+    nap(page, 30)
     plat.keep_alive()
     others = [(m, u) for _t, m, u in watch.requests if not u.startswith(plat.base + "/") or m != "GET"]
     live = [u for _t, _m, u in watch.requests if "/live/" in u]

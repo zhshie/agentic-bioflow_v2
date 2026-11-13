@@ -324,7 +324,7 @@ def test_tcm_40_launch_pipeline_and_forget_have_no_chat_arguments(w):
         props = set(t.input_schema.get("properties", {}))
         if name in FOUR:
             assert CHAT <= props, name
-        elif name in ("publish_figure", "pack_figures", "delete_figure"):      # mcp-publish-figure and mcp-gallery-actions: the same two relay arguments, but chat is not offered them (CHAT_EXCLUDED)
+        elif name in ("publish_figure", "pack_figures", "delete_figure"):      # mcp-publish-figure and mcp-gallery-actions: the same two relay arguments; the browser chat is offered pack_figures and delete_figure without them (REQUEST_TOOLS), publish_figure not at all (CHAT_EXCLUDED)
             assert CHAT <= props, name
         else:
             assert not (CHAT & props), name
@@ -454,11 +454,10 @@ def test_tcm_53_browser_chat_never_sees_the_chat_arguments(tmp_path):
         assert not banned.search(s["name"])
         for p in s["input_schema"].get("properties", {}):
             assert not banned.search(p), (s["name"], p)
-    # TC-054: CHAT_SYSTEM_PROMPT is word for word the base's (sha256 and length taken from ea704065)
-    import hashlib
+    # TC-054, rewritten by gallery-followups (TC-029): the prompt is no longer word for word the base's; it now names pack_figures and delete_figure
+    # and says a delete is not confirmed in the chat, and it still says no tool can say yes for the person
     prompt = chat_tools.CHAT_SYSTEM_PROMPT
-    assert len(prompt) == 939
-    assert hashlib.sha256(prompt.encode("utf-8")).hexdigest() == "c2d8214c032f2afb68dded1bdc58aa111e44f0c859f21e9622e60b0ca386b0e3"
+    assert "pack_figures" in prompt and "delete_figure" in prompt and "不能在聊天" in prompt
     assert "你沒有任何工具可以替本人說「是」" in prompt
 
 

@@ -23,7 +23,7 @@ STRINGS = {
         "g_pending": "有存入圖庫的申請待您在確認頁按「送出」。", "g_pending_link": "前往確認頁",
         "g_label": "使用者與 LLM 產生", "g_packed": "已打包", "g_unpacked": "未打包", "g_download": "下載",
         "g_code": "檢視程式碼與參數", "g_code_h": "程式碼", "g_params_h": "參數", "g_pick": "選取 %s",
-        "g_pack_btn": "打包所選的圖", "g_pack_note": "交付包將以本次勾選的圖為準；未勾選的圖會移出交付包。",
+        "g_pack_btn": "打包所選的圖", "g_pack_note": "已打包的圖預先勾選。交付包以按下按鈕時勾選的圖為準；未勾選的圖會移出交付包。",
         "g_del_btn": "刪除 %s", "g_del_note": "刪除後無法復原，圖會一併移出交付包。",
         "f_none": "無", "f_unpacked": "%d 張在圖庫，尚未打包", "f_packed": "已打包 %d 張",
         "gr_pack": "無法打包", "gr_delete": "無法刪除", "gr_unknown": "圖庫裡沒有「%s」。", "gr_bad": "選取的圖名不合規定。",
@@ -51,7 +51,7 @@ STRINGS = {
         "g_label": "Made by the user and an LLM", "g_packed": "Packed", "g_unpacked": "Not packed", "g_download": "Download",
         "g_code": "View code and parameters", "g_code_h": "Code", "g_params_h": "Parameters", "g_pick": "Select %s",
         "g_pack_btn": "Pack the selected figures",
-        "g_pack_note": "The delivery package will hold exactly the figures ticked now; figures not ticked are removed from it.",
+        "g_pack_note": "Figures already packed are ticked beforehand. The delivery package will hold exactly the figures ticked when the button is pressed; figures not ticked are removed from it.",
         "g_del_btn": "Delete %s", "g_del_note": "This cannot be undone, and the figure is removed from the delivery package too.",
         "f_none": "None", "f_unpacked": "%d in the gallery, not packed yet", "f_packed": "%d packed",
         "gr_pack": "Cannot pack", "gr_delete": "Cannot delete", "gr_unknown": "The gallery has no figure \"%s\".",
@@ -219,10 +219,10 @@ def _figure(t, run, f, n):
     details = "<details><summary>%s</summary>%s</details>" % (_e(t["g_code"]), parts) if parts else ""
     return ('<li><figure><img src="%s" alt="%s" width="240" loading="lazy"><figcaption>'
             '<p><code>%s</code> <span class="muted">%s</span></p>%s<p class="muted">%s</p><p>%s</p>'
-            '<p><input type="checkbox" id="%s" name="fig" value="%s"> <label for="%s">%s</label></p>'
+            '<p><input type="checkbox" id="%s" name="fig" value="%s"%s> <label for="%s">%s</label></p>'
             '<p><a href="%s&amp;download=1">%s</a></p>%s'
             '<p class="muted">%s</p><p><button type="submit" form="del-%s">%s</button></p></figcaption></figure></li>'
-            % (_e(base), _e(f["caption"] or f["name"]), name, _e(size_text), caption, _e(t["g_label"]), state, box, name, box,
+            % (_e(base), _e(f["caption"] or f["name"]), name, _e(size_text), caption, _e(t["g_label"]), state, box, name, " checked" if f.get("packed") else "", box,
                _e(t["g_pick"] % f["name"]), _e(base), _e(t["g_download"]), details, _e(t["g_del_note"]), n, _e(t["g_del_btn"] % f["name"])))
 
 

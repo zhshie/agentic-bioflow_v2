@@ -288,6 +288,32 @@ def test_gallery_is_newest_first_and_optional_parts_are_hidden(w):
 
 # ---- US2: pack, nothing in the package before the press -----------------------------------------------------------------------------
 
+def ticked(g):
+    # names of the boxes that carry `checked` in a gallery fragment
+    return re.findall(r'<input type="checkbox" id="[^"]*" name="fig" value="([^"]+)" checked>', g)
+
+
+def test_packed_figures_are_pre_ticked(w):
+    # gallery-followups TC-001, TC-002, TC-003, TC-004, TC-005, TC-007
+    from abf_platform import actions
+    ann, c, rid = setup(w)
+
+    def packed():
+        return [f["name"] for f in actions.list_figures(w.ip.index, w.ip.state_db, rid, caller=ann, packed_only=True)["figures"]]
+    assert ticked(gallery_part(c.get(url(rid)).text)) == []             # TC-004: nothing packed, nothing ticked
+    assert pack_post(c, rid, []).status_code == 303 and packed() == []
+    assert pack_post(c, rid, ["a.png"]).status_code == 303
+    for extra in ("", "&lang=en"):                                      # TC-001, TC-007
+        g = gallery_part(c.get(url(rid, extra)).text)
+        assert ticked(g) == ["a.png"] and g.count("checked") == 1
+    assert pack_post(c, rid, ticked(gallery_part(c.get(url(rid)).text))).status_code == 303   # TC-002: pressed untouched
+    assert packed() == ["a.png"] and sorted(index_of(w, ann, rid)) == sorted(NAMES)
+    assert pack_post(c, rid, ["b.svg"]).status_code == 303 and packed() == ["b.svg"]          # TC-003
+    assert pack_post(c, rid, []).status_code == 303 and packed() == [] and sorted(index_of(w, ann, rid)) == sorted(NAMES)   # TC-005
+    assert "已打包的圖預先勾選" in c.get(url(rid)).text                  # TC-007: the note matches the behaviour, in both languages
+    assert "already packed are ticked beforehand" in c.get(url(rid, "&lang=en")).text
+
+
 def test_nothing_in_package_until_pack_pressed(w):
     # TC-016, TC-017, TC-018, TC-019, TC-020, TC-021, TC-022, TC-025, TC-027, TC-033
     from abf_platform import actions
@@ -304,7 +330,7 @@ def test_nothing_in_package_until_pack_pressed(w):
     assert package_row(page).startswith("✓ 已打包 2 張") and "a.png" in package_row(page) and "b.svg" in package_row(page) and "c.jpg" not in package_row(page)
     assert packed() == ["a.png", "b.svg"] and index_of(w, ann, rid)["a.png"]["packed_at"] and index_of(w, ann, rid)["c.jpg"]["packed_at"] is None
     g = gallery_part(page)
-    assert 'checked' not in g                                           # P1: a figure packed earlier is still not pre-ticked
+    assert ticked(g) == ["a.png", "b.svg"]                              # gallery-followups TC-006: a figure already packed is pre-ticked, c is not
     assert g.count("✓") >= 1 and g.count("已打包") >= 1 and g.count("未打包") >= 1
     packed_texts = [f for f in g.split("<figure")[1:] if "✓" in f]
     assert len(packed_texts) == 2 and 'value="c.jpg"' not in "".join(packed_texts)
