@@ -51,7 +51,7 @@
             }
           ],
           "default": null,
-          "description": "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat.",
+          "description": "Has no effect on delete_figure: a deletion cannot be confirmed in the chat, only by the person on the confirmation page or in their own form.",
           "title": "Request Id"
         },
         "run_id": {
@@ -60,7 +60,7 @@
         },
         "user_confirmed": {
           "default": false,
-          "description": "True only after the person themselves answered yes in the chat to this request; never fill it in for them.",
+          "description": "Has no effect on delete_figure: whatever the person said in the chat, a deletion is confirmed only on the confirmation page or in their own form; do not set it.",
           "title": "User Confirmed",
           "type": "boolean"
         }
