@@ -1,5 +1,5 @@
 # Not nf-shard: it ships no command line at all; this one starts the receiver, issues tokens, manages compute environments, runs the MCP server and rebuilds the index.
-"""abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http] | runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...] | studio-connect --server URL | fetch-results RUN [--dir DIR] | publish-figure RUN FILE [--code FILE]"""
+"""abf-platform: serve | web | token new | agent-token new|list|revoke [--id N] | user add|cloud-cap|passwd [--temporary]|welcome | pat new|list|revoke | oauth revoke USER | ce ... | mcp [--http] | runs assign|offer-cleanup | dataset register|list|show | rebuild [<folder>...] | studio-connect --server URL | fetch-results RUN [--dir DIR] [--r] | publish-figure RUN FILE [--code FILE]"""
 import argparse
 import asyncio
 import json
@@ -13,6 +13,14 @@ from . import agents, cliout, common, compute_envs, jobs, rebuild as rebuild_mod
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 _AGENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+_STUDIO_WHY = {       # why the setting ABF_STUDIO_URL was refused: (English, 中文); the value itself is never echoed, it could hold a password
+    "space": ("it holds a blank, a tab or a line break", "含有空白、tab 或換行"),
+    "scheme": ("it must start with http://", "要以 http:// 開頭"),
+    "secret": ("it holds a user name or a password", "含有帳號或密碼"),
+    "host": ("the host must be 127.0.0.1 or localhost", "主機只能是 127.0.0.1 或 localhost"),
+    "port": ("it needs a port from 1 to 65535, without a leading zero", "要有 1 到 65535 的埠，開頭不能是 0"),
+    "path": ("nothing may follow the port, not even a /", "埠後面不能有任何東西，連結尾的 / 也不行"),
+}
 
 
 def _say(text):
@@ -70,6 +78,16 @@ def cmd_web(args):
             _err("rejected: --public-url %s is plain http; the login cookie would travel in clear text. Use an https:// address "
                  "(a TLS proxy in front of this page) (--public-url 必須是 https)" % public, why='http 是明文傳輸，登入 cookie 會以明文走在網路上', next='改用 https:// 開頭的網址（在前面放 TLS 代理）')
             return 1
+    studio = os.environ.get("ABF_STUDIO_URL") or None       # the deployment setting that puts RStudio in the downstream page; empty (ABF_STUDIO_URL= in the env file) is no setting
+    if studio is not None:
+        from .web_downstream import studio_embed_url
+        studio, why = studio_embed_url(studio)
+        if why:
+            en, zh = _STUDIO_WHY[why]
+            _err("rejected: ABF_STUDIO_URL must look like http://127.0.0.1:8790 (this computer, plain http, a port, nothing after it): %s "
+                 "(ABF_STUDIO_URL 要是 http://127.0.0.1:8790 的形式：本機位址、http、有埠、後面不接任何東西；%s)" % (en, zh),
+                 why='部署設定 ABF_STUDIO_URL 不是只含本機位址與埠的 http 網址，不能放進下游頁', next='在 env 檔把 ABF_STUDIO_URL 改成 http://127.0.0.1:8790 這樣的值，或刪掉這一行，再啟動一次')
+            return 1
     if args.host not in LOOPBACK:
         _err("rejected: the confirmation page binds loopback only (127.0.0.1, ::1 or localhost), not %s, whatever --public-url says. It "
              "serves plain http and the login cookie must not cross a network in clear text: put a TLS proxy (for example Tailscale "
@@ -78,7 +96,7 @@ def cmd_web(args):
         return 1
     base = public or "http://%s:%s" % (args.host, args.port)
     try:
-        app = web.create_app(index, tokens, state, public_url=public or None, base_url=base)
+        app = web.create_app(index, tokens, state, public_url=public or None, base_url=base, studio_url=studio)
     except ValueError as e:
         _err("rejected: %s" % e, why='確認頁的設定沒有通過檢查', next='照上面的原因修正後，再執行一次')
         return 1

@@ -176,6 +176,17 @@ def _bad(text):
     cliout.err(text)
 
 
+_R_ONLY = False       # `fetch-results --r`: standard output holds the R code and nothing else (the line of the downstream page feeds it to R's parse())
+
+
+def _progress(text):
+    """A line that tells how the command is doing: standard output as always, standard error under --r."""
+    if _R_ONLY:
+        print(text, file=sys.stderr, flush=True)
+    else:
+        cliout.say(text)
+
+
 def _fail(e):
     what, nxt = e.parts()
     cliout.err(e.text, what, nxt)
@@ -199,7 +210,7 @@ def _r_name(rel, used):
     return name
 
 
-def r_snippet(files, folder):
+def r_snippet(files, folder, header=True):
     """The lines to paste in the RStudio Console to read the tables in `files` (paths relative to `folder`): one line for each ASV or counts table, or
     for the first five tables when there is none of those. Pure: no R is run and nothing is looked up. Empty when no file is a table."""
     def suffix(f):
@@ -214,7 +225,7 @@ def r_snippet(files, folder):
     if not chosen:
         return ""
     base = _r_text(str(folder).replace("\\", "/"))
-    lines, used = [_t("paste")], set()
+    lines, used = ([_t("paste")] if header else []), set()
     for f in chosen:
         fn = "read.csv" if suffix(f) == ".csv" else "read.delim"
         lines.append('%s <- %s(file.path("%s", "%s"), check.names = FALSE, row.names = 1)' % (_r_name(f, used), fn, base, _r_text(f)))
@@ -314,7 +325,7 @@ class _Report:
     def skip(self, rel, why, problem=False):
         self.skipped.append(studio_remote.clean_text(rel))
         if len(self.skipped) <= LIST_LIMIT:
-            cliout.say(_t("skip", rel=rel, why=why))
+            _progress(_t("skip", rel=rel, why=why))
         self.problem = self.problem or problem
 
     def fail(self, rel, reason):
@@ -487,7 +498,7 @@ async def _work(args, folder, report, candidates):
             else:
                 _bad(_why(root))
             return 1
-        cliout.say(_t("folder_line", path=folder))
+        _progress(_t("folder_line", path=folder))
         await _list(session, run_id, report, candidates, "", 1, root, compute_env)
         base, total = folder.resolve(), 0
         for index, (rel, size) in enumerate(candidates):
@@ -524,29 +535,29 @@ async def _work(args, folder, report, candidates):
                     continue
                 total += len(data)
                 report.got.append(rel)
-                cliout.say(_t("got_over" if over else "got", rel=rel, size=len(data)))
+                _progress(_t("got_over" if over else "got", rel=rel, size=len(data)))
     return _finish(report, folder)
 
 
 def _finish(report, folder):
     if report.hidden.get("limit"):
-        cliout.say(_t("more", n=report.hidden["limit"]))
+        _progress(_t("more", n=report.hidden["limit"]))
     if report.hidden.get("dirs"):
-        cliout.say(_t("dirs_limit", n=report.hidden["dirs"], limit=MAX_DIRS))
+        _progress(_t("dirs_limit", n=report.hidden["dirs"], limit=MAX_DIRS))
     if len(report.skipped) > LIST_LIMIT:
-        cliout.say(_t("more", n=len(report.skipped) - LIST_LIMIT))
+        _progress(_t("more", n=len(report.skipped) - LIST_LIMIT))
     if report.pending:
         names = "、".join(report.pending[:LIST_LIMIT]) if studio_remote.lang() == "zh" else ", ".join(report.pending[:LIST_LIMIT])
         _bad(_t("pending", names=names))
     line = _t("summary", got=len(report.got), skipped=len(report.skipped))
     if report.failed:
         line += _t("summary_fail", failed=len(report.failed))
-    cliout.say(line + _t("summary_tail", path=folder))
+    _progress(line + _t("summary_tail", path=folder))
     if report.incomplete:
-        cliout.say(_t("incomplete"))
+        _progress(_t("incomplete"))
     if report.failed or report.pending:
         _bad(_t("fail_end"))
-    code = r_snippet(report.got, folder)
+    code = r_snippet(report.got, folder, header=not _R_ONLY)
     if code:
         cliout.say(code)
     cliout.set_data({"folder": str(folder), "fetched": report.got, "skipped": report.skipped, "failed": report.failed})
@@ -554,10 +565,14 @@ def _finish(report, folder):
 
 
 def cmd_fetch_results(args):
+    global _R_ONLY
+    _R_ONLY = bool(getattr(args, "r", False))
     try:
         return asyncio.run(_fetch(args))
     except studio_remote.StudioError as e:
         return _fail(e)
+    finally:
+        _R_ONLY = False
 
 
 # ---- studio-connect -------------------------------------------------------------------------------------------------------------------------
@@ -742,6 +757,7 @@ def add_commands(sub):
                                    "fetched. Exit code: 0 all well, 1 something was not fetched, 2 not set up (run studio-connect), 3 no connection.")
     f.add_argument("run", help="the run id")
     f.add_argument("--dir", help="the folder on this computer to put the files in (default: ~/abf-results/<run>)")
+    f.add_argument("--r", action="store_true", help="print only the R code on standard output (progress and messages go to standard error), for the line of the downstream page")
     f.set_defaults(func=cmd_fetch_results)
     _no_unknown_options(f)
 

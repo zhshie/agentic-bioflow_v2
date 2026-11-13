@@ -74,7 +74,7 @@ from starlette.routing import Route
 
 from abf_launch.build import CONFIG_LIMIT, Refusal as BuildRefusal       # resume-edit-web: the one limit of the extra settings (the site's check has the same number), not a second one
 from . import actions, oauth, site_link, store, web_board, web_cost, web_launch, web_preview, web_refusal, web_settings
-from . import uploads_web, web_finished, web_upload
+from . import uploads_web, web_downstream, web_finished, web_upload
 from .actions.figures import delete_figure, gallery_view, pack_figures, read_figure      # the gallery of a run (read, pack, delete): the action layer's own module; the routes only call these
 
 COOKIE = "abf_web"
@@ -186,10 +186,16 @@ def _form(fields):
     return {k: v[0] for k, v in out.items()}
 
 
-def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.time, public_url=None, base_url=None):
+def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.time, public_url=None, base_url=None, studio_url=None):
     """The confirmation page and the OAuth authorization server as an ASGI app. `clock` and the files are parameters so a test can move
     time and use its own folder. The issuer of the OAuth metadata is `public_url`, else `base_url` (where this app listens), else the default
-    loopback address; the SDK refuses a plain-http issuer that is not loopback (ValueError)."""
+    loopback address; the SDK refuses a plain-http issuer that is not loopback (ValueError). `studio_url` is the deployment setting ABF_STUDIO_URL (read by
+    `abf-platform web`, not here): only an address that `web_downstream.studio_embed_url` accepts is taken, anything else is a ValueError, and the downstream
+    page of a succeeded run alone then shows it in a frame and gains `frame-src <that address>`; no other page changes."""
+    studio_embed, studio_why = web_downstream.studio_embed_url(studio_url)
+    if studio_why:
+        raise ValueError("studio_url must be http://127.0.0.1:<port> or http://localhost:<port> (%s)" % studio_why)
+    studio_headers = dict(_HEADERS, **{"Content-Security-Policy": _HEADERS["Content-Security-Policy"] + "; frame-src " + studio_embed}) if studio_embed else None
     tokens_path = tokens_path or store.default_tokens_path(index_path)
     platform_path = actions.platform_path_for(index_path, platform_path)
     key = _signing_key(Path(platform_path).parent)
@@ -717,6 +723,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         outputs = None
         finished = None
         gallery = None
+        embed = None
         headers = _HEADERS
         if run_id or runs:
             selected = await run_in_threadpool(read_run, run_id or web_board.default_run(runs), caller)
@@ -738,6 +745,9 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 headers = FINISHED_HEADERS       # a page that holds a picture of the gallery may load pictures, from this site only; every other page keeps the base policy
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "downstream" and not flash:
                 outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
+                if studio_embed:
+                    embed = studio_embed       # the frame and the `frame-src` of it come together, here and nowhere else
+                    headers = studio_headers
             if selected["status"] == "succeeded":
                 asked = (await run_in_threadpool(actions.clean_requests, platform_path, caller=caller, clock=clock)).get(selected["name"])
                 if asked:
@@ -747,7 +757,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         except sqlite3.Error:
             refusal = None
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
-                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio, gallery=gallery)
+                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio, gallery=gallery, studio_embed=embed)
         return HTMLResponse(doc, status_code=code, headers=headers)
 
     async def board(request):

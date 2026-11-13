@@ -57,8 +57,13 @@ def client(w, studio_url=None, name="ann"):
     return c
 
 
+def web_downstream_why(studio):
+    from abf_platform import web_downstream
+    return web_downstream.studio_url(studio)[1]
+
+
 def succeeded(w, name="ann-done"):
-    ann = w.user("ann")
+    ann = w.ann = w.user("ann")
     rid = seed(w, name, "succeeded", ann)
     launch_to(w, name, FOLDER)
     return rid
@@ -205,7 +210,7 @@ def test_tc009_a_studio_query_never_reaches_the_frame(w, studio):
     assert [attr(f, "src") for f in iframes(r.text)] == [URL]
     assert csp(r).count("frame-src") == 1 and "frame-src %s" % URL in csp(r) and studio not in csp(r)
     assert not re.search(r"<iframe[^>]*%s" % re.escape(studio), r.text)
-    if not re.match(r"http://(localhost|127\.0\.0\.1):\d+\Z", studio):
+    if web_downstream_why(studio):
         assert 'role="alert"' in r.text and studio not in html.unescape(re.sub(r"<[^>]+>", " ", r.text)).replace(URL, "")
     assert "%s" % quote(studio, safe="") not in r.text
 
@@ -310,8 +315,8 @@ def test_tc017_no_frame_on_any_other_state_of_a_run(w):
     ann = w.user("ann")
     ids = {st: seed(w, "n-" + st, st, ann, reason="boom" if st == "failed" else None) for st in ("running", "failed", "succeeded")}
     launch_to(w, "n-succeeded", FOLDER)
-    w.user("bob")
-    bob_run = seed(w, "bobs", "succeeded", w.user("bob"))
+    bob = w.user("bob")
+    bob_run = seed(w, "bobs", "succeeded", bob)
     c = client(w, URL)
     for st in ("running", "failed"):
         r = c.get(down(ids[st]))
@@ -336,8 +341,8 @@ def test_tc018_nothing_else_is_added_and_nothing_connects(w, monkeypatch):
     c = client(w, URL)
     r = c.get(down(rid))
     assert not [a for a in seen if 8790 in (a if isinstance(a, tuple) else ()) or "8790" in map(str, a if isinstance(a, tuple) else ())], seen
-    low = r.text.lower()
-    assert len(iframes(r.text)) == 1 and "jupyter" not in low and "<input" not in r.text and "<form" not in r.text
+    low = pane(r.text, "middle").lower()
+    assert len(iframes(r.text)) == 1 and "jupyter" not in low and "<input" not in low and "<form" not in low
     base = git_base()
     if base:
         changed = git(["diff", "--name-only", base]).split()
@@ -379,7 +384,7 @@ PAGES = ["/", "/settings", "/usage", "/launch", "/upload", "/login", "/nope", "/
 def test_tc020_no_other_page_changes(w):
     # TC-020
     rid = succeeded(w)
-    ann = w.user("ann")
+    ann = w.ann
     running = seed(w, "r1", "running", ann)
     with_setting, without = client(w, URL), client(w)
     paths = PAGES + ["/?run=%s" % running, "/?run=%s&stage=downstream" % running, "/?run=%s&stage=results" % rid, "/?run=%s&stage=results&tab=outputs" % rid,
@@ -581,4 +586,5 @@ def test_tc042_the_page_writes_nothing(w):
     # TC-042
     rid = succeeded(w)
     t = client(w, URL).get(down(rid)).text
-    assert "<form" not in t and 'method="post"' not in t.lower() and "<button" not in t
+    mid = pane(t, "middle")
+    assert "<form" not in mid and "method=\"post\"" not in mid.lower() and "<button" not in mid

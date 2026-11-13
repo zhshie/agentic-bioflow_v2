@@ -245,6 +245,29 @@ leave them out: the default folder is used, as before.
    - Restart: `systemctl --user restart abf-serve abf-web abf-mcp abf-station@<name>`
    - Remove: `systemctl --user disable --now abf-serve abf-web abf-mcp abf-station@<name>`, then delete the files in
      `~/.config/systemd/user/` and run `systemctl --user daemon-reload`. To remove the Windows task, run the script from step 10 with `-Remove`.
+12. **RStudio in the downstream page (optional, `studio-embed`).** For a personal computer only. It makes the downstream page of a succeeded run show
+   RStudio inside the page; the platform does not start it, stop it or connect to it (your browser, on this computer, does), and the
+   page is as it was when you skip this step. 任何能登入這台電腦的人與這台電腦上的任何程式都連得到它，所以只適合個人電腦；不得把這個埠對外公開。
+   (Anyone who can log in to this computer and any program on it can reach it, with no password: personal computers only, and never open this port to a network.)
+   1. **Install RStudio Server yourself.** It is Posit's program under the AGPL licence; this project does not ship it, does not change it and
+      does not install it (ADR 0010, Decided 4). Get the Ubuntu package from Posit's download page and install it: `sudo apt install ./rstudio-server-<version>-amd64.deb`.
+   2. **Before you start the unit, disable the system service the package starts.** The package enables and starts `rstudio-server`, a system
+      service that runs as root and listens on port 8787, the port `abf-serve` uses, so it must be stopped before the unit below starts. Run `sudo systemctl disable --now rstudio-server`;
+      `systemctl is-active rstudio-server` must print `inactive`.
+   3. **Name the address.** In `~/.config/abf-platform/env` add the line `ABF_STUDIO_URL=http://127.0.0.1:8790` (copy it from `deploy/env.example`; the
+      port is not 8787 to 8789, which are the platform's own, and it is written here only: the unit reads its port from this line). Then
+      `systemctl --user restart abf-web`. A value that is not `http://127.0.0.1:<port>` or `http://localhost:<port>` stops `abf-web` with one
+      line that names `ABF_STUDIO_URL` (`journalctl --user -u abf-web -n 20`).
+   4. **Install and start the unit** (it runs as you, not as root, and listens on `127.0.0.1` only):
+      `cp deploy/systemd/abf-rstudio.service.in ~/.config/systemd/user/abf-rstudio.service`, `systemctl --user daemon-reload`,
+      `systemctl --user enable --now abf-rstudio`.
+   5. **Look.** `systemctl --user status abf-rstudio` says `active (running)`. `ss -ltn` shows `127.0.0.1:8790`, and no line for port 8790 that begins with
+      anything but `127.0.0.1`. Open the downstream page of a succeeded run: RStudio is in the middle of it. If the frame is blank, press "Open RStudio in a new tab" on the page.
+      Run `abf-platform studio-connect --server <the platform's address>` once on this computer, and make sure RStudio can find `abf-platform`
+      (its folder in the `PATH` RStudio sees), so the two lines on the page work in the Console.
+   - Stop: `systemctl --user stop abf-rstudio`. Restart: `systemctl --user restart abf-rstudio`.
+   - Remove: `systemctl --user disable --now abf-rstudio`, delete `~/.config/systemd/user/abf-rstudio.service`, run `systemctl --user daemon-reload`, and take the
+     `ABF_STUDIO_URL` line out of the env file (then `systemctl --user restart abf-web`). The package itself is removed with `sudo apt remove rstudio-server`.
 
 **Switching from starting by hand.** Your hand-started platform is a set of detached processes (`abf-platform serve`, `web`, `mcp`,
 and one `abf-station run` for each agent): closing the terminal does nothing to them. Step 7's `wsl --shutdown` already stopped
