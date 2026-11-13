@@ -324,7 +324,7 @@ def _add_write_tools(server, platform_path, index_path):
                  description="Propose deleting one figure (name, one figure at a time) of one of your own runs (run_id), together with its code and "
                              "parameter files; it also leaves the delivery package. The deletion is final. Nothing is deleted until the person says "
                              "yes on the confirmation page this returns or in their own form; you cannot say it for them, and an answer in this chat does "
-                             "not count: request_id and user_confirmed have no effect on this tool, so ask the person to open the page and press confirm. "
+                             "not count: request_id and user_confirmed have no effect on this tool, so ask the person to open the page and press its button. "
                              "If the gallery changed after the question, the answer is refused and you propose again.")
     async def delete_figure_tool(ctx: Context, run_id: str, name: str,
                                  request_id: Annotated[str | None, Field(description=_DELETE_REQUEST_ID_DOC)] = None,
