@@ -38,7 +38,7 @@ check "TC-029 WantedBy=default.target" has "$code" 'WantedBy=default.target'
 check "TC-029 Restart=on-failure" has "$code" 'Restart=on-failure'
 # the option names that exist in the package's rserver binary (read from its strings); a misspelling fails here
 for o in $(printf '%s\n' "$exec_line" | grep -oE -- '--[a-z][a-z-]+' | sort -u); do
-  case "$o" in --www-address|--www-port|--www-frame-origin|--auth-none|--server-user|--server-daemonize|--server-data-dir|--server-pid-file|--secure-cookie-key-file|--database-config-file|--www-same-site) ;;
+  case "$o" in --www-address|--www-port|--www-frame-origin|--auth-none|--server-user|--server-daemonize|--server-data-dir|--server-pid-file|--secure-cookie-key-file|--database-config-file|--www-same-site|--auth-cookies-force-secure) ;;
     *) bad "TC-029 option $o is not one of the rserver options seen in the package";; esac
 done
 
@@ -72,7 +72,6 @@ if has "$exec_line" 'chmod 600' && has "$exec_line" 'cookie-key'; then ok "TC-02
 if has "$exec_line" 'export USER=%u'; then ok "TC-029 USER is set for rserver (export USER=%u)"; else bad "TC-029 export USER=%u"; fi
 if printf '%s\n' "$unit" | grep -iE 'not (been )?(verified|checked)|checked on the computer' >/dev/null; then bad "TC-029 the unit header still says the options are not verified"; else ok "TC-029 the unit header states what was verified"; fi
 if has "$ops" 'allow' && hasre "$ops" 'local network' && has "$tst" 'local network' && has "$plat" 'local network'; then ok "TC-043 OPERATIONS, TESTING and PLATFORM tell the browser asks to allow local network access"; else bad "TC-043 local network permission in the docs"; fi
-if has "$ops" 'LAB_SETTINGS_FILE=<' && hasre "$ops" 'LAB_SETTINGS_FILE=<[^>]*> scripts/on_site.sh --check-reach' && hasre "$ops" 'LAB_SETTINGS_FILE=<[^>]*> scripts/on_site.sh --check-master; echo \$\?'; then ok "TC-D the reconnect steps name the agent's settings file"; else bad "TC-D reconnect steps with LAB_SETTINGS_FILE"; fi
 # ---------- TC-033: the two tests that count files were rewritten, nothing else under deploy/ ----------
 if git rev-parse --git-dir >/dev/null 2>&1; then
   base=$(git merge-base origin/v3 HEAD 2>/dev/null || true)

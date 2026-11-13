@@ -40,7 +40,7 @@ STRINGS = {
         "embed_note": "下方畫面是這台電腦上的 RStudio，瀏覽器直接連到本機，不經過平台；平台不啟動它，也不檢查它是否在執行。",
         "embed_link": "在新分頁開啟 RStudio",
         "embed_title": "RStudio（本機）",
-        "embed_blank": "若下方畫面空白：可能是 RStudio 尚未啟動，或瀏覽器擋下了對本機的連線。請按「在新分頁開啟 RStudio」，"
+        "embed_blank": "瀏覽器第一次會詢問是否允許此網站存取本機網路上的裝置，請按允許。若下方畫面空白：可能是 RStudio 尚未啟動，或瀏覽器擋下了對本機的連線（按了拒絕、或瀏覽器不支援本機網路存取時也會空白）。請按「在新分頁開啟 RStudio」，"
                        "或依 docs/OPERATIONS.md 的「Desktop platform in WSL（桌機）」一節的步驟啟動。",
         "r_note": "把下列兩行貼進 RStudio 的 Console：第一行取回結果表並載入；第二行把目前 Plots 窗格的圖送到圖庫，仍須本人在確認頁按送出。"
                   "需先在這台電腦執行過 studio-connect，且 RStudio 找得到 abf-platform。",
@@ -64,7 +64,8 @@ STRINGS = {
         "embed_note": "The frame below is the RStudio on this computer: the browser connects to this computer directly, not through the platform; the platform does not start it and does not check whether it is running.",
         "embed_link": "Open RStudio in a new tab",
         "embed_title": "RStudio (this computer)",
-        "embed_blank": "If the frame below is blank, RStudio is not started on this computer, or the browser blocked the connection to this computer. "
+        "embed_blank": "The first time, the browser asks whether to allow this site to reach devices on the local network; press Allow. "
+                       "If the frame below is blank, RStudio is not started on this computer, or the browser blocked the connection to this computer (refusing the question, or a browser without local network access, also leaves it blank). "
                        "Press \"Open RStudio in a new tab\", or start it with the steps in docs/OPERATIONS.md, section \"Desktop platform in WSL\".",
         "r_note": "Paste the two lines below into the RStudio Console: the first fetches the result tables and loads them; the second sends the plot now in the Plots pane "
                   "to the gallery, and the person still presses Send on the confirmation page. Run studio-connect on this computer first, and RStudio must be able to find abf-platform.",

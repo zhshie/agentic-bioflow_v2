@@ -1323,7 +1323,7 @@ Automatic tests: `platform/tests/test_studio_embed.py` (the setting, the page, t
 
 **TC-036, the unit runs as you and listens on this computer only.** In Ubuntu run `ps -o user=,args= -C rserver` (the user must be you, not root) and `ss -ltn` (the port of `ABF_STUDIO_URL` is listed with `127.0.0.1` in front and with no other address). From another computer on the same network, open `http://<this computer's address>:<that port>`: it must not connect. `systemctl is-active rstudio-server` must say `inactive` (the package's own root service is disabled).
 
-**TC-037, RStudio is in the page and draws.** With the setting filled in and `abf-rstudio` running, open the downstream page of a succeeded run: RStudio is the middle of the page, with no sign-in. In the RStudio Console run `plot(1:10)`: the picture is in the Plots pane at the lower right and is clear.
+**TC-037, RStudio is in the page and draws.** With the setting filled in and `abf-rstudio` running, open the downstream page of a succeeded run (the first time the browser asks whether to allow this site to reach devices on the local network: press Allow; with Refuse the frame is blank and the new-tab link is the way): RStudio is the middle of the page, with no sign-in. In the RStudio Console run `plot(1:10)`: the picture is in the Plots pane at the lower right and is clear.
 
 **TC-038, the two lines.** Run the `studio-connect` command (the first of the terminal commands on the page) once. Paste the first line of the page into the RStudio Console: the tables load (`View(<name>)` shows one). Draw a plot, paste the second line: the Console prints a confirmation link; open it and press the button: the figure is in the gallery of that run, and nothing is stored before that press.
 

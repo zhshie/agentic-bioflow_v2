@@ -4,14 +4,16 @@
 # This repository does not ship, change or install RStudio Server (it is AGPL); you install it yourself from Posit. The package also enables and
 # starts its own system service, which must be disabled first: see docs/OPERATIONS.md, "RStudio in the downstream page" (desktop section).
 # The port is taken from ABF_STUDIO_URL in the env file, so it is written in one place only; with no ABF_STUDIO_URL this unit stops at once and
-# stays stopped (exit status 2). No token, password or key goes into this file. The option names below are those seen in the package's rserver;
-# which of the data-folder, cookie and database options a start without root really needs is checked on the computer (specs/studio-embed/ledger.md).
+# stays stopped (exit status 2). No token, password or key goes into this file. Tried on a desktop (RStudio Server 2025.09.2, Chromium 156, a page on
+# another https site): every option below is accepted by rserver without root. The page is framed only with --www-same-site=none together with
+# --auth-cookies-force-secure=1 (without them the frame redirects to itself until the browser stops), and with USER set the no-login start works.
+# The browser also asks once to allow this site to reach devices on the local network; see docs/OPERATIONS.md and specs/studio-embed/ledger.md.
 [Unit]
 Description=RStudio Server for the abf-platform downstream page (this computer only)
 
 [Service]
 EnvironmentFile=%h/.config/abf-platform/env
-ExecStart=/bin/sh -c 'test -n "$${ABF_STUDIO_URL}" || { echo "abf-rstudio will not start: ABF_STUDIO_URL is not set in ~/.config/abf-platform/env (see docs/OPERATIONS.md)" >&2; exit 2; }; d=%t/abf-rstudio; mkdir -p -m 700 "$$d"; [ -s "$$d/cookie-key" ] || cat /proc/sys/kernel/random/uuid > "$$d/cookie-key"; { echo provider=sqlite; echo "directory=$$d/db"; } > "$$d/database.conf"; exec /usr/lib/rstudio-server/bin/rserver --server-daemonize=0 --server-user=%u --www-address=127.0.0.1 --www-port="$${ABF_STUDIO_URL##*:}" --www-frame-origin=${ABF_PUBLIC_URL} --auth-none=1 --server-data-dir="$$d/data" --server-pid-file="$$d/rserver.pid" --secure-cookie-key-file="$$d/cookie-key" --database-config-file="$$d/database.conf"'
+ExecStart=/bin/sh -c 'test -n "$${ABF_STUDIO_URL}" || { echo "abf-rstudio will not start: ABF_STUDIO_URL is not set in ~/.config/abf-platform/env (see docs/OPERATIONS.md)" >&2; exit 2; }; export USER=%u; d=%t/abf-rstudio; mkdir -p -m 700 "$$d"; [ -s "$$d/cookie-key" ] || cat /proc/sys/kernel/random/uuid > "$$d/cookie-key"; chmod 600 "$$d/cookie-key"; { echo provider=sqlite; echo "directory=$$d/db"; } > "$$d/database.conf"; exec /usr/lib/rstudio-server/bin/rserver --server-daemonize=0 --server-user=%u --www-address=127.0.0.1 --www-port="$${ABF_STUDIO_URL##*:}" --www-frame-origin=${ABF_PUBLIC_URL} --auth-none=1 --www-same-site=none --auth-cookies-force-secure=1 --server-data-dir="$$d/data" --server-pid-file="$$d/rserver.pid" --secure-cookie-key-file="$$d/cookie-key" --database-config-file="$$d/database.conf"'
 Restart=on-failure
 RestartSec=5
 # Exit status 2 is the missing setting: trying again every five seconds cannot fix it, so stay failed and let the person read the journal.

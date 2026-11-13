@@ -67,7 +67,32 @@ The page does not probe the address (a probe would be a connection by the platfo
 
 ## Section for the lead: results on the desktop (TC-036 to TC-040)
 
-(to be filled in after the desktop trial)
+Trial by the lead (2026-11-13): RStudio Server 2025.09.2+418, R 4.1.2, headless Chromium 156, parent page on another https site, iframe to `http://127.0.0.1:8790/`.
+
+1. The options of the unit start `rserver` without root: `--server-daemonize=0 --server-user --www-address --www-port --www-frame-origin --auth-none=1 --server-data-dir --server-pid-file --secure-cookie-key-file --database-config-file` were all accepted; the response carried `Content-Security-Policy: frame-ancestors <origin>`. The cookie-key file was made `chmod 600` (the unit now does it).
+2. With only those options the frame failed: no `SameSite` on the cookie, so `/` and `/auth-sign-in` redirected to each other until `ERR_TOO_MANY_REDIRECTS`.
+3. Adding `--www-same-site=none` still failed: the cookie was `SameSite=None` without `Secure`, which Chromium refuses; the same redirect loop.
+4. Adding `--auth-cookies-force-secure=1` worked: `SameSite=None; Secure` accepted, RStudio fully shown in the frame (Console, Environment, Files, Plots). Both options are now in the unit and pinned by `tests/studio_embed_deploy_test.sh`.
+5. Without the browser's local network access permission the frame request failed with `net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS`; after it was granted it worked. A real Chrome asks once and the person presses Allow; `allow="local-network-access"` on the iframe is needed. The page, OPERATIONS step 12, TESTING and PLATFORM now say so.
+6. Without `USER` in the environment the no-login start of `rserver` failed; the unit now does `export USER=%u`.
+
+Not tried: Firefox, Safari, the permission prompt in a real Chrome window, the second R line run in a Console.
+
+Status of the nine points above ("Not verified"):
+
+| # | Point | Status |
+|---|---|---|
+| 1 | options a start without root needs, data folder, cookie key, database config | verified (accepted and working); cookie key needs mode 600 (added) |
+| 2 | `--auth-none=1` for a non-root user, session cookie in a cross-site frame | verified, with `USER` set and with the two cookie options (items 2 to 4, 6) |
+| 3 | `--www-frame-origin` value form, `--www-same-site` | verified: the origin form is accepted; `--www-same-site=none` plus `--auth-cookies-force-secure=1` are required |
+| 4 | `--www-address` default, `--www-port` from the URL | verified as accepted; not tried separately from the trial's `127.0.0.1:8790` |
+| 5 | path of `rserver`, `--server-daemonize=0` | verified (the options were accepted when run) |
+| 6 | systemd quoting (`$$`, `%t`, `%u`), `NoNewPrivileges` | still unverified: not reported as run under the systemd unit |
+| 7 | the `allow` word | verified for Chromium (required); Firefox and Edge still unverified |
+| 8 | https page framing `http://127.0.0.1:<port>` | verified in Chromium 156 only |
+| 9 | `system2("abf-platform", ...)` from RStudio, `dev.copy(png, ...)` | still unverified |
+
+Not done: item D of the lead's message (the reconnect steps of the WSL section). `tests/desktop_systemd_test.sh` D6 asserts that the section does NOT contain `LAB_SETTINGS_FILE` ("must not be the example"), so adding it would break that existing test; the section is left as it was and the question goes back to the lead.
 
 ## git diff --stat origin/v3...HEAD
 

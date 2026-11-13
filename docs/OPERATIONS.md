@@ -262,7 +262,7 @@ leave them out: the default folder is used, as before.
       copy `deploy/systemd/abf-rstudio.service.in` to `~/.config/systemd/user/abf-rstudio.service` (the name without `.in`), run `systemctl --user daemon-reload`, then
       `systemctl --user enable --now abf-rstudio`.
    5. **Look.** `systemctl --user status abf-rstudio` says `active (running)`. `ss -ltn` shows `127.0.0.1:8790`, and no line for port 8790 that begins with
-      anything but `127.0.0.1`. Open the downstream page of a succeeded run: RStudio is in the middle of it. If the frame is blank, press "Open RStudio in a new tab" on the page.
+      anything but `127.0.0.1`. Open the downstream page of a succeeded run: the first time, the browser asks whether to allow this site to reach devices on the local network; press Allow (it is needed: with Refuse, or in a browser that does not support it, the frame stays blank). Then RStudio is in the middle of the page. If the frame is blank, press "Open RStudio in a new tab" on the page.
       Run the `studio-connect` command once on this computer (the first of the terminal commands on the page), and make sure RStudio can find `abf-platform`
       (its folder in the `PATH` RStudio sees), so the two lines on the page work in the Console.
    - Stop: `systemctl --user stop abf-rstudio`. Restart: `systemctl --user restart abf-rstudio`.
