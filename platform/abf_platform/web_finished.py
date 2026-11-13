@@ -5,7 +5,6 @@ No database, no file and no network is touched here: `web.py` reads `launch_pref
 caller and hands the answers in. Every word of this stage is in the two tables below (zh and en, same keys). Each state is a symbol plus
 words; the colour only helps. Nothing here downloads, writes or asks the site for anything: the download block only makes links to the existing `/run/file`.
 """
-import hashlib
 import html
 
 STRINGS = {
@@ -195,8 +194,10 @@ def _clip(text):
 
 
 def _key(name):
-    """A short word made of a figure's name, for the ids of its tick box and its delete form (the same name always gives the same word)."""
-    return hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:8]
+    """The word that ends the ids of a figure's tick box and delete form: the figure's own name. A name of the gallery is letters, digits, dot, underscore and
+    hyphen only (`figures.check_name`) and the gallery holds each name once, so two figures never share an id (a hash could be made to collide, and a delete
+    button would then act on the wrong form). It also stays the same when a figure is added before it (live-sync)."""
+    return _e(str(name))
 
 
 def _figure(t, run, f, n):
@@ -204,7 +205,7 @@ def _figure(t, run, f, n):
     The button belongs to a delete form that sits outside the pack form (form=), so no form is inside another."""
     base = f["url"]      # `/run/figure?run=&name=`, made by the route that read the gallery (this module makes no address from a name)
     name = _e(f["name"])
-    n = _key(f["name"])      # live-sync: the ids of the tick box and of the delete form belong to the figure, not to its place in the list, so a new figure does not change the others
+    n = _key(f["name"])
     box = "pick-%s" % n
     size = f.get("size")
     size_text = "%.1f KB" % (size / 1024) if isinstance(size, int) and size >= 0 else "—"

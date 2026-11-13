@@ -170,10 +170,10 @@ def _page(title, body, status=200, form_action=None, lang="zh"):
     return HTMLResponse(web_board.document(title, "<h1>%s</h1>%s" % (_esc(title), body), lang=lang), status_code=status, headers=headers)
 
 
-def _html(doc, status_code=200, headers=None, force=False):
+async def _html(doc, status_code=200, headers=None, force=False):
     """An HTML answer of a page that may carry the script of live-sync: such a page gets its marks (the body's `data-live`) and the two sources in its policy,
     any other page goes out as it is."""
-    doc, headers = web_live.decorate(doc, headers if headers is not None else _HEADERS, force)
+    doc, headers = await run_in_threadpool(web_live.decorate, doc, headers if headers is not None else _HEADERS, force)      # reading a page is work for a thread, not for the loop
     return HTMLResponse(doc, status_code=status_code, headers=headers)
 
 
@@ -701,7 +701,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                                       subpath=subpath if outputs_tab else None)
         except sqlite3.Error:
             return None
-        if look and isinstance(got, dict) and got.get("would_queue"):
+        if look and outputs_tab and isinstance(got, dict) and got.get("would_queue"):      # only the Outputs tab ever asks the site; the other tabs only look, today too
             web_live.note("queue")
         return got
 
@@ -771,7 +771,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             refusal = None
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
                                      act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio, gallery=gallery, studio_embed=embed)
-        return _html(doc, code, headers, force=headers is FINISHED_HEADERS and not flash)      # the finished stage with figures never reloaded, and carries the script all the same
+        return await _html(doc, code, headers, force=headers is FINISHED_HEADERS and not flash)      # the finished stage with figures never reloaded, and carries the script all the same
 
     async def board(request):
         sid, user = user_of(request)
@@ -810,7 +810,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 return Response(b"", status_code=204, headers=_HEADERS)
             return Response(answer["data"], headers=web_board.download_headers(answer["name"], _HEADERS))
         code, doc = web_board.render_file_page(answer, run, lang)
-        return _html(doc, code, _HEADERS)
+        return await _html(doc, code, _HEADERS)
 
     async def run_log_get(request):
         """The log of one failed task of the caller's own run, as a page (web-run-tasks-log). The action reads the answer of the agent's job or queues
@@ -865,7 +865,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return HTMLResponse(web_board.render_not_found(ctx["user"]["name"], lang), status_code=404, headers=_HEADERS)
         if answer["state"] != "ready":
             code, doc = web_board.render_file_page(answer, run, lang, route="/run/preview")
-            return _html(doc, code, _HEADERS)
+            return await _html(doc, code, _HEADERS)
         kind = web_preview.kind_of(path, answer["data"])
         if kind is None:
             return HTMLResponse(web_preview.render_none(run, path, lang), headers=_HEADERS)
@@ -918,7 +918,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if not sent:
             return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
         runs = await run_in_threadpool(read_runs, caller)
-        return _html(web_board.render_waiting(user["name"], csrf(sid, "logout"), runs, lang, name))
+        return await _html(web_board.render_waiting(user["name"], csrf(sid, "logout"), runs, lang, name))
 
     # ---- spec 012b: write actions from the web. Every route here only ASKS: it calls a request_* action for the logged-in caller and sends
     # the browser to the confirmation page /c/<id>, where the person presses 送出. Nothing is confirmed or queued from here.
@@ -982,7 +982,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         runs = await run_in_threadpool(read_runs, caller)
         doc = web_launch.edit_page_html(user["name"], csrf(sid, "logout"), runs, lang, view["id"], head, files, first, csrf(sid, "act:" + view["id"]),
                                             given=given, extra=extra, error=error, code_post=post)
-        return _html(doc, code, _HEADERS)
+        return await _html(doc, code, _HEADERS)
 
     async def edit_get(request):
         sid, user = user_of(request)
@@ -1124,7 +1124,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         runs = await run_in_threadpool(read_runs, caller)
         doc = web_board.render_launch(user["name"], csrf(sid, "logout"), runs, values, errors, notes, sheets, envs, csrf(sid, "launch"), lang, source,
                                       guide, files, image, latest)
-        return _html(doc, code, LAUNCH_HEADERS)
+        return await _html(doc, code, LAUNCH_HEADERS)
 
     async def launch_get(request):
         sid, user = user_of(request)
@@ -1482,7 +1482,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if view.get("status") == "registering":      # every file is in: the real page registers the Dataset now, a look only says so
             web_live.note("queue")
         runs = await run_in_threadpool(read_runs, caller)
-        return _html(web_upload.render_progress(user["name"], csrf(sid, "logout"), runs, lang, view), 200, LAUNCH_HEADERS)
+        return await _html(web_upload.render_progress(user["name"], csrf(sid, "logout"), runs, lang, view), 200, LAUNCH_HEADERS)
 
     async def settings_page(sid, user, caller, lang, flash_of=None, given=None, code=200):
         """The settings page for one logged-in user. `flash_of(envs)` says a notice or a failure; `given` is what a refused form held."""
@@ -1728,7 +1728,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     # ---- live-sync: the script and the two read-only answers it asks for (three routes; the answers have the login and owner checks of the pages they look at).
     LIVE_PAGES = {"/": board, "/launch": launch_get, "/act/resume/edit": edit_get, "/run/file": run_file_get, "/run/preview": run_preview_get}
     UPLOAD_PAGE = re.compile(r"^/upload/[0-9a-f]{32}\Z")
-    reload_asked = {}      # (user, page) -> when this app last told that page to load whole: the server keeps it to one in RELOAD_SECONDS, whatever the script does
+    reload_asked = web_live.Recent()      # (user, page) -> when this app last told that page to load whole: the server keeps it to one in RELOAD_SECONDS, whatever the script does
+    looked_at = web_live.Recent()      # (login, route, page) -> when it was last looked at: the floor of LOOK_FLOOR_SECONDS
 
     def live_target(raw):
         """(path, query) of a page the script may ask about, else None. Only the pages that carry the script, by their exact path."""
@@ -1744,11 +1745,17 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         last = reload_asked.get((user_id, key))
         if last is not None and 0 <= now - last < web_live.RELOAD_SECONDS:
             return False
-        if len(reload_asked) > 2000:
-            for k in [k for k, t in reload_asked.items() if not 0 <= now - t < web_live.RELOAD_SECONDS]:
-                del reload_asked[k]
-        reload_asked[(user_id, key)] = now
+        reload_asked.put((user_id, key), now)
         return True
+
+    def too_soon(sid, route, raw):
+        """True when this login asked this route about this page less than LOOK_FLOOR_SECONDS ago (the script asks every 2 seconds, so it never is)."""
+        now, key = clock(), (sid, route, hashlib.sha1(raw.encode("utf-8")).hexdigest())
+        last = looked_at.get(key)
+        if last is not None and 0 <= now - last < web_live.LOOK_FLOOR_SECONDS:
+            return True
+        looked_at.put(key, now)
+        return False
 
     def live_answer(payload, status=200):
         return JSONResponse(payload, status_code=status, headers=LIVE_HEADERS)
@@ -1760,6 +1767,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if user is None:
             return to_welcome(request) or live_answer({"s": "auth"}, 401), None      # a temporary-password login is sent to the password page, as every page does
         raw = request.query_params.get("u") or ""
+        if too_soon(sid, request.url.path, raw):
+            return JSONResponse({"s": "slow"}, status_code=429, headers=dict(LIVE_HEADERS, **{"Retry-After": "1"})), None
         target = live_target(raw)
         lang = web_board.pick_lang((urllib.parse.parse_qs(target[1]).get("lang") or [""])[0]) if target else "zh"
         missing = HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=LIVE_HEADERS)
@@ -1795,7 +1804,11 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return live_answer({"s": "wait"})
         # a page that has stopped asking for a refresh (everything it waited for has come) is shown in place one last time, and the script then stops
         headers = page["headers"] if page["scripted"] else web_live.with_script(page["headers"])
-        return live_answer(dict(web_live.info_of(web_live.layout(page["doc"]), headers), s="ok", **({} if page["scripted"] else {"x": 1})))
+        try:
+            lay = await run_in_threadpool(web_live.layout, page["doc"])
+        except RecursionError:      # a page too deeply nested to follow: the script is told to load it whole (at most every 15 seconds)
+            return live_answer({"s": "reload"} if may_reload(page["user"]["user_id"], page["key"]) else {"s": "wait"})
+        return live_answer(dict(web_live.info_of(lay, headers), s="ok", **({} if page["scripted"] else {"x": 1})))
 
     async def live_content(request):
         early, page = await live_look(request)
@@ -1804,7 +1817,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if not page["page"] or page["state"].get("go"):
             return live_answer({"s": "reload"})
         want = {n for n in (request.query_params.get("n") or "").split(",")[:300] if n}
-        return live_answer({"s": "ok", "r": {r["name"]: r["html"] for c in web_live.layout(page["doc"]) for r in c["regions"] if r["name"] in want}})
+        try:
+            lay = await run_in_threadpool(web_live.layout, page["doc"])
+        except RecursionError:
+            return live_answer({"s": "reload"})
+        got = [r for c in lay for r in c["regions"] if r["name"] in want]
+        return live_answer({"s": "ok", "r": {r["name"]: r["html"] for r in got}, "v": {r["name"]: r["hash"] for r in got}})      # the version of each region comes with it: the script checks it is the one it planned for
 
     app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/static/live.js", live_script, methods=["GET"]),
                             Route("/live/version", live_version, methods=["GET"]), Route("/live/content", live_content, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
@@ -1841,4 +1859,5 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     app.add_middleware(BaseHTTPMiddleware, dispatch=add_headers)
     app.state.csrf_token = csrf_token
+    app.state.clock = clock
     return app

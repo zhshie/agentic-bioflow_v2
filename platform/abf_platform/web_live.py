@@ -10,17 +10,20 @@ exactly one region. The names are `<container>-<n>`: fixed words and a number, n
 
 A look (the version or the content of a page) runs the page's own handler with LOOK set: the handler then reads and never queues, registers or writes; where the
 real page would queue something, the look says so (`note("queue")`) and the answer is one reload, never more often than every RELOAD_SECONDS."""
+import collections
 import contextvars
 import hashlib
 import html
 import json
 import re
+import threading
 from html.parser import HTMLParser
 from pathlib import Path
 
 SCRIPT_URL = "/static/live.js"
 SCRIPT_TAG = '<script src="%s"></script>' % SCRIPT_URL
 CSP_ADD = "script-src 'self'; connect-src 'self'"
+LOOK_FLOOR_SECONDS = 1.0       # the same person asking the same thing about the same page sooner than this is told to slow down (429), nothing is run
 RELOAD_SECONDS = 15.0       # the pace of today's meta refresh: a page that must ask the site again is loaded whole at most this often
 LOOK = contextvars.ContextVar("abf_live_look", default=None)
 _SCRIPT = Path(__file__).resolve().parent / "data" / "live.js"
@@ -156,7 +159,52 @@ def _same_text(text):
     return re.sub(r'value="[0-9a-f]{64}"', 'value=""', text)
 
 
+class Recent:
+    """A bounded map of the last times something happened (the 15-second limit of reloads, the 1-second floor of the looks): when it is full the oldest entry goes,
+    so a flood of different keys cannot make it grow without end (an evicted key is simply allowed once more)."""
+
+    def __init__(self, cap=4096):
+        self.cap, self.items = cap, collections.OrderedDict()
+
+    def get(self, key):
+        return self.items.get(key)
+
+    def put(self, key, when):
+        self.items[key] = when
+        self.items.move_to_end(key)
+        while len(self.items) > self.cap:
+            self.items.popitem(last=False)
+
+    def __len__(self):
+        return len(self.items)
+
+
+_MEMO = collections.OrderedDict()      # sha1 of a page -> its layout: a page asked about twice (the version, then the content) is read once
+_MEMO_LOCK = threading.Lock()
+MEMO_PAGES = 16
+
+
 def layout(doc):
+    """`_layout` with a small memory of the last pages: the same text is never parsed twice in a row. The answer is shared; nobody changes it."""
+    key = hashlib.sha1(doc.encode("utf-8")).hexdigest()
+    with _MEMO_LOCK:
+        if key in _MEMO:
+            _MEMO.move_to_end(key)
+            return _MEMO[key]
+    got = _layout(doc)
+    _remember(key, got)
+    return got
+
+
+def _remember(key, got):
+    with _MEMO_LOCK:
+        _MEMO[key] = got
+        _MEMO.move_to_end(key)
+        while len(_MEMO) > MEMO_PAGES:
+            _MEMO.popitem(last=False)
+
+
+def _layout(doc):
     """[{n: container name, p: its place (the index of each ancestor among the element children, from the body), regions: [{name, html, start, end, hash}]}], in page
     order. A page with no body has none."""
     body = _find(_tree(doc), "body")
@@ -198,6 +246,13 @@ def decorate(doc, headers, force=False):
     found = META.search(doc)
     if found is None and not force:
         return doc, headers
+    try:
+        return _decorate(doc, headers, found)
+    except RecursionError:      # a page nested deeper than the parser can follow is sent as it is: no script, and the refresh as it always was
+        return doc, headers
+
+
+def _decorate(doc, headers, found):
     go = ""
     if found is not None:
         doc = doc[:found.start()] + "<noscript>" + found.group(0) + "</noscript>" + doc[found.end():]
@@ -206,5 +261,10 @@ def decorate(doc, headers, force=False):
     end = doc.rfind("</body>")
     doc = doc[:end] + SCRIPT_TAG + doc[end:]
     given = with_script(headers)
-    attr = ' data-live="%s"%s' % (html.escape(json.dumps(info_of(layout(doc), given), separators=(",", ":")), quote=True), go)
-    return doc.replace("<body>", "<body" + attr + ">", 1), given
+    lay = layout(doc)
+    attr = ' data-live="%s"%s' % (html.escape(json.dumps(info_of(lay, given), separators=(",", ":")), quote=True), go)
+    final = doc.replace("<body>", "<body" + attr + ">", 1)
+    shift = len(final) - len(doc)      # the body's attribute moved everything after it; the look that follows asks about this very text
+    _remember(hashlib.sha1(final.encode("utf-8")).hexdigest(),
+              [dict(c, regions=[dict(r, start=r["start"] + shift, end=r["end"] + shift) for r in c["regions"]]) for c in lay])
+    return final, given

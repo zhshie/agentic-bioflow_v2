@@ -69,7 +69,7 @@ Not carrying it: `/login`, `/welcome`, `/c/<id>`, `/consent/<id>`, `/settings`, 
 | test_web_figures.py::test_finished_csp_gets_img_src_but_other_pages_do_not | `/`, run pages == base; finished == base+img-src; no `script-src` | `/` and run pages == base + `ADD` (they reload themselves); `/settings`, `/usage`, `/c/` == base; finished == base+img-src + `ADD`; an empty gallery == base + `ADD` | (i) | `/`, run pages, finished |
 | test_web_figures.py::test_no_inline_style_or_script_in_gallery | `"<script" not in t` | `one_live_script(t)` | (i) | finished stage (with and without figures) |
 | test_web_finished.py::test_fs11_constraints_hold | `"<script" not in t` | `one_live_script(t)` | (i) | finished stage |
-| test_web_fixes_1.py::test_f08_constraints_hold | `"<script" not in t` | `one_live_script(t)` | (i) | run pages |
+| test_web_fixes_1.py::test_f08_constraints_hold | `"<script" not in t and "style=" not in t and 'rel="stylesheet"' not in t and t.count("<style>") == 1` | `one_live_script(t) and "style=" not in t and 'rel="stylesheet"' not in t and t.count("<style>") == 1` (final state; a first version lost the last clause to a comment, restored after acceptance) | (i) | run pages |
 | test_web_guided_launch.py::test_gl12_constraints_hold | `"<script" not in t`, `"script-src" not in csp` | `live_rules(t, csp)` | (i) | `/launch` (loading states carry it, ready ones none) |
 | test_web_guided_launch_2.py::test_g09_limits | `"<script" not in t`; csp == launch csp | `live_rules(t, csp)`; csp == launch csp (+ `ADD` when it reloads) | (i) | `/launch` loading state; ready and error states unchanged |
 | test_web_guided_launch_2d.py::test_tc049_other_pages_are_as_before | csp of `/` == base | `/` == base + `ADD`; settings, usage, `/c/` == base | (i)/(ii) | `/` |
@@ -84,7 +84,7 @@ Not carrying it: `/login`, `/welcome`, `/c/<id>`, `/consent/<id>`, `/settings`, 
 | test_web_running.py::test_r60_r78_order_and_tabs | `"<script" not in t` | `one_live_script(t)` | (i) | run page |
 | test_web_running.py::test_r103_r114_limits_and_readonly | `<script` banned; `"script-src" not in csp` | `one_live_script(t)`; csp ends with `ADD` | (i) | run pages |
 | test_web_settings_personal.py::test_no_script_no_inline_style | `"<script" not in r.text` for `/settings` and `/`; csp ends with `...base-uri 'none'` | `live_rules(r.text, csp)`; csp (without `ADD`) ends the same | (i) | `/` (red); `/settings` keeps the old rule |
-| test_web_status_squares_3.py::test_ss05_constraints | `"<script" not in text` | `live_rules(text)` | (i) | run pages; the downstream stage and `/settings` keep the old rule |
+| test_web_status_squares_3.py::test_ss05_constraints | `"<script" not in text and " style=" not in text and not re.search(r"\son[a-z]+=", text) and text.count("<style>") == 1` | `live_rules(text) and " style=" not in text and not re.search(r"\son[a-z]+=", text) and text.count("<style>") == 1` (final state; the on-attribute and style-count clauses had been lost to a comment, restored) | (i) | run pages; the downstream stage and `/settings` run the old rule through `live_rules` (no meta refresh = no script, no `<noscript`, no `script-src`) |
 | test_web_upload.py::test_tc016_* | `"<script" not in r.text`; csp == launch csp | `live_rules(r.text, csp)`; csp without `ADD` == launch csp | (i) | `/upload/<batch>` on the way; `/upload` form unchanged |
 | test_web_upload.py::test_tc078_it_reloads_itself_while_files_are_on_the_way | meta refresh present, no `<script` | `<noscript>` + meta, `one_live_script` | (i) | `/upload/<batch>` on the way |
 | test_web_upload.py::test_tc124_to_tc126_* | `"<script" not in text.lower()` | `live_rules(text)` | (i) | `/upload/<batch>` on the way (red); `/upload`, `/upload?lang=en` keep the old rule |
@@ -92,7 +92,7 @@ Not carrying it: `/login`, `/welcome`, `/c/<id>`, `/consent/<id>`, `/settings`, 
 | test_results_files.py::test_tc037_*, test_tc027_044_* | `"<script" not in t` | `one_live_script(t)` / `live_rules(t)` | (i) | results pages |
 | test_results_files.py::test_tc039_style_and_csp_are_those_of_the_base | csp of every listed page == the first | each == base (+ `ADD` where the page reloads itself) | (i) | `/`, outputs, waiting download; settings and usage unchanged |
 | test_su_usd.py::test_tc072_run_page_limits | `"<script" not in t` | `one_live_script(t)` | (i) | run pages |
-| test_clean_page.py::test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was | golden hash of the whole board | golden hash of the board with the live additions taken off (`strip_live`) | meaning kept, see note 1 | `/` |
+| test_clean_page.py::test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was | golden hash of the whole board (`snap`) | the same golden hashes, of the board with the three additions of live-sync taken off (`snap_board`, used at this one place only; `snap` for the `/c/` confirmation pages is exactly as before and their hashes pass unchanged) | accepted by the lead | `/` |
 | test_clean_page.py::test_no_inline_style_*_same_headers_as_a_launch_page | each header == the confirmation page's | CSP of the board == the confirmation page's + `ADD` | (ii)/(i) | board (in scope); `/c/` pages unchanged |
 | test_web_live_sync.py | (new) | | | |
 | package-data pins: test_guidance.py::test_tc406_*, test_module_sources.py::test_package_data_gets_exactly_one_more_glob | `"data/*.json", "data/*.json.gz"]` | `..., "data/*.js"]` | R-E | `pyproject.toml` |
@@ -131,6 +131,10 @@ Run `python3 scripts/dev/check_live_sync.py --platform-python ~/abf-venv/bin/pyt
 | TC-034 | pass: 2 page loads in 35 s with scripts off, 0 live asks |
 | TC-035 | pass: 1 page load in 35 s with scripts on |
 | TC-040 | pass: 32 requests, 28 to the live routes, all same-origin GET |
+| S3 | pass: another figure arrived between the version and the content; the page ended equal to a fresh load (`fig6, fig5, s3a, s3b, fig3, fig1, fig2`), no duplicate, 2 content asks |
+| DIRTY | pass: a box still holding the person's text stayed; a box changed back was replaced |
+
+After the acceptance round the whole script (18 cases) was run again from a clean platform: 18 of 18 pass. (A first run of the new cases failed TC-014 because the script itself published the S3 figures in several earlier cases; fixed in the script.)
 
 (TC-040 was re-run alone after the script changed it to a launch page nobody had answered; the other fifteen are from the full run.) Playwright's string-waiting calls evaluate strings and the pages forbid `unsafe-eval`, so the script polls with `page.evaluate` (`until`); a plain `time.sleep` held back the page events and read zero, so waits go through `page.wait_for_timeout` (`nap`).
 
@@ -150,6 +154,35 @@ Run `python3 scripts/dev/check_live_sync.py --platform-python ~/abf-venv/bin/pyt
 - `web_board.py` is not in `git diff origin/v3...HEAD --name-only` (a test of another feature requires it).
 - `spec`-like files `plan.md`, `test-case.md`, `test-case-overview.md`: unchanged since the contract commit.
 - No test I added or rewrote compares with a base (`merge-base`, `git diff`, `git show`, `pytest.skip`): checked by grep.
+
+## After the acceptance review (lead's list A1-A11, S1-S3, N6, N7, dirty)
+
+| item | test (platform/tests/test_web_live_sync.py unless named) | implementation |
+|---|---|---|
+| A1 | test_web_fixes_1.py::test_f08_constraints_hold, the `t.count("<style>") == 1` clause is back in force | tests only |
+| A2 | test_web_status_squares_3.py::test_ss05_constraints, both clauses back in force; the whole loop (including downstream and `/settings`) runs `live_rules` | tests only |
+| A3 | test_clean_page.py: `snap` is as it was; `snap_board` is used at the board line only; the `/c/` hashes are unchanged and pass | tests only |
+| A4 | `test_tc016_the_launch_edit_and_upload_pages_have_regions_too` (`check_regions`: every control and every form is in exactly one region or is a container form; no overlap; fixed names) for the launch page (loading), the resume edit page (loading) and the upload progress page | `web_live._container` |
+| A5 | `test_tc046_the_login_and_confirmation_pages_have_no_script_and_todays_policy`: the login page and the confirmation page of a real launch request (`/c/<id>`, both languages): no `<script`, no `<noscript`, CSP == the literal string | tests only |
+| A6 | `test_tc044_tc046_*`, `test_tc044_welcome_consent_figure_diagram_and_ready_preview_pages_have_none`, `test_tc044_ready_preview_pages_have_no_script`: `/welcome`, `/consent/<id>`, `/c/<id>`, `/run/figure`, `/launch/diagram`, a ready picture page and a ready report page: no script, no `script-src`, no `connect-src` | tests only |
+| A7 | `test_tc045_the_report_policy_is_unchanged` and `test_tc045_the_page_policies_are_unchanged` (two assertions that each hold alone; the report keeps its own `connect-src 'none'`) | tests only |
+| A8 | `test_tc063_the_pages_are_the_pages_of_before_but_for_the_three_additions`: nine pages (board, running stage, results stage, Outputs tab, finished stage, English board, empty board, launch loading, launch plain) hashed after `strip_live` against digests made by origin/v3 a4133ab6 | `platform/tests/live_golden.py` |
+| A9 | `test_tc061_a_look_at_a_page_that_did_not_change_is_answered_at_once_and_whole` (answer under 3 s, `content-length`, no streaming) | tests only |
+| A10 | the header docstring of the test file says three real routes | tests only |
+| A11 | this table and the rewritten-tests table above | |
+| S1 | `test_s1_every_id_of_the_gallery_page_is_unique_and_is_made_of_the_figure_name` (five names, every `id` unique, `pick-<name>`, `del-<name>`, `form=` and `for=` match); `live.js` selects nothing by id | `web_finished._key` is the figure's own name |
+| S2 (a) | `test_s2_a_page_asked_about_twice_is_read_once` | `web_live.layout` memory (16 pages, by sha1 of the text; `decorate` stores the final text with shifted offsets); `web._html` is async and parses in the thread pool; the looks parse in the thread pool |
+| S2 (b) | `test_s2_the_floor_of_one_second_and_the_script_is_not_told_to_reload` (429 + `Retry-After: 1`, `{"s":"slow"}`, nothing run, another page or another route is another question, passes again after 1.5 s; `live.js` treats 429 as "ask again at the usual time") | `web.py` `too_soon`, `web_live.LOOK_FLOOR_SECONDS`; key = (login, route, page) |
+| S2 (c) | `test_s2_the_memories_of_the_server_are_bounded`, `test_s2_the_reload_limit_still_holds_*` | `web_live.Recent` (cap 4096, oldest out) for both the 15-second memory and the floor |
+| S3 | browser case `S3` of `scripts/dev/check_live_sync.py`: another figure arrives between the version and the content; the page ends equal to a fresh load, no duplicate, 2 content asks | `/live/content` returns `v` (the version of each region); `live.js` throws an answer away whose versions are not the planned ones and asks again at the next turn; after two such answers in a row it loads the page whole (a deviation from "limited to 15 s": the 15-second limit is the server's for its own reload answers; this reload is the script's own and needs two bad answers at least 2 s apart) |
+| N6 | `test_n6_a_page_nested_too_deeply_goes_out_as_it_was` (3000 levels: the page is returned byte for byte, refresh as it was, no script) | `web_live.decorate` catches `RecursionError`; the looks answer "reload" (rate limited) |
+| N7 (a) | `test_n7a_the_other_tabs_of_a_succeeded_run_are_not_reloaded_for_a_listing_nobody_asks_for` | `web.py read_outputs`: `would_queue` counts only on the Outputs tab |
+| N7 (b) | `test_n7b_a_batch_whose_registration_fails_is_registered_once_per_page_load_not_per_look`: looks never register; the one real load tries once; the page that shows the failure has no script and no refresh, so nothing reloads it again. Today the registration is tried once per page load too, so the frequency is not higher. | no code change |
+| dirty | browser case `DIRTY` (a box changed back is released and its region replaced; a box still holding the person's text stays) | `live.js`: the `dirty` set is gone; a control is touched only while it differs from the server's value (`defaultValue`, `defaultChecked`, a drop-down against the option it showed when it came) |
+
+TC-063 golden: made with `git archive origin/v3 | tar -x -C /tmp/base3` (a4133ab6, before any live-sync code), `cp platform/tests/live_golden.py` and a three-line pytest that prints `board_digests(World(...))` and `launch_digests(...)` into `/tmp/base3/platform/tests/`, then `python -m pytest -s` there (twice, 70 s apart: the same digests). The scenario has fixed names, fixed times and a fixed clock; the launch time shown on the finished stage is set by the scenario (a first golden made at another minute differed: fixed).
+
+A real defect found on the way: a figure's ids were made of a hash of its name; they are now the name itself. A helper edit during this round briefly corrupted `web_finished.py` (a search for `def _figure` hit `def _figures_row`); the file was restored from origin/v3 and the three changes reapplied; `git diff origin/v3 -- platform/abf_platform/web_finished.py` is 12 insertions, 4 deletions.
 
 ## Results of the platform tests (WSL, `~/abf-venv`, no `-x`)
 

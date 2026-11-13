@@ -36,8 +36,14 @@ def mask(text):
 
 
 def snap(r):
+    return (r.status_code, hashlib.sha256(mask(r.text).encode("utf-8")).hexdigest()[:16])
+
+
+def snap_board(r):
+    """The board as before live-sync: the board now carries the one script, so the three additions of live-sync (the <noscript> around the refresh, the script tag,
+    the body's data-live attributes) are taken off before the old hash is compared (the confirmation pages keep `snap`, unchanged)."""
     from helpers import strip_live
-    return (r.status_code, hashlib.sha256(mask(strip_live(r.text)).encode("utf-8")).hexdigest()[:16])      # live-sync: the pin is about the rest of the page, so the one script and its marks are taken off
+    return snap(type("R", (), {"status_code": r.status_code, "text": strip_live(r.text)})())
 
 
 def tables(w):
@@ -420,7 +426,7 @@ def test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was(w, statu
         with con:
             con.execute("UPDATE runs SET last_message_at = ?", (FIXED - 10,))
         con.close()
-    got = {"%s-%s" % (status, lang): snap(board(w, "ann", lang)) for lang in ("zh", "en")}
+    got = {"%s-%s" % (status, lang): snap_board(board(w, "ann", lang)) for lang in ("zh", "en")}
     assert got == {k: v for k, v in BASE_BOARD.items() if k.startswith(status)}, repr(got)
 
 

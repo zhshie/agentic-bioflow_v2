@@ -1,7 +1,7 @@
 # Nothing existing: tests of live-sync (the one static script that keeps the pages that reloaded every 15 seconds up to date); the script, its two read-only
 # routes and the region marks are ours (specs/live-sync/plan.md).
 """live-sync. Test case ids (TC-001 ...) refer to specs/live-sync/test-case.md. The browser cases (TC-001, 004 ... 040) are in scripts/dev/check_live_sync.py.
-The two live routes are answered by a middleware of the web app, not by Starlette routes: the exact route lists of other tests stay true (see the ledger)."""
+The script and the two live looks are three real routes of the web app (`/static/live.js`, `/live/version`, `/live/content`); the route pins of other tests gained exactly those three."""
 import html
 import json
 import re
@@ -56,7 +56,15 @@ def scene(w):
     return ann, bob, ids, login(w, "ann"), login(w, "bob")
 
 
+def tick(c, seconds=2):
+    """The looks have a floor of one second between two asks about the same page: a test that asks twice moves the clock of the app first."""
+    clock = getattr(c.app.state, "clock", None)
+    if hasattr(clock, "t"):
+        clock.t += seconds
+
+
 def version(c, u, k=None, **kw):
+    tick(c)
     params = {"u": u}
     if k:
         params["k"] = k
@@ -64,6 +72,7 @@ def version(c, u, k=None, **kw):
 
 
 def content(c, u, names):
+    tick(c)
     return c.get("/live/content?" + urllib.parse.urlencode({"u": u, "n": ",".join(names)}))
 
 
@@ -186,8 +195,14 @@ def test_tc015_tc033_tc037_tc041_tc042_tc043_board_pages(w):
     assert "relist" not in t.meta_in_noscript[0] and t.meta_in_noscript[0].startswith("15;url=")
 
 
+def no_script_no_sources(r, label):
+    csp = r.headers["content-security-policy"]
+    assert "script-src" not in csp and "connect-src" not in csp, label
+    return csp
+
+
 def test_tc044_tc046_pages_that_stay_without_a_script(w):
-    # TC-044, TC-046, TC-045
+    # TC-044, TC-046
     ann, ids, c, cz = pages_in_scope(w)
     anon = w.web()
     fixed = {"/login": anon, "/settings": c, "/usage": c, "/upload": c, "/?run=%s&stage=downstream" % ids["ok"]: c, "/?run=nothing-at-all": c,
@@ -196,34 +211,83 @@ def test_tc044_tc046_pages_that_stay_without_a_script(w):
         r = who.get(url)
         assert r.status_code in (200, 404), url
         t = tags(r.text)
-        assert t.scripts == 0 and t.noscript == 0 and "<noscript" not in r.text and "script-src" not in r.headers["content-security-policy"], url
-        assert "connect-src" not in r.headers["content-security-policy"], url
-        assert r.headers["content-security-policy"] in (BASE, IMG), url
+        assert t.scripts == 0 and t.noscript == 0 and "<noscript" not in r.text, url
+        assert no_script_no_sources(r, url) in (BASE, IMG), url
     log = c.get("/run/log?run=%s&task=t&which=err" % ids["bad"])
-    assert "<script" not in log.text and "script-src" not in log.headers["content-security-policy"]
-    # the confirmation page and the login page: no script anywhere, the policy is today's
-    c2 = w.web()
-    assert c2.get("/login").headers["content-security-policy"] == BASE and "<script" not in c2.get("/login").text
-    from abf_platform import actions
-    got = w.launch(caller=ann, answer=None) if False else None
-    assert got is None
+    assert "<script" not in log.text and "<noscript" not in log.text and no_script_no_sources(log, "run log") == BASE
     # the board with a refused-button line is the answer to a POST: no script, no refresh
-    form = re.search(r'<form class="act" method="post" action="/act/(resume|relaunch)">.*?name="run" value="([^"]+)".*?name="csrf" value="([^"]+)"',
-                     c.get("/?run=" + ids["bad"]).text, re.S)
-    assert form
     r = c.post("/act/cancel", data={"run": ids["ok"], "csrf": c.app.state.csrf_token(c.cookies.get("abf_web"), "act:" + ids["ok"])})
-    assert "<script" not in r.text and "script-src" not in r.headers["content-security-policy"] and "refresh" not in r.text
+    assert "<script" not in r.text and "<noscript" not in r.text and "refresh" not in r.text and no_script_no_sources(r, "flash board") == BASE
 
 
-def test_tc045_the_report_and_preview_policies_are_unchanged():
-    # TC-045
+def test_tc046_the_login_and_confirmation_pages_have_no_script_and_todays_policy(w):
+    # TC-046: the login page, and the confirmation page of a real launch request
+    ann, ids, c, cz = pages_in_scope(w)
+    login_page = w.web().get("/login")
+    assert "<script" not in login_page.text and "<noscript" not in login_page.text and login_page.headers["content-security-policy"] == BASE
+    got = w.launch(caller=ann, run="run-conf")
+    assert got.get("id"), got
+    for url in ("/c/" + got["id"], "/c/%s?lang=en" % got["id"]):
+        r = c.get(url)
+        assert r.status_code == 200 and "<script" not in r.text and "<noscript" not in r.text, url
+        assert r.headers["content-security-policy"] == BASE, url
+
+
+def test_tc044_welcome_consent_figure_diagram_and_ready_preview_pages_have_none(w):
+    # TC-044: the rest of the pages the contract names
+    from test_publish_figure import call, fig, press
+    from test_temp_password import login_temp
+    from test_web_board import consent_page
+    ann, ids, c, cz = pages_in_scope(w)
+    ct, _r, _ = login_temp(w, "bob")      # a login made with a temporary password sees /welcome
+    welcome = ct.get("/welcome")
+    assert welcome.status_code == 200 and "<script" not in welcome.text and "<noscript" not in welcome.text and no_script_no_sources(welcome, "welcome") == BASE
+    consent = consent_page(w, "ann")
+    assert "<script" not in consent.text and "<noscript" not in consent.text
+    no_script_no_sources(consent, "consent")
+    press(w, "ann", call(w, ann, ids["ok"], [fig("a.png", PNG)])["request_id"])
+    got = call(w, ann, ids["ok"], [fig("b.png", PNG)])
+    conf = c.get("/c/" + got["request_id"])
+    assert "<script" not in conf.text and "<noscript" not in conf.text and no_script_no_sources(conf, "confirmation") == BASE
+    figure = c.get("/run/figure?run=%s&name=a.png" % ids["ok"])
+    assert figure.status_code == 200
+    csp = no_script_no_sources(figure, "figure")
+    assert csp.startswith("sandbox; default-src 'none'")
+    diagram = c.get("/launch/diagram?pipeline=nf-core/ampliseq&revision=2.18.0")
+    assert diagram.status_code in (200, 404) and "<script" not in diagram.text
+    no_script_no_sources(diagram, "diagram")
+
+
+def test_tc044_ready_preview_pages_have_no_script(w):
+    # TC-044: a ready picture page and a ready report page (a report keeps its own sandbox policy, TC-045)
+    from test_results_files import world
+    from test_web_result_viewer import HTML, PNG as VPNG, answered, purl, ready
+    ann, c, rid = world(w)
+    pic = ready(w, c, rid, "plot.png", VPNG)
+    assert pic.status_code == 200 and "<script" not in pic.text and "<noscript" not in pic.text
+    no_script_no_sources(pic, "picture page")
+    answered(w, c, rid, "multiqc/multiqc_report.html", HTML)
+    rep = c.get(purl(rid, "multiqc/multiqc_report.html"))
+    assert rep.status_code == 200 and "<script" not in rep.text and "<noscript" not in rep.text
+    no_script_no_sources(rep, "report page")
+    assert "frame-src 'self'" in rep.headers["content-security-policy"]
+
+
+def test_tc045_the_report_policy_is_unchanged():
+    # TC-045: the report inside the iframe keeps today's whole policy
     from abf_platform import web, web_preview
-    assert web_preview.report_headers(web._HEADERS)["Content-Security-Policy"] == (
-        "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; "
-        "frame-ancestors 'self'; base-uri 'none'; form-action 'none'") or "sandbox allow-scripts" in web_preview.report_headers(web._HEADERS)["Content-Security-Policy"]
+    report = web_preview.report_headers(web._HEADERS)["Content-Security-Policy"]
+    assert report.startswith("sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:")
+    assert "connect-src 'none'" in report and "script-src 'self'" not in report and "connect-src 'self'" not in report
+
+
+def test_tc045_the_page_policies_are_unchanged():
+    # TC-045: the preview page keeps frame-src and img-src; the base sets are today's strings
+    from abf_platform import web, web_preview
     assert web._HEADERS["Content-Security-Policy"] == BASE
     assert web.LAUNCH_HEADERS["Content-Security-Policy"] == IMG and web.FINISHED_HEADERS["Content-Security-Policy"] == IMG
     assert web_preview.page_headers(web._HEADERS, "html")["Content-Security-Policy"] == BASE + "; frame-src 'self'"
+    assert web_preview.page_headers(web._HEADERS, "png")["Content-Security-Policy"].startswith("default-src 'none'; img-src 'self'; ")
 
 
 def test_tc015_the_finished_stage_with_figures_carries_the_script_without_a_refresh(w):
@@ -240,6 +304,26 @@ def test_tc015_the_finished_stage_with_figures_carries_the_script_without_a_refr
 
 
 # ---- the regions -------------------------------------------------------------------------------------------------------------------
+
+def check_regions(text, label):
+    """TC-016 on one page: regions do not overlap, every form control (and every form) lies inside exactly one region, names are `<fixed word>-<number>`."""
+    lay = live().layout(text)
+    spans = sorted((r["start"], r["end"]) for cont in lay for r in cont["regions"])
+    assert spans, label
+    assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:])), "regions overlap: " + label
+    controls = [m.start() for m in re.finditer(r"<(form|input|textarea|select|button)\b", text)]
+    assert controls, label
+    for pos in controls:
+        tag = text[pos:text.index(">", pos) + 1]
+        if tag.startswith("<form") and ('class="lform"' in tag or 'action="/run/figures/pack"' in tag):
+            continue      # a form that is itself a container: the controls inside it are the ones that must each lie in one region
+        assert sum(1 for s_, e in spans if s_ <= pos < e) == 1, (label, text[pos:pos + 60])
+    for cont in lay:
+        assert re.fullmatch(r"[a-z]+", cont["n"]), cont["n"]
+        for i, r in enumerate(cont["regions"]):
+            assert r["name"] == "%s-%d" % (cont["n"], i) and re.fullmatch(r"[a-z]+-\d+", r["name"]), r["name"]
+    return lay
+
 
 def test_tc016_every_control_is_in_exactly_one_region_and_regions_do_not_nest(w):
     # TC-016
@@ -259,10 +343,34 @@ def test_tc016_every_control_is_in_exactly_one_region_and_regions_do_not_nest(w)
                 assert r["name"] == "%s-%d" % (cont["n"], i) and "ann" not in r["name"]
 
 
-def test_tc016_the_launch_edit_and_upload_pages_have_regions_too(w):
-    # TC-016 (the pages with forms)
-    from test_web_guided_launch import ready, rig  # noqa: F401
-    from test_web_guided_launch_2 import loading_files
+def test_tc016_the_launch_edit_and_upload_pages_have_regions_too(tmp_path, monkeypatch):
+    # TC-016: the pages that are made of forms
+    from test_web_guided_launch import SEL, Rig, ready
+    from test_web_guided_launch_2 import Fake, loading_files
+    from test_web_resume_edit import A, edit_url, make_run
+    from test_web_upload import Up
+    (tmp_path / "rig").mkdir()
+    r = Rig(tmp_path / "rig", monkeypatch)
+    f = Fake()
+    f.files = loading_files()
+    monkeypatch.setattr(A(), "pipeline_files", f.pipeline_files)
+    monkeypatch.setattr(A(), "latest_release", f.latest_release)
+    ann, c = ready(r)
+    launch = c.get(SEL)
+    assert tags(launch.text).scripts == 1
+    lay = check_regions(launch.text, "launch")
+    assert {"form", "steps"} <= {x["n"] for x in lay}      # the launch form and its six steps are containers of their own
+    rid = make_run(r, ann)
+    edit = c.get(edit_url(rid))
+    assert tags(edit.text).scripts == 1
+    assert "form" in {x["n"] for x in check_regions(edit.text, "resume edit")}
+    (tmp_path / "up").mkdir()
+    up = Up(tmp_path / "up", monkeypatch)
+    cu = up.client()
+    batch = up.ok(cu)
+    prog = cu.get("/upload/" + batch)
+    assert tags(prog.text).scripts == 1
+    check_regions(prog.text, "upload progress")
 
 
 # ---- the version and the content ----------------------------------------------------------------------------------------------------
@@ -567,16 +675,31 @@ def test_tc064_tc067_tc062_no_new_route_tool_or_dependency(w):
     assert not [n for n in asyncio.run(tools()) if "live" in n or "sync" in n]
 
 
-def test_tc063_in_scope_pages_differ_from_before_only_by_the_marks(w):
-    # TC-063
-    ann, ids, c, cz = pages_in_scope(w)
-    for url in ("/?run=" + ids["run"], "/?run=%s&stage=results&tab=outputs" % ids["ok"], "/"):
-        text = (cz if url == "/" else c).get(url).text
-        old = re.sub(r"<noscript>(<meta [^>]*>)</noscript>", r"\1", text)
-        old = old.replace(SCRIPT, "")
-        old = re.sub(r"<body [^>]*>", "<body>", old, count=1)
-        assert META15 in old or 'http-equiv="refresh" content="15;url=' in old
-        assert "<script" not in old and "<noscript" not in old and "data-live" not in old
+GOLDEN = {      # made by the code of origin/v3 a4133ab6 (before live-sync) with platform/tests/live_golden.py, see specs/live-sync/ledger.md
+    "board": "949cc0accd27e35a", "empty board": "4e08cc15129a935a", "english board": "aff9ccf0f92f637b", "finished stage": "5b2547cf2cbf0528",
+    "launch loading": "41b46337ab2f7cb1", "launch plain": "8c290402030193d8", "outputs tab": "5f60e6a387449cae", "results stage": "0ae8e77c99924dae",
+    "running stage": "758a040ce54766e6"}
+
+
+def test_tc063_the_pages_are_the_pages_of_before_but_for_the_three_additions(tmp_path, monkeypatch):
+    # TC-063: board, running stage, results stage, Outputs tab, finished stage, empty board and the launch pages, each compared with the digest that origin/v3 made of it
+    import live_golden
+    from helpers import strip_live
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    seen = {}
+
+    real = live_golden.digest
+
+    def digest_stripped(text):
+        return real(strip_live(text))
+    monkeypatch.setattr(live_golden, "digest", digest_stripped)
+    try:
+        seen.update(live_golden.board_digests(World(tmp_path / "a", monkeypatch)))
+        seen.update(live_golden.launch_digests(tmp_path / "b", monkeypatch))
+    finally:
+        monkeypatch.setattr(live_golden, "digest", real)
+    assert seen == GOLDEN
 
 
 # ---- R-C: the whole data folder and the queue are the same before and after a look, for every page that carries the script ------------------
@@ -649,3 +772,137 @@ def test_rc_an_upload_that_is_complete_but_not_registered_stays_so(tmp_path, mon
     before = whole(up.w)
     look_all(c, u, extra=("",))
     assert whole(up.w) == before and up.datasets() == []
+
+
+# ---- TC-061: a look that finds nothing new is quick -------------------------------------------------------------------------------------
+
+def test_tc061_a_look_at_a_page_that_did_not_change_is_answered_at_once_and_whole(w):
+    # TC-061: one question, one answer (no stream); a generous bound so that a slow machine does not make it flaky
+    ann, bob, ids, c, cb = scene(w)
+    u = "/?run=" + ids["run"]
+    version(c, u)
+    for _ in range(3):
+        began = time.monotonic()
+        r = version(c, u)
+        took = time.monotonic() - began
+        assert r.status_code == 200 and r.json()["s"] == "ok" and took < 3.0, took
+        assert "content-length" in r.headers and "transfer-encoding" not in r.headers
+
+
+# ---- S2: the cost of the looks ------------------------------------------------------------------------------------------------------
+
+def test_s2_a_page_asked_about_twice_is_read_once(w, monkeypatch):
+    # S2 (a): the version and the content of the same text parse it once
+    ann, bob, ids, c, cb = scene(w)
+    u = "/?run=" + ids["run"]
+    calls = []
+    real = live()._layout
+    monkeypatch.setattr(live(), "_layout", lambda doc: calls.append(len(doc)) or real(doc))
+    live()._MEMO.clear()
+    c.get(u)                      # the real page: decorated once
+    n = len(calls)
+    assert n == 1
+    v = version(c, u).json()
+    assert content(c, u, names_of(v)[:2]).json()["s"] == "ok"
+    assert len(calls) == n, "the look parsed the same text again"
+
+
+def test_s2_the_floor_of_one_second_and_the_script_is_not_told_to_reload(w):
+    # S2 (b): the same login asking the same route about the same page inside a second is told to slow down (429, Retry-After), nothing is run
+    ann, bob, ids, c, cb = scene(w)
+    u = "/?run=" + ids["run"]
+    first = c.get("/live/version?" + urllib.parse.urlencode({"u": u}))
+    assert first.status_code == 200
+    jobs = len(w.sql("SELECT * FROM jobs"))
+    second = c.get("/live/version?" + urllib.parse.urlencode({"u": u}))
+    assert second.status_code == 429 and second.headers["retry-after"] == "1" and second.json() == {"s": "slow"}
+    assert second.headers["cache-control"] == "private, no-store" and len(w.sql("SELECT * FROM jobs")) == jobs
+    other = c.get("/live/version?" + urllib.parse.urlencode({"u": "/?run=" + ids["bad"]}))      # another page is another question
+    assert other.status_code == 200
+    kind = c.get("/live/content?" + urllib.parse.urlencode({"u": u, "n": "mid-0"}))      # another route is another question
+    assert kind.status_code == 200
+    c.app.state.clock.t += 1.5
+    assert c.get("/live/version?" + urllib.parse.urlencode({"u": u})).status_code == 200
+    js = (PLATFORM_DIR / "abf_platform" / "data" / "live.js").read_text(encoding="utf-8")
+    assert "429" in js and "slow" in js      # the script treats it as "ask again at the usual time", not as a failure and not as a reload
+
+
+def test_s2_the_memories_of_the_server_are_bounded():
+    # S2 (c): a flood of different keys cannot make the 15-second memory or the 1-second floor grow without end
+    recent = live().Recent(cap=50)
+    for i in range(1000):
+        recent.put(("u", "page-%d" % i), float(i))
+    assert len(recent) == 50 and recent.get(("u", "page-999")) == 999.0 and recent.get(("u", "page-0")) is None
+
+
+def test_s2_the_reload_limit_still_holds_for_a_page_while_others_flood_the_memory(w, monkeypatch):
+    # S2 (c): with a tiny memory the newest page keeps its 15-second limit
+    ann, bob, ids, c, cb = scene(w)
+    u = "/?run=%s&stage=results&tab=outputs" % ids["ok"]
+    assert version(c, u).json() == {"s": "reload"}
+    assert version(c, u).json()["s"] == "ok"      # 2 seconds later: not again
+
+
+# ---- N6: a page nested too deeply --------------------------------------------------------------------------------------------------
+
+def test_n6_a_page_nested_too_deeply_goes_out_as_it_was():
+    # N6: no 500; the page is sent whole, without the script and with its refresh as it always was
+    deep = "<div>" * 3000 + "x" + "</div>" * 3000
+    doc = ('<!doctype html><html><head><meta http-equiv="refresh" content="15"></head><body><main class="narrow">%s</main></body></html>' % deep)
+    headers = {"Content-Security-Policy": BASE}
+    out, given = live().decorate(doc, headers)
+    assert out == doc and given == headers
+    assert "<script" not in out and "<noscript" not in out and 'http-equiv="refresh"' in out
+
+
+# ---- N7: the looks ask no more often than today -------------------------------------------------------------------------------------
+
+def test_n7a_the_other_tabs_of_a_succeeded_run_are_not_reloaded_for_a_listing_nobody_asks_for(w):
+    # N7 (a): only the Outputs tab asks the site; a look at the Info tab says "ok", never "reload"
+    ann, bob, ids, c, cb = scene(w)
+    for tab in ("info", "tasks", "logs"):
+        v = version(c, "/?run=%s&stage=results&tab=%s" % (ids["ok"], tab))
+        assert v.status_code == 200 and v.json()["s"] == "ok", tab
+    assert version(c, "/?run=%s&stage=results&tab=outputs" % ids["ok"]).json() == {"s": "reload"}      # the Outputs tab does ask
+
+
+def test_n7b_a_batch_whose_registration_fails_is_registered_once_per_page_load_not_per_look(tmp_path, monkeypatch):
+    # N7 (b): today the registration is tried when the page is loaded; a look never tries it, and the page that shows the failure has no script (so no more reloads)
+    from abf_platform.actions import uploads
+    from test_web_upload import Up
+    up = Up(tmp_path, monkeypatch)
+    c = up.client()
+    batch = up.ok(c)
+    for j in up.jobs():
+        up.finish(j["id"])
+    tries = []
+
+    def refuse(*a, **kw):
+        tries.append(1)
+        return {"ok": False, "message": "no"}
+    monkeypatch.setattr(uploads, "_register", refuse)
+    u = "/upload/" + batch
+    for _ in range(4):
+        assert version(c, u).status_code == 200
+    assert tries == []                      # looks never register
+    page = c.get(u)                         # the one real load: one try
+    assert len(tries) == 1 and "<script" not in page.text and 'http-equiv="refresh"' not in page.text      # the failure page has no script: nothing reloads it again
+    assert tries == [1]
+
+
+# ---- S1: the ids of the gallery ----------------------------------------------------------------------------------------------------
+
+def test_s1_every_id_of_the_gallery_page_is_unique_and_is_made_of_the_figure_name(w):
+    # S1: the id of a figure's tick box and delete form is made of its name (a hash could be made to collide; the delete button would then act on the wrong form)
+    from test_publish_figure import call, press
+    ann, bob, ids, c, cb = scene(w)
+    names = ["a.png", "a-png.png", "a_png.png", "b.png", "x.y.z.png"]
+    b64 = __import__("base64").b64encode(PNG).decode()
+    press(w, "ann", call(w, ann, ids["ok"], [{"filename": n, "content_base64": b64, "code": "1\n", "params": "k=1"} for n in names])["request_id"])
+    page = c.get("/?run=%s&stage=finished" % ids["ok"]).text
+    found = re.findall(r'\sid="([^"]+)"', page)
+    assert len(found) == len(set(found)), [i for i in found if found.count(i) > 1]
+    for n in names:
+        assert "pick-" + n in found and "del-" + n in found, n
+        assert 'form="del-%s"' % n in page and 'for="pick-%s"' % n in page
+    assert len({"pick-" + n for n in names} | {"del-" + n for n in names}) == 2 * len(names)

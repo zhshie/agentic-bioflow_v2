@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ui_check import free_port  # noqa: E402  (one helper, not two copies)
 
 USER, PASSWORD = "alice", "correct horse battery"
-CASES = ["TC-001", "TC-004", "TC-005", "TC-006", "TC-007", "TC-008", "TC-009", "TC-011", "TC-014", "TC-017", "TC-018", "TC-019", "TC-032", "TC-034", "TC-035", "TC-040"]
+CASES = ["TC-001", "TC-004", "TC-005", "TC-006", "TC-007", "TC-008", "TC-009", "TC-011", "TC-014", "TC-017", "TC-018", "TC-019", "TC-032", "TC-034", "TC-035", "TC-040", "S3", "DIRTY"]
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000000020001e221bc330000000049454e44ae426082")
 SCHEMA = json.dumps({"$schema": "https://json-schema.org/draft/2020-12/schema", "title": "t", "type": "object",
                      "$defs": {"opts": {"title": "Options", "type": "object", "properties": {
@@ -472,6 +472,58 @@ def tc040(browser, plat):
     return {"TC-040": (not others and len(live) >= 20, "%d requests, %d of them to the live routes; not same-origin GET: %s" % (len(watch.requests), len(live), others[:3]))}
 
 
+def figures_of(page):
+    return page.evaluate("Array.from(document.querySelectorAll('input[name=fig]')).map(e => e.value)")
+
+
+def case_s3(browser, plat):
+    """S3: the page changes between the question and the answer: nothing may be put in the wrong place; the page ends equal to a fresh load."""
+    plat.publish("s3a.png", "s3b.png")      # figures of its own, so that the case also runs alone
+    ctx, page = login(browser, plat)
+    watch = Watch(page, plat.base)
+    page.goto(plat.base + "/?run=id-live-ok&stage=finished")
+    page.wait_for_selector("input[name=fig]")
+    before = figures_of(page)
+    done = []
+
+    def meddle(route, request):
+        if not done:      # the first content answer: another figure arrives first
+            done.append(1)
+            plat.publish("fig6.png")
+        route.continue_()
+    page.route("**/live/content*", meddle)
+    plat.publish("fig5.png")
+    until(page, "(n) => document.querySelectorAll('input[name=fig]').length >= n", len(before) + 2, timeout=20.0)
+    nap(page, 2)
+    got = figures_of(page)
+    fresh = ctx.new_page()
+    fresh.goto(plat.base + "/?run=id-live-ok&stage=finished")
+    fresh.wait_for_selector("input[name=fig]")
+    want = figures_of(fresh)
+    ctx.close()
+    asks = len(watch.live("content"))      # at least two: the first answer was not the one planned for and was thrown away
+    return {"S3": (got == want and len(set(got)) == len(got) and len(got) == len(before) + 2 and asks >= 2, "the page %s, a fresh load %s, %d content asks" % (got, want, asks))}
+
+
+def case_dirty(browser, plat):
+    """A box that was changed and changed back is not touched any more: its region is replaced when the server's content changes; one that still differs is kept."""
+    out = {}
+    for rev, text, name in (("2.20.0", "x", "kept"), ("2.21.0", "", "released")):
+        ctx, page = login(browser, plat)
+        page.goto(plat.base + "/launch?pipeline=nf-core/ampliseq&revision=%s&src=used" % rev)
+        page.wait_for_selector("input[name=run_name]")
+        sel = "textarea[name=params]"
+        page.evaluate("(t) => { const e = document.querySelector('textarea[name=params]'); e.value = 'x'; e.dispatchEvent(new Event('input', {bubbles: true})); e.value = t; e.dispatchEvent(new Event('input', {bubbles: true})); }", text)
+        before = page.evaluate("document.querySelector(\"details[data-step='5']\").textContent")
+        plat.answer_pipeline_files()
+        until(page, "(b) => document.querySelector(\"details[data-step='5']\").textContent !== b", before, timeout=6.0)
+        after = page.evaluate("document.querySelector(\"details[data-step='5']\").textContent")
+        value = page.evaluate("(q) => { const e = document.querySelector(q); return e ? e.value : null; }", sel)
+        out[name] = (after != before) if name == "released" else (after == before and value == "x")
+        ctx.close()
+    return {"DIRTY": (out["kept"] and out["released"], "a box still holding the person's text stayed (%s); a box changed back was replaced (%s)" % (out["kept"], out["released"]))}
+
+
 def need_playwright():
     try:
         from playwright.sync_api import sync_playwright
@@ -509,7 +561,7 @@ def main(argv=None):
                     (["TC-009"], lambda: tc009(browser, plat)), (["TC-011"], lambda: tc011(browser, plat)),
                     (["TC-014"], lambda: tc014(browser, plat)), (["TC-017", "TC-018", "TC-019"], lambda: launch_flow(browser, plat, want)),
                     (["TC-032"], lambda: tc032(browser, plat)), (["TC-034", "TC-035"], lambda: tc034_035(browser, plat, want)),
-                    (["TC-040"], lambda: tc040(browser, plat))]
+                    (["TC-040"], lambda: tc040(browser, plat)), (["S3"], lambda: case_s3(browser, plat)), (["DIRTY"], lambda: case_dirty(browser, plat))]
             for cases, run in plan:
                 if not want & set(cases):
                     continue

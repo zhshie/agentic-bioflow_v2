@@ -15,7 +15,8 @@
   var CAP = 30000;
   var goUrl = body.getAttribute('data-live-u') || '';
   var here = location.pathname + location.search;
-  var dirty = new WeakSet();
+  var firstPick = new WeakMap();      // the option each drop-down showed when the page (or the region) came
+  var mismatches = 0;
   var failures = 0;
   var timer = null;
   var busy = false;
@@ -66,11 +67,16 @@
     return /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && el.type !== 'hidden';
   }
 
+  /* A control is "touched" while it differs from what the server gave: a box ticked and then unticked, or text typed and then deleted, is not touched any more.
+     A drop-down shows its first option when none is marked, so it is compared with the option it showed when it came. */
+  function remember(root) {
+    var list = Array.prototype.slice.call(root.querySelectorAll('select'));
+    if (root.tagName === 'SELECT') { list.push(root); }
+    list.forEach(function (sel) { firstPick.set(sel, sel.selectedIndex); });
+  }
+
   function changed(c) {
-    if (c.tagName === 'SELECT') {
-      /* A drop-down shows its first option when none is marked, so "selected differs from the page" is true before anyone touched it: only a change event counts. */
-      return false;
-    }
+    if (c.tagName === 'SELECT') { return firstPick.has(c) && c.selectedIndex !== firstPick.get(c); }
     if (c.type === 'checkbox' || c.type === 'radio') { return c.checked !== c.defaultChecked; }
     return c.value !== c.defaultValue;
   }
@@ -82,7 +88,7 @@
     if (isControl(el)) { list.push(el); }
     for (var i = 0; i < list.length; i++) {
       if (list[i].type === 'hidden') { continue; }
-      if (dirty.has(list[i]) || changed(list[i])) { return true; }
+      if (changed(list[i])) { return true; }
     }
     return false;
   }
@@ -91,8 +97,7 @@
     return touched(document.body);
   }
 
-  document.addEventListener('input', function (e) { dirty.add(e.target); }, true);
-  document.addEventListener('change', function (e) { dirty.add(e.target); }, true);
+  remember(document.body);
 
   function go() {
     if (stopped) { return; }
@@ -104,7 +109,9 @@
   function parse(text) {
     var t = document.createElement('template');
     t.innerHTML = text;
-    return t.content.firstElementChild;
+    var el = t.content.firstElementChild;
+    if (el) { remember(el); }
+    return el;
   }
 
   /* The longest common run of versions keeps its elements; between two such runs the old and the new regions are paired in order (replace), the rest is
@@ -206,6 +213,7 @@
     fetch(url, options).then(function (r) {
       if (cut) { clearTimeout(cut); }
       if (r.type === 'opaqueredirect' || r.status === 401) { return { lost: true }; }
+      if (r.status === 429) { return { slow: true }; }      // asked too soon: not a failure, ask again at the usual time
       if (!r.ok) { throw new Error('status'); }
       return r.json();
     }).then(function (j) { then(null, j); }, function (e) { if (cut) { clearTimeout(cut); } then(e || new Error('failed'), null); });
@@ -216,7 +224,7 @@
   }
 
   function step(j, done) {
-    if (!j || j.lost) { done(j); return; }
+    if (!j || j.lost || j.slow) { done(j); return; }
     if (j.s === 'wait') { done(j); return; }
     if (j.s === 'reload') { go(); done(j); return; }
     if (j.s !== 'ok' || j.h !== base.h || j.c.length !== boxes.length) { go(); done(j); return; }
@@ -240,6 +248,10 @@
       });
       work.push({ box: box, nv: spec.v, ops: ops });
     }
+    var expect = {};
+    work.forEach(function (w) {
+      w.ops.forEach(function (op) { if (op.j !== undefined) { expect[w.box.n + '-' + op.j] = w.nv[op.j]; } });
+    });
     if (!work.length) { done(j); return; }
     var finish = function (got) {
       work.forEach(function (w) { apply(w.box, w.nv, w.ops, got); });
@@ -247,13 +259,24 @@
     };
     if (!wanted.length) { finish({}); return; }
     get('/live/content?u=' + encodeURIComponent(here) + '&n=' + encodeURIComponent(names(wanted)), function (err, c) {
-      if (err || !c || c.lost || c.s !== 'ok') {
-        if (c && c.lost) { done(c); return; }
+      if (err || !c || c.lost || c.slow || c.s !== 'ok') {
+        if (c && (c.lost || c.slow)) { done(c); return; }
         if (c && c.s === 'reload') { go(); }
         done(err ? { fail: true } : c);
         return;
       }
-      finish(c.r || {});
+      /* The page may have changed between the question and the answer: every region must come with the version that was planned for, else nothing is put in. */
+      var got = c.r || {};
+      var ver = c.v || {};
+      var bad = wanted.some(function (n) { return ver[n] !== expect[n]; });
+      if (bad) {
+        mismatches++;
+        if (mismatches >= 2) { go(); }
+        done({ retry: true });
+        return;
+      }
+      mismatches = 0;
+      finish(got);
     });
   }
 
@@ -279,6 +302,10 @@
         if (seen && seen.lost) {
           stopped = true;
           location.reload();
+          return;
+        }
+        if (seen && seen.slow) {
+          later(INTERVAL);
           return;
         }
         if (seen && seen.fail) {
