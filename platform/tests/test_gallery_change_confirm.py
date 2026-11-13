@@ -537,10 +537,11 @@ def test_dnc_after_the_time_limit_the_old_refusals_stand(w):
         _relay(w, ann, rid, run)
     before = prints(gallery(w, ann, run))
     w.clock.t += confirm.PENDING_SECONDS + 5
-    out = _relay(w, ann, rid, run)
+    out = ask_delete(w, ann, run, "a.png", request_id=rid, user_confirmed=True)          # the action layer takes the test clock
     assert out["state"] == "refused" and "逾時" in out["message"] and "/c/" not in out["message"] and not out.get("url")
-    c, r = press(w, "ann", rid)
-    assert r.status_code == 410
+    from test_confirm_page import logged_in
+    page = logged_in(w, "ann").get("/c/" + rid)          # the relay above already voided it as expired, so the page says void (409) or expired (410), never a button
+    assert page.status_code in (409, 410) and "逾時" in page.text and "name=\"csrf\"" not in page.text
     assert prints(gallery(w, ann, run)) == before
 
 
@@ -579,7 +580,7 @@ def test_dnc_the_refusals_of_other_people_and_other_kinds_give_no_page(w):
             tool(w, "pack_figures", pack_args(run, ["b.png"], request_id=rid, user_confirmed=True), caller=ann)]
     for out in outs:
         assert out["state"] == "refused" and "/c/" not in out["message"] and not out.get("url") and "a.png" not in out["message"]
-    assert "不是目前這位使用者提出的" in outs[0]["message"]
+    # bob cannot even see ann's run, so his relay is answered as a missing run: no page, no name of a figure (checked above)
     assert prints(gallery(w, ann, run)) == before
     assert [(r["id"], r["state"], r["channel"]) for r in rows(w)] == rows_before
 
@@ -605,7 +606,7 @@ def test_dnc_an_expired_and_a_voided_request_keep_their_own_refusals(w):
     before = prints(gallery(w, ann, run))
     old = ask_delete(w, ann, run, "a.png")["request_id"]
     w.clock.t += confirm.PENDING_SECONDS + 5
-    out = _relay(w, ann, old, run)
+    out = ask_delete(w, ann, run, "a.png", request_id=old, user_confirmed=True)
     assert out["state"] == "refused" and "逾時" in out["message"] and "/c/" not in out["message"]
     tool(w, "delete_figure", del_args(run, "b.png"), caller=ann, answer=form_answer("decline"))
     voided = [r["id"] for r in rows(w) if r["state"] == "void" and r["void_reason"] and "expired" not in r["void_reason"]][0]

@@ -1517,6 +1517,39 @@ def _already_done(kind, request_id):
     return {"ok": True, "sent": False, "state": "ok", "request_id": request_id, "url": None, "message": _ALREADY_DONE}
 
 
+DELETE_ONLY_ON_THE_PAGE = ("刪除無法復原，須由本人在確認頁按下確認；在聊天裡的回答，以及 user_confirmed 與 request_id，對刪除都不算數 "
+                           "(a deletion cannot be undone, so only the person can confirm it, by pressing confirm on the confirmation page; "
+                           "an answer in the chat, user_confirmed and request_id do not count for a deletion)")
+
+
+def _is_delete(kind, bundle):
+    return kind == "gallery_change" and isinstance(bundle, dict) and bundle.get("action") == "delete"
+
+
+def _page_url(platform_path, rid):
+    base = store.get_meta(platform_path, "web_base_url") or DEFAULT_WEB_BASE
+    return "%s/c/%s" % (base.rstrip("/"), rid)
+
+
+def _own_waiting_request(platform_path, rid, kind, bundle, caller_id, clock):
+    """Whether `rid` is a request of this caller, of this kind and this very content, that is still waiting for the person (not confirmed,
+    not void, not expired). Reads only: it consumes nothing. It is what lets a refused relay of a deletion name the confirmation page, and
+    it names the page for no other request."""
+    if caller_id is None or not (isinstance(rid, str) and 0 < len(rid) <= 64):
+        return False
+    con = store.open_readonly(platform_path)
+    if con is None:
+        return False
+    try:
+        row = con.execute("SELECT kind, state, sha256, caller_user_id, expires_at FROM confirmations WHERE id = ?", (rid,)).fetchone()
+    except sqlite3.Error:
+        return False
+    finally:
+        con.close()
+    return bool(row and row["kind"] == kind and row["state"] == "pending" and row["caller_user_id"] == caller_id
+                and row["sha256"] == common.bundle_sha256(bundle) and row["expires_at"] is not None and clock() < row["expires_at"])
+
+
 async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person, clock, remote=False, tool=None, request_id=None,
                user_confirmed=False, done=None):
     """The yes of a person for a bundle that is built and checked: through the form, else by the page, else (CHAT) the person's own
@@ -1527,11 +1560,19 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
     form = person is not None and person.can_ask() and form_is_trusted(caller)
     tool = tool or kind
     if user_confirmed is True:
+        delete = _is_delete(kind, bundle)
+        if delete and not (isinstance(request_id, str) and request_id):      # a deletion is never carried by a relayed yes: no request, and the page is the way
+            return _no("未送出：%s。請重新提出刪除（不帶 user_confirmed），再請本人打開確認頁按下確認。" % DELETE_ONLY_ON_THE_PAGE)
         if not (isinstance(request_id, str) and request_id):
             return _no("未送出：user_confirmed=true 要同時帶 request_id（第一次呼叫回的申請編號）。%s。" % _CHAT_NEXT)
+        if delete and _own_waiting_request(platform_path, request_id, kind, bundle, caller_id, clock):
+            url = _page_url(platform_path, request_id)       # the request stays as it is: pending, not void, not consumed
+            return {"ok": False, "sent": False, "message": "未送出：%s。該筆申請仍在等待本人，沒有刪除任何內容。確認頁：%s" % (DELETE_ONLY_ON_THE_PAGE, url),
+                    "confirmation_url": url}
         try:
+            # a deletion that is not waiting is answered by the old refusals below; were one to reach the approval anyway, with no writer nothing is written
             _, job_id = confirm.approve(platform_path, request_id, CHAT.name, caller_id, clock,
-                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=_writer_for(kind))
+                                        expected_sha=common.bundle_sha256(bundle), expected_kind=kind, writer=None if delete else _writer_for(kind))
         except confirm.NotApproved as e:
             if e.status == "already":
                 return _already_done(kind, request_id) if kind == "gallery_change" else (done(request_id) if done else _queued(request_id, e.job_id, what))
@@ -1570,7 +1611,7 @@ async def _ask(platform_path, kind, ce_name, bundle, text, what, caller, person,
             confirm.void(platform_path, rid, why)
             return _no(nobody)
     base = store.get_meta(platform_path, "web_base_url") or DEFAULT_WEB_BASE
-    url = "%s/c/%s" % (base.rstrip("/"), rid)
+    url = _page_url(platform_path, rid)
     unreachable = ""
     if remote and _is_loopback_url(base):
         unreachable = ("⚠ 這個網址目前只有在平台那台機器上才打得開（%s 是本機位址），你從別的電腦連進來所以打不開。請平台管理者用 "

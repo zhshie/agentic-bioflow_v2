@@ -870,10 +870,17 @@ async def _request_change(action, platform_path, *, run_id, arg, caller, person,
                           "在本人回覆之前不可自己填 true。 (open the address, log in as yourself and press the button; or, once the person has answered yes in the "
                           "chat, call %s again with the same arguments plus request_id=%s and user_confirmed=true; never set it true before they answer)"
                           % (url, rid, tool, tool, rid)}
+        if action == "delete":      # a deletion is confirmed on the confirmation page or in the form, never by a relayed yes: say only that
+            out["message"] = ("尚未變更 (nothing is changed yet)。刪除無法復原，須由本人在確認頁按下確認：請本人打開確認頁網址、用自己的帳號登入、看過內容後按下確認：%s "
+                              "——按下之後才會刪除，不必再呼叫一次；在聊天裡回答確認不算數。 (a deletion cannot be undone, so only the person can confirm it: open the "
+                              "address, log in as yourself and press confirm; no second call is needed, and a yes in the chat does not count)" % url)
         if got.get("message", "").startswith("⚠"):
             out["message"] = got["message"].split("還沒送出")[0] + out["message"]
         return out
-    return refused(got.get("message") or "未送出 (not sent)")
+    out = refused(got.get("message") or "未送出 (not sent)")
+    if got.get("confirmation_url"):      # the refused relay of a deletion names the page of that very request
+        out["url"] = got["confirmation_url"]
+    return out
 
 
 async def request_pack_figures(platform_path, *, run_id, names, caller=None, person=None, clock=time.time, remote=False, index_path=None,
