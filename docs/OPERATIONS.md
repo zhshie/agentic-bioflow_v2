@@ -259,11 +259,11 @@ leave them out: the default folder is used, as before.
       `systemctl --user restart abf-web`. A value that is not `http://127.0.0.1:<port>` or `http://localhost:<port>` stops `abf-web` with one
       line that names `ABF_STUDIO_URL` (`journalctl --user -u abf-web -n 20`).
    4. **Install and start the unit** (it runs as you, not as root, and listens on `127.0.0.1` only):
-      `cp deploy/systemd/abf-rstudio.service.in ~/.config/systemd/user/abf-rstudio.service`, `systemctl --user daemon-reload`,
+      copy `deploy/systemd/abf-rstudio.service.in` to `~/.config/systemd/user/abf-rstudio.service` (the name without `.in`), run `systemctl --user daemon-reload`, then
       `systemctl --user enable --now abf-rstudio`.
    5. **Look.** `systemctl --user status abf-rstudio` says `active (running)`. `ss -ltn` shows `127.0.0.1:8790`, and no line for port 8790 that begins with
       anything but `127.0.0.1`. Open the downstream page of a succeeded run: RStudio is in the middle of it. If the frame is blank, press "Open RStudio in a new tab" on the page.
-      Run `abf-platform studio-connect --server <the platform's address>` once on this computer, and make sure RStudio can find `abf-platform`
+      Run the `studio-connect` command once on this computer (the first of the terminal commands on the page), and make sure RStudio can find `abf-platform`
       (its folder in the `PATH` RStudio sees), so the two lines on the page work in the Console.
    - Stop: `systemctl --user stop abf-rstudio`. Restart: `systemctl --user restart abf-rstudio`.
    - Remove: `systemctl --user disable --now abf-rstudio`, delete `~/.config/systemd/user/abf-rstudio.service`, run `systemctl --user daemon-reload`, and take the

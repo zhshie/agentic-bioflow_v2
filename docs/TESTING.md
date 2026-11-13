@@ -1325,7 +1325,7 @@ Automatic tests: `platform/tests/test_studio_embed.py` (the setting, the page, t
 
 **TC-037, RStudio is in the page and draws.** With the setting filled in and `abf-rstudio` running, open the downstream page of a succeeded run: RStudio is the middle of the page, with no sign-in. In the RStudio Console run `plot(1:10)`: the picture is in the Plots pane at the lower right and is clear.
 
-**TC-038, the two lines.** Run `abf-platform studio-connect --server <the platform's address>` once. Paste the first line of the page into the RStudio Console: the tables load (`View(<name>)` shows one). Draw a plot, paste the second line: the Console prints a confirmation link; open it and press the button: the figure is in the gallery of that run, and nothing is stored before that press.
+**TC-038, the two lines.** Run the `studio-connect` command (the first of the terminal commands on the page) once. Paste the first line of the page into the RStudio Console: the tables load (`View(<name>)` shows one). Draw a plot, paste the second line: the Console prints a confirmation link; open it and press the button: the figure is in the gallery of that run, and nothing is stored before that press.
 
 **TC-039, RStudio is not running.** Run `systemctl --user stop abf-rstudio`, then open the downstream page: the page is normal, the frame is blank or shows the browser's own message, the sentence beside it says what to do, and the "Open RStudio in a new tab" link is there (once the unit is running again it opens RStudio).
 
