@@ -13,7 +13,7 @@ from resume_harness import Rig
 CHAT_TOOLS = PLATFORM_DIR / "abf_platform" / "actions" / "chat_tools.py"
 BANNED_WORDS = re.compile(r"approve|confirm|confirmed_by|void|yes", re.I)
 READ_ONLY = {"list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log", "run_outputs", "read_run_file", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"}
-REQUESTS = {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget"}   # publish_figure is not here on purpose: the browser chat is not offered it (CHAT_EXCLUDED)
+REQUESTS = {"launch", "launch_pipeline", "cancel", "resume", "relaunch", "forget", "pack_figures", "delete_figure"}   # publish_figure is not here on purpose: the browser chat is not offered it (CHAT_EXCLUDED)
 
 
 @pytest.fixture
@@ -46,11 +46,70 @@ def offered_by_rule(tools):
 
 
 def test_gallery_tools_are_excluded_from_the_browser_chat(tmp_path):
-    # mcp-gallery-actions TC-097 (R1): pack_figures and delete_figure are in CHAT_EXCLUDED, the classification check does not raise, and the chat is not offered them
+    # gallery-followups TC-015, TC-016, TC-017, TC-018 (replaces mcp-gallery-actions TC-097): only publish_figure stays out of the browser chat
+    # (the chat page has no figure bytes); pack_figures and delete_figure are request tools, with the server's description and fields minus the two relay ones
     m = chat_tools()
-    assert {"pack_figures", "delete_figure"} <= set(m.CHAT_EXCLUDED) and set(m.CHAT_EXCLUDED) == {"publish_figure", "pack_figures", "delete_figure"}
+    assert set(m.CHAT_EXCLUDED) == {"publish_figure"}
     m.classify_check(server_tools(tmp_path))
-    assert not {s["name"] for s in specs(tmp_path)} & {"pack_figures", "delete_figure", "publish_figure"}
+    by = {s["name"]: s for s in specs(tmp_path)}
+    assert "publish_figure" not in by and {"pack_figures", "delete_figure"} <= set(by)
+    server = {t.name: t for t in server_tools(tmp_path)}
+    for n in ("pack_figures", "delete_figure"):
+        want = server[n].input_schema
+        assert by[n]["description"] == server[n].description
+        assert by[n]["input_schema"]["properties"] == {k: v for k, v in want["properties"].items() if k not in CHAT_ARGS}
+        assert set(by[n]["input_schema"]["properties"]) == ({"run_id", "names"} if n == "pack_figures" else {"run_id", "name"})
+        assert not set(by[n]["input_schema"].get("required", [])) & set(CHAT_ARGS)
+    above = CHAT_TOOLS.read_text(encoding="utf-8").split("CHAT_EXCLUDED = ")[0].splitlines()[-4:]
+    assert all(l.startswith("#") for l in above) and "bytes" in " ".join(above) and "publish_figure" in " ".join(above)   # TC-017: the comment gives the reason
+
+
+def test_the_chat_prompt_names_the_two_gallery_tools_and_says_a_delete_is_not_confirmed_in_the_chat():
+    # gallery-followups TC-029
+    p = chat_tools().CHAT_SYSTEM_PROMPT
+    assert "pack_figures" in p and "delete_figure" in p and "publish_figure" not in p
+    line = [l for l in p.splitlines() if "delete_figure" in l]
+    assert line and "確認頁" in line[0] and "不能在聊天" in line[0]
+    assert "你沒有任何工具可以替本人說「是」" in p and not BANNED_WORDS.search(p)
+
+
+def test_the_pack_dialog_reads_the_gallery_result_and_the_delete_one_has_no_dialog():
+    # gallery-followups TC-022, TC-024
+    cd = chat_tools().confirm_dialog
+    got = {"ok": True, "sent": False, "state": "pending", "request_id": "r" * 32, "url": "/c/" + "r" * 32, "summary": "加入交付包：a.png"}
+    d = cd("pack_figures", got)
+    assert d == {"question": "確認送出嗎？", "tool": "pack_figures", "summary": "加入交付包：a.png", "confirmation_url": "/c/" + "r" * 32, "buttons": ["確認", "取消"]}
+    assert cd("delete_figure", got) is None and cd("delete_figure", dict(got, confirmation_url="/c/x")) is None
+    assert cd("pack_figures", dict(got, state="refused")) is None and cd("pack_figures", dict(got, url=None)) is None
+    assert cd("pack_figures", dict(got, sent=True)) is None and cd("launch", got) is None
+
+
+def test_a_chat_pack_asks_then_the_persons_press_packs_and_a_chat_delete_only_gives_the_page(w):
+    # gallery-followups TC-019, TC-020, TC-021, TC-023, TC-024, TC-025, TC-027, TC-030
+    from test_gallery_change import gal, packed_of, prints, rows
+    from test_gallery_change_confirm import chat, del_args, pack_args, tool
+    from test_publish_figure import gallery, press
+    ann, run = gal(w, packed=("c.png",))
+    bob = w.user("bob")
+    before = prints(gallery(w, ann, run))
+    out = tool(w, "pack_figures", pack_args(run, ["a.png", "b.png"]), caller=ann)
+    assert out["state"] == "pending" and out["url"] and out["summary"] and chat_tools().confirm_dialog("pack_figures", out)["confirmation_url"] == out["url"]
+    gone = tool(w, "delete_figure", del_args(run, "a.png"), caller=ann)
+    assert gone["state"] == "pending" and chat_tools().confirm_dialog("delete_figure", gone) is None
+    assert prints(gallery(w, ann, run)) == before and packed_of(w, ann, run) == ["c.png"]           # TC-030
+    refused = chat(w, ann, "delete", gone["request_id"], del_args(run, "a.png"))                      # TC-023
+    assert refused["state"] == "refused" and gone["url"] in refused["message"] and prints(gallery(w, ann, run)) == before
+    assert [r["state"] for r in rows(w)] == ["pending", "pending"]
+    def same(a, b):      # the answer echoes the run id the caller typed and nothing else may differ
+        return str(a).replace(run, "R") == str(b).replace("no-such-run", "R") and a["state"] == "refused"
+    assert same(tool(w, "pack_figures", pack_args(run, ["a.png"]), caller=bob), tool(w, "pack_figures", pack_args("no-such-run", ["a.png"]), caller=bob))   # TC-027
+    assert same(tool(w, "delete_figure", del_args(run), caller=bob), tool(w, "delete_figure", del_args("no-such-run"), caller=bob))
+    assert len(rows(w)) == 2
+    press(w, "ann", out["request_id"])                                                                # TC-020: the person's own press
+    assert packed_of(w, ann, run) == ["a.png", "b.png"]
+    again = tool(w, "delete_figure", del_args(run, "a.png"), caller=ann)      # the pack changed the gallery, so the first delete request is stale: ask again
+    press(w, "ann", again["request_id"])                                                              # TC-025
+    assert "a.png" not in prints(gallery(w, ann, run)) and packed_of(w, ann, run) == ["b.png"]
 
 
 def test_tc001_tc034_the_list_is_what_the_server_has_and_is_read_only_or_a_request_tool(tmp_path):
@@ -74,7 +133,7 @@ def test_tc020_the_list_is_derived_not_copied(tmp_path):
     for s in specs(tmp_path):
         assert s["description"] == by[s["name"]].description
         want = by[s["name"]].input_schema
-        if s["name"] in ("launch", "cancel", "resume", "relaunch"):    # the browser chat is not offered the CHAT arguments (TC-053)
+        if s["name"] in ("launch", "cancel", "resume", "relaunch", "pack_figures", "delete_figure"):    # the browser chat is not offered the CHAT arguments (TC-053)
             want = dict(want, properties={k: v for k, v in want["properties"].items() if k not in CHAT_ARGS})
         assert s["input_schema"] == want
 
@@ -256,7 +315,14 @@ def test_tc052_every_request_tool_gets_a_dialog_and_it_holds_no_yes_value():
     # TC-052 (plan "TC-032")
     cd = chat_tools().confirm_dialog
     for n in chat_tools().REQUEST_TOOLS:
-        d = cd(n, _pending_shape())
+        if n in ("pack_figures", "delete_figure"):      # gallery-followups: these two answer with `url`, not `confirmation_url`; only pack_figures gets a dialog
+            assert cd(n, _pending_shape()) is None, n
+            d = cd(n, {"sent": False, "state": "pending", "request_id": "r1", "url": "/c/abc", "summary": "x"})
+            assert (d is None) == (n == "delete_figure"), n
+            if d is None:
+                continue
+        else:
+            d = cd(n, _pending_shape())
         assert d and d["tool"] == n and d["buttons"] == ["確認", "取消"], n
         assert set(d) == {"question", "tool", "summary", "confirmation_url", "buttons"}
         assert not [k for k in d if re.search(r"approve|yes|confirmed", k, re.I)], d
