@@ -1,0 +1,70 @@
+# studio-embed: ledger
+
+Written by the executor (2026-11-13). What was built, the L-grade proof the plan asks for, what is not verified, and the results of the runs. The manual
+checks TC-036 to TC-040 are not done here: the lead tries them on the maintainer's desktop and writes the results in the last section.
+
+## CSP of the downstream page, before and after
+
+Before (and every other page, with or without the setting; `web._HEADERS`):
+
+```
+default-src 'none'; style-src 'sha256-FfC1YK8kGEBly+aw5sxs1lF8rL8fd0bvd3C1C3uWpGw='; form-action 'self'; frame-ancestors 'none'; base-uri 'none'
+```
+
+After, for `GET /?run=<id>&stage=downstream` of a succeeded run of the caller, only when `ABF_STUDIO_URL=http://127.0.0.1:8790` is set:
+
+```
+default-src 'none'; style-src 'sha256-FfC1YK8kGEBly+aw5sxs1lF8rL8fd0bvd3C1C3uWpGw='; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; frame-src http://127.0.0.1:8790
+```
+
+`X-Frame-Options: DENY` and the other headers are unchanged. No `script-src`, no `'unsafe-inline'`, no `*`. `test_tc019` removes `; frame-src <address>` and compares the rest
+with `_HEADERS` character by character; `test_tc020` compares the whole header set of fifteen other pages and seven board states with and without the setting;
+`test_tc021` checks that a frame in the body and `frame-src` in the header come together. The style hash is unchanged (`STYLE_SHA256` of `test_results_files.py`); the frame is sized with `width` and `height` attributes.
+
+## Refused shapes of ABF_STUDIO_URL (exit code 1, nothing listens; `create_app` also raises `ValueError`)
+
+Accepted: exactly `http://127.0.0.1:<port>` or `http://localhost:<port>`, port 1 to 65535 without a leading zero. Empty or unset: no setting. Refused (each is a case of
+`test_tc002_tc003_tc004`): `https://127.0.0.1:8790`, `http://example.com:8790`, `http://127.0.0.1.evil.com:8790`, `http://localhost.evil.com:8790`,
+`http://127.0.0.1:8790@evil.com`, `http://0.0.0.0:8790`, `http://[::1]:8790`, `http://127.1:8790`, `http://2130706433:8790`, `ftp://127.0.0.1:8790`,
+`javascript:alert(1)`, `//127.0.0.1:8790`, `*`, `http://127.0.0.1` (no port), `:0`, `:99999`, `:abc`, `:08790`, `http://127.0.0.1:8790/x`, `?a=1`, `#f`,
+`http://u:p@127.0.0.1:8790`, `http://127.0.0.1:8790; script-src *`, `http://127.0.0.1:8790 'unsafe-inline'`, a value with a leading or trailing blank or a line break (also
+`http://127.0.0.1:8790\nhttp://evil.example`), `http://127.0.0.1: 8790`, and the trailing slash `http://127.0.0.1:8790/` (refused, not normalised: ruling 4).
+The message names `ABF_STUDIO_URL`, gives the reason in one line, shows an example, is in English and Chinese, and never echoes the value (it could hold a password).
+
+## Existing tests rewritten (only these, as the task named them)
+
+- `tests/hosted_deploy_test.sh` TC-069: the file list under `deploy/` gains `deploy/systemd/abf-rstudio.service.in` (ten files became eleven, label changed). TC-083: `deploy/systemd/` holds five `.service.in`
+  instead of four (the count and two labels). Reason: the feature adds one unit template, and these two assertions count the files. Four lines of the file changed; no other assertion.
+- `tests/desktop_systemd_test.sh` line 198 (TC-044): it greps the hosted test for `four .service.in` and `-eq 4`; now `five` and `-eq 5`.
+- `platform/tests/__golden__/cli_tree.txt` line 17 and `cli_help_top.txt` line 8: the `fetch-results` row gains `--r` (flag, `no`/`False` columns, one help sentence), and the one-line usage gains `[--r]`.
+  `test_cli_contract.py` does not list flags per command and is unchanged.
+- `platform/tests/test_web_downstream.py` and `test_web_result_viewer.py` are not changed (`test_tc023` compares them with the merge base).
+
+## Not verified (the lead tries these on the real desktop and corrects the unit)
+
+The unit is written from the option names found in the package's `rserver` binary. Nothing of RStudio was installed or run by the executor.
+
+1. Whether a start without root needs `--server-data-dir`, `--secure-cookie-key-file` and `--database-config-file` at all, and the contents they want. The unit makes `%t/abf-rstudio/` (mode 700, under `$XDG_RUNTIME_DIR`), writes a uuid from `/proc/sys/kernel/random/uuid` to `cookie-key`, and a two-line `database.conf` (`provider=sqlite`, `directory=<dir>/db`); this follows what is commonly done to run `rserver` unprivileged, not a test. The data folder is in the runtime folder, so it is gone at logout or reboot (user settings live in the person's own `~/.config/rstudio`).
+2. Whether `--auth-none=1` takes effect for a non-root `--server-user`, and whether RStudio still sets a session cookie in a cross-site frame.
+3. The value form of `--www-frame-origin` (`${ABF_PUBLIC_URL}` is an origin with a scheme and no trailing slash as the platform's `--public-url` is given; RStudio may want `same`, `none` or another form), and whether `--www-same-site` (`none`) is needed for a page on another site to frame `http://127.0.0.1:<port>`; it is not set.
+4. The default of `--www-address` (the package's strings contain `0.0.0.0`), which is why the unit always sets `127.0.0.1`; and that `--www-port` accepts the value cut from the URL by the shell (`${ABF_STUDIO_URL##*:}`).
+5. The path `/usr/lib/rstudio-server/bin/rserver` (the usual place of the Ubuntu package) and `--server-daemonize=0` as the way to stay in the foreground under systemd.
+6. Systemd quoting: `$$` for the shell's own variables, `%t` and `%u` specifiers, `${ABF_PUBLIC_URL}` expanded by systemd inside the quoted script. `NoNewPrivileges` is left out because it may stop `rsession` from starting; add it if the desktop test shows it is harmless.
+7. The `allow` word: the iframe has `allow="local-network-access"` (the Chromium permission policy name for a page that reaches a local address); Firefox and Edge may need another word or none, and a browser that blocks the frame still leaves the new-tab link.
+8. Whether an https page may frame `http://127.0.0.1:<port>` in each browser (127.0.0.1 is treated as a secure context by Chromium and Firefox; not tried here).
+9. Whether `system2("abf-platform", ...)` finds the command from inside RStudio (its `PATH`), and whether `dev.copy(png, filename = f)` copies the plot in the `RStudioGD` device; the second line is only checked by shape (basic R, temporary png, `publish-figure <id> <file>`, no confirm flag).
+
+## Deliberate differences from ADR 0010, Decided 3
+
+The page does not probe the address (a probe would be a connection by the platform, and the platform never connects to it; the page says what to do when the frame is blank), and the agent does not report the address in its heartbeat (`platform/abf_station/` is not touched).
+
+## Local results (WSL Ubuntu, 2026-11-13)
+
+- `platform/tests/test_studio_embed.py`: 101 passed. Together with `test_web_downstream.py`, `test_web_result_viewer.py`, `test_studio_*.py`, `test_cli_contract.py`, `test_cli_snapshots.py`, `test_cli_flags.py`, `test_results_files.py`, `test_web_wording_sweep.py`, `test_confirm_page.py`, `test_web_board.py`: 834 passed, 2 xfailed.
+- `tests/studio_embed_deploy_test.sh`, `hosted_deploy_test.sh`, `desktop_systemd_test.sh`, `credentials_stay_in_settings_test.sh`, `operations_doc_test.sh`, `no_pipefail_grep_q_test.sh`, `constitution_scope_test.sh`: all pass.
+- `bash tests/run_all.sh` as one run: 147/155. The three failures were not the feature's: `no_pipefail_grep_q_test.sh` (three `| grep -q` in the new deploy test; fixed), `constitution_scope_test.sh` (the worktree's git record had been pruned during the run; passes after the record was rebuilt), `jev_test.sh` (22 s under load; passes on rerun, not touched by this change). Five `platform_shard_2..6` timed out at the 300 s limit of `run_all.sh` on this machine; each was then run alone with `--timeout 0` and passed (1/1 each). There is no single full run that was green at the final commit: CI is the judge.
+- Not run: the manual checks TC-036 to TC-040, and any real RStudio or browser.
+
+## Section for the lead: results on the desktop (TC-036 to TC-040)
+
+(to be filled in after the desktop trial)
