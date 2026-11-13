@@ -37,3 +37,24 @@
 4. `facts` 內 `if row["kind"] == "publish_figure":` 一個分支。
 `store.py`：只有 CHECK 字串加 `'publish_figure'`、`_confirmations_current` 多一個條件、新函式 `figures_root`，與兩處註解；本輪未再動。
 既有種類不受影響的證據：`test_cleanup_confirm.py`、`test_pending_confirm_restart.py`、`test_keep_submissions.py`、`test_chat_confirm.py`、`test_resume_*`、`test_confirm_page.py`、`test_clean_page.py`、`test_cleanup_store.py`（皆含 launch、cancel、resume、relaunch、clean_work、forget 的核准、逾時、遷移）在本輪結束時全綠（見回報的全套測試）。
+
+## 補強輪（lead 裁決 N1 至 N6，2026-11-13；來源：第二次對抗審；分支 fable/figure-hardening）
+
+- [x] N1：`code`／`params` 拒絕 Cc（`\n`、`\t` 除外）、Cf、Zl、Zp；`caption` 另拒 Cf；畫面（`_screen`，表單、確認頁中英、聊天摘要同一函式）整段經 `_squeeze`，連續空白超過 8 個顯示成 8 個，存檔內容不動。測試 `test_n1_*`（含 ESC、退格、U+202E／200B／FEFF／2028／2029／0085 重現；`test_n1_long_runs_of_spaces…` 驗畫面、`screen_text` 欄、英文頁與落地檔位元組）。
+- [x] N2：動作層最前面拒絕含孤立代理字元的 `filename`／`run_id`（不回顯）；回顯的檔名與 run 編號經 `_safe`（去 Cc／Cf／Cs／Zl／Zp、截 80 字元）。測試 `test_n2_*`。
+- [x] N3：還原改為暫存檔加 `os.replace`（`_restore`），且只還原寫入途中真的改過的檔（`touched`）；還原失敗就丟 `JobRefused(INCONSISTENT_MESSAGE)`（不說「沒有任何圖被存入」）；每次對該圖庫寫入前（確認寫入、pack、delete，皆在鎖內）`_sweep_tmp` 清掉 `.tmp-*`。測試 `test_n3_*`。
+- [x] N4：申請時 bundle 記 `replaces_ids`（被取代圖在 `index.json` 的 `request_id`，沒有則用 `created`），`_commit` 核准時比對，不同就 `JobRefused`、什麼都不寫。重放已送出的 `user_confirmed` 呼叫沿用儲存列的 `replaces`／`replaces_ids`（舊列沒有此欄就不加，雜湊不變）。測試 `test_n4_*`。
+- [x] N5：`figures.py` 兩處 `user_confirmed` 判斷改 `is True`。測試 `test_n5_only_true_is_a_yes_at_the_action_layer`（1、"yes"、"true"、[1] 都不跳過 20 MiB 上限、不建列）。
+- [x] N6：不動 `confirm.py`；`figures.py` 改用自己的唯讀查詢 `_own_request`（kind、`caller_user_id`、非 TERMINAL 一起查），別人的列根本不讀，也不再呼叫 `confirm.facts`。測試 `test_n6_*`。
+- 「由裁決 N1 改動」的既有期待：無（既有畫面文字斷言都沒變）。
+- 其他既有測試改動：`test_page_headers_and_css_are_unchanged` 的路由比對在第 2 片併入 v3 後就過時（`origin/v3` 已含三條 `/run/figure*` 路由，基線上即紅，與本輪無關）；改為「origin/v3 已有的不再重複加」，比對本身不變。
+- `docs/PLATFORM.md` publish_figure 段落補上以上可見行為。
+- N1 與裁決文字的一處差異（請 lead 知悉）：`code`／`params` 裡的 `\r\n`（Windows 存檔的換行）仍然放行，單獨的 `\r` 才拒絕。原因：既有測試 `test_studio_publish.py`（TC-056、TC-065，`plot(x)\r\n圖\n`）要求 CR LF 的程式碼檔能送出，照字面拒 `\r` 會讓 Windows 使用者的程式碼檔全被擋。新測試 `test_n1_a_windows_line_ending_stays_legal_but_a_lone_cr_does_not`。
+- 併入第 3 片（gallery_change 的 pack／delete 申請）後：N2（代理字元與回顯）、N5（`is True`）、N6（以 `_own_request` 讀自己的申請，不再用 `confirm.facts`）同樣套用在 `_request_change`；pack／delete 的鎖內開頭也 `_sweep_tmp`。測試 `test_n2_n5_n6_hold_for_the_gallery_change_requests_too`。
+
+## 補強輪二（lead 裁決 N7、N8、N9，2026-11-13；N1–N6 驗收 ACCEPT 附條件之後）
+
+- [x] N7：`code`／`params` 另拒 Unicode 類別 Cn（未指派）與 Co（私用區）。顯示時的收斂 `_squeeze` 把「空白」與下列填充字元視為同一類，交錯也算，連續超過 8 個顯示成 8 個空白：U+034F、U+115F、U+1160、U+17B4、U+17B5、U+180B–180D、U+180F（蒙古文自由變體選擇符）、U+2800（空白點字）、U+3164、U+FE00–FE0F、U+FFA0、U+E0100–E01EF。理由：這些是 Default_Ignorable_Code_Point 中不屬 Cf（Cf 已在 N1 整個拒絕）、因此仍被放行、而畫面上什麼都不畫的字元，外加 U+2800（不是 Default_Ignorable，但看起來是空白）；清單取 Unicode 的 Default_Ignorable 去掉 Cf／Cn 之後的全部，再加 U+2800。存檔內容不動。測試 `test_n7_*`：Cn／Co 拒絕（5 個字元×2 欄），填充收斂（8 種填充含 `"ㅤ"*200`、`" ͏"*30`、混合空白與填充，×code／params，驗表單文字、`screen_text`、英文頁，偽造的那一行前最多 8 個位置，落地檔位元組不變）。
+- [x] N8：`_squeeze` 同時把連續空行（含只有空白或填充字元的行）最多留 2 行，其餘丟掉；空白行顯示成空字串。code 與 params 都適用（它們都經 `_screen`），存檔不變。測試 `test_n8_*`（三個通道）。
+- [x] N9：`_clean_names` 回傳的壞名字改經 `_safe`（去 Cc／Cf／Cs／Zl／Zp、截 80 字元），`pack_figures` 與 `delete_figure` 的答覆都由此回顯。測試 `test_n9_*`（`test_gallery_change.py`）。
+- 既有測試改動：無（`test_n8` 的一個斷言在 RED 提交後自己修正，那是本輪新寫的測試）。`docs/PLATFORM.md` publish_figure 段落兩句已更新。
