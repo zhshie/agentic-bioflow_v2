@@ -22,3 +22,19 @@ The plan named test_tc046 by mistake; the lead ruled (2026-11-13) that test_head
 The RED of the publish_figure annotation change (commit 3495ae19) was committed without seeing it fail; only its GREEN was run.
 
 ## git diff --stat origin/v3...HEAD
+     CHANGELOG.md                                  |  1 +
+     docs/PLATFORM.md                              |  6 +-
+     docs/TESTING.md                               |  2 +-
+     platform/abf_platform/actions/chat_tools.py   | 24 +++++---
+     platform/abf_platform/mcp_server.py           |  2 +-
+     platform/abf_platform/web_finished.py         |  8 +--
+     platform/tests/test_chat_confirm.py           |  9 ++-
+     platform/tests/test_chat_tools.py             | 78 ++++++++++++++++++++++--
+     platform/tests/test_head_nodefail.py          |  2 +-
+     platform/tests/test_replace_needs_click.py    |  2 +-
+     platform/tests/test_web_figures.py            | 28 ++++++++-
+     specs/gallery-followups/ledger.md             | 24 ++++++++
+     specs/gallery-followups/plan.md               | 50 ++++++++++++++++
+     specs/gallery-followups/test-case-overview.md | 54 +++++++++++++++++
+     specs/gallery-followups/test-case.md          | 86 +++++++++++++++++++++++++++
+     15 files changed, 345 insertions(+), 31 deletions(-)
