@@ -58,11 +58,12 @@ if [ "$nports" = "ABF_STUDIO_URL " ]; then ok "TC-032 the port comes from ABF_ST
 if printf '%s\n' "$code" | grep -E -- '--www-port[= ]+[0-9]' >/dev/null; then bad "TC-032 a literal port in the unit"; else ok "TC-032 no literal port in the unit"; fi
 exline=$(grep -E '^# *ABF_STUDIO_URL=' "$ENVEX" | head -n1)
 port=${exline##*:}
-if [ -n "$port" ] && ! printf '%s\n' "$port" | grep -qE '^878[789]$' && [ "$port" = 8790 ]; then ok "TC-032 the example port is 8790, not 8787-8789"; else bad "TC-032 example port" "$port"; fi
+case "$port" in 8787|8788|8789) badport=1;; *) badport=0;; esac
+if [ "$badport" -eq 0 ] && [ "$port" = 8790 ]; then ok "TC-032 the example port is 8790, not 8787-8789"; else bad "TC-032 example port" "$port"; fi
 ops=$(tr -d '\r' < "$OPS"); tst=$(tr -d '\r' < "$TST"); plat=$(tr -d '\r' < "$PLAT")
 rs=$(printf '%s\n' "$ops" | awk '/RStudio in the downstream page/{on=1} on' | head -n 60)
 if has "$rs" "http://127.0.0.1:$port"; then ok "TC-032 OPERATIONS names the same address as the example"; else bad "TC-032 OPERATIONS address"; fi
-if bash tests/hosted_deploy_test.sh 2>&1 | grep -E 'TC-01[56]' | grep -q FAIL; then bad "TC-032 hosted_deploy_test TC-015/016 on env.example"; else ok "TC-032 env.example still passes hosted_deploy_test TC-015/016"; fi
+if bash tests/hosted_deploy_test.sh 2>&1 | grep -E 'TC-01[56]' | grep FAIL >/dev/null; then bad "TC-032 hosted_deploy_test TC-015/016 on env.example"; else ok "TC-032 env.example still passes hosted_deploy_test TC-015/016"; fi
 
 # ---------- TC-033: the two tests that count files were rewritten, nothing else under deploy/ ----------
 if git rev-parse --git-dir >/dev/null 2>&1; then
@@ -98,7 +99,7 @@ if printf '%s\n' "$newlines" | grep -nE "$pat" | grep -v 'Bearer <' >/dev/null; 
 if printf '%s\n' "$unit" | grep -nE -- '--auth-(pam|password|login|minimum)|/home/[A-Za-z]' >/dev/null; then bad "TC-041 an auth password option or a home path"; else ok "TC-041 no auth option but auth-none, no personal path"; fi
 
 # ---------- TC-043: the documents say what the program does ----------
-if printf '%s\n' "$plat" | grep -E 'ABF_STUDIO_URL' | grep -q 'frame-src'; then ok "TC-043 PLATFORM.md names the setting together with the frame-src of the downstream page"; else bad "TC-043 PLATFORM.md setting and frame-src"; fi
+if printf '%s\n' "$plat" | grep -E 'ABF_STUDIO_URL' | grep 'frame-src' >/dev/null; then ok "TC-043 PLATFORM.md names the setting together with the frame-src of the downstream page"; else bad "TC-043 PLATFORM.md setting and frame-src"; fi
 if has "$plat" 'so all carry the same headers'; then bad "TC-043 PLATFORM.md still says every page has the same headers"; else ok "TC-043 PLATFORM.md no longer says every page has the same headers"; fi
 if grep -q 'never a frame' platform/abf_platform/web_downstream.py; then bad "TC-043 web_downstream.py still says never a frame"; else ok "TC-043 web_downstream.py header reworded"; fi
 ts=$(printf '%s\n' "$tst" | awk '/^##+ /{on=($0 ~ /studio-embed/)} on')
