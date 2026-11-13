@@ -240,17 +240,17 @@ def test_menu_failed_lost_running_unchanged(w, status):
 
 # ---- #339 ------------------------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("stage", ["launch"])      # studios-new-tab: a succeeded run now has a downstream page; the placeholder stays for the others (test_web_downstream.py)
-def test_stage_placeholder_launch_downstream(w, stage):
-    # TC-050 .. TC-055 TC-058
+def test_stage_launch_has_its_own_card(w):
+    # TC-050 .. TC-055 TC-058 (the launch stage is no longer a placeholder: launch-stage-card; the downstream placeholder is tested in test_web_downstream.py)
     ann = w.user("ann")
     seed(w, "s1", "succeeded", ann)
     c = login(w, "ann")
-    zh = pane(c.get("/?run=id-s1&stage=%s" % stage).text, "middle")
+    zh = pane(c.get("/?run=id-s1&stage=launch").text, "middle")
     assert "012b" not in zh and "016" not in zh
-    assert '<span class="later">之後開放</span>' in zh
-    en = pane(c.get("/?run=id-s1&stage=%s&lang=en" % stage).text, "middle")
-    assert '<span class="later">Coming later</span>' in en and no_cjk(en)
+    assert '<section class="card"><h2>送出</h2>' in zh and '<span class="later">之後開放</span>' not in zh and "<dt>工作編號</dt><dd>" in zh
+    en = pane(c.get("/?run=id-s1&stage=launch&lang=en").text, "middle")
+    assert '<section class="card"><h2>Launch</h2>' in en and '<span class="later">Coming later</span>' not in en and no_cjk(en)
+    assert "<dt>Job number</dt><dd>" in en
     assert "012b" not in en and "016" not in en
 
 
