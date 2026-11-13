@@ -17,7 +17,7 @@ Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after t
 - **圖庫指紋**：安的圖庫資料夾裡所有檔案（`index.json`、圖、`*.code.txt`、`*.params.txt`）的檔名清單加內容雜湊，外加每張圖的 `packed` 狀態。「什麼都沒變」＝前後指紋逐項相同。
 - **三個通道**：表單（ELICITED）、確認頁（PAGE，`/c/<申請編號>`，本人登入後按鈕）、對話轉達（CHAT，AI 帶 `request_id` 與 `user_confirmed=true` 再呼叫同一工具）。本案之後，CHAT 對「會取代既有圖」的存圖無效，對新名稱的存圖照舊。
 - **取代申請**：`publish_figure` 的申請，提出當下圖庫已有其中任一名稱（bundle 的 `replaces` 非空）。只要清單中有一個名稱會取代，整份申請就是取代申請。
-- **新拒絕**：計畫「做什麼」第 2 點的答覆：`state: "refused"`，正式書面語說明「這次存入會取代圖庫中既有的圖，原圖無法復原，須由本人在確認頁按下確認」，中英並列，附該筆申請的確認頁網址（`url` 欄，與第一次提出時給的相同）。
+- **新拒絕**：計畫「做什麼」第 2 點的答覆：`state: "refused"`，正式書面語說明「本次存入會取代圖庫中既有的圖，原圖無法復原，須由本人在確認頁按下確認」，中英並列，附該筆申請的確認頁網址（`url` 欄，與第一次提出時給的相同）。
 - **測試檔代號**：N＝新增的 `platform/tests/test_replace_needs_click.py`（執行者也可把新測試加進 P；每個測試註解標 TC 編號）；P＝`platform/tests/test_publish_figure_confirm.py`；G＝`platform/tests/test_gallery_change_confirm.py`；S＝`platform/tests/test_studio_publish.py`；M＝`platform/tests/mcp/test_mcp_contract_tools.py`（含快照 `tools.json`）。
 - 「Qn」指總覽「我不確定的地方」的問題編號；TC 依我的建議答案撰寫。
 
@@ -27,7 +27,7 @@ Written by the verifier (CONTRACT mode, rules in the `test-cases` skill) after t
 |---|---|---|---|---|---|---|
 | TC-001 | 例 1 前半；計畫做什麼 1、2 | 例外 | 安的客戶端不能跳表單；圖庫有 a、b、c；記下圖庫指紋 | LLM 以 `publish_figure(R, [a.png 新內容＋新程式碼＋新參數])` 提出，得 `request_id`；接著 LLM 自己帶該 `request_id`＋`user_confirmed=true` 再呼叫 | 回 `state: "refused"`；圖庫指紋與呼叫前完全相同（a.png 內容、`a.png.code.txt`、`a.png.params.txt`、`index.json` 逐位元組不變）；沒有 job | 自動：N |
 | TC-002 | 例 1「答覆含確認頁網址」；Q2、Q5 | 例外 | 同 TC-001 | 讀拒絕答覆的 `url` 與 `message` | `url` 是該筆申請的確認頁網址，與第一次提出時回的 `url` 逐字相同；`message` 也含該網址 | 自動：N |
-| TC-003 | 計畫做什麼 2「正式書面語、中、英」 | 例外 | 同 TC-001 | 讀拒絕答覆的全部字串 | 含「這次存入會取代圖庫中既有的圖」「原圖無法復原」「須由本人在確認頁按下確認」（中文）；同一則訊息內含對應英文；中文不含口語、禁用字（過 `test_web_wording_sweep.py` 的同一組規則）；不含檔案路徑、SQL、token、堆疊；不告訴 LLM 可以或應該以 `user_confirmed=true` 轉達 | 自動：N |
+| TC-003 | 計畫做什麼 2「正式書面語、中、英」 | 例外 | 同 TC-001 | 讀拒絕答覆的全部字串 | 含「本次存入會取代圖庫中既有的圖」「原圖無法復原」「須由本人在確認頁按下確認」（中文）；同一則訊息內含對應英文；中文不含口語、禁用字（過 `test_web_wording_sweep.py` 的同一組規則）；不含檔案路徑、SQL、token、堆疊；不告訴 LLM 可以或應該以 `user_confirmed=true` 轉達 | 自動：N |
 | TC-004 | 計畫做什麼 2「申請維持待確認、不作廢、不消耗」 | 例外 | 同 TC-001 | TC-001 之後查 `confirmations` 與 `jobs` | 該列仍是 pending（不是 void、不是 confirmed）、`channel` 仍為空；`confirmations` 列數與轉達前相同；暫存的圖內容（`bundle_json`）仍在；沒有新增任何 job | 自動：N |
 | TC-005 | 例 1 後半 | 功能 | TC-001 拒絕之後，申請仍 pending | 安登入確認頁，按「送出」 | a.png 被新內容取代、程式碼檔與參數檔為新內容；b、c 不變；該列 confirmed、通道 PAGE；沒有 job | 自動：N |
 | TC-006 | 例 4 | 例外 | 一筆 pending 的取代 a.png 申請；記下指紋 | LLM 以同一 `request_id`＋`user_confirmed=true` 連續轉達 30 次 | 30 次全是 refused；圖庫指紋不變；該列仍 pending、`confirmations` 沒有多列；之後安在確認頁按送出仍可取代 a.png | 自動：N |
