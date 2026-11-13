@@ -348,6 +348,11 @@ def launch_prefill(platform_path, run_name, *, caller=None):
     revision, the environment name and the parameters of its first launch, and when it went out. {"found": False} for a run that is not
     the caller's or is not there (the same answer for both); {"found": True, "kept": False} when the content is no longer kept (the owner
     forgot it, or the clean-up took it). Reads only; the samples are never part of it."""
+    return _prefill(platform_path, run_name, caller)
+
+
+def _prefill(platform_path, run_name, caller):
+    """The body of `launch_prefill`; `launch_card` reads through it, so a page's one call of `launch_prefill` stays one."""
     gone = {"found": False, "kept": False}
     con = store.open_readonly(platform_path)
     if con is None:
@@ -380,12 +385,12 @@ def launch_prefill(platform_path, run_name, *, caller=None):
 
 
 _MASK = "••••••"
-_TOKEN_SHAPE = re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}")      # a GitHub token: not among compute_envs' shapes (that list is pinned), but never to be shown
+_GH_SHAPE = re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}")      # a GitHub token: not among compute_envs' shapes (that list is pinned), but never to be shown
 
 
 def _shown_params(params):
     """The parameters as the launch card may show them: the value of one whose name or whose value looks like a credential is a mask."""
-    return {k: (_MASK if common.is_secret_name(k) or compute_envs.looks_like_credential(str(v)) or _TOKEN_SHAPE.search(str(v)) else v)
+    return {k: (_MASK if common.is_secret_name(k) or compute_envs.looks_like_credential(str(v)) or _GH_SHAPE.search(str(v)) else v)
             for k, v in params.items()}
 
 
@@ -396,7 +401,7 @@ def launch_card(platform_path, run_name, *, caller=None):
     the site turned it back (the card says what was sent; `launch_prefill` leaves such a launch out, it is about what to send again).
     A parameter whose name or value looks like a credential has its value replaced by a mask. The same answer as `launch_prefill` for a run
     that is not the caller's. Reads only; it asks no site."""
-    out = dict(launch_prefill(platform_path, run_name, caller=caller), samples=None, job_id=None)
+    out = dict(_prefill(platform_path, run_name, caller), samples=None, job_id=None)
     if not out.get("found"):
         return out
     con = store.open_readonly(platform_path)

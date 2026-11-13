@@ -36,6 +36,7 @@ WEB_ONLY = {
     "request_facts": "the top of the confirmation page: the few plain facts of one pending request, read from its structured content",
     "clean_requests": "read-only (cloud-cleanup-e): the board notice lists the caller's own open clean_work requests; it creates nothing",
     "launch_prefill": "the quick launch of the launch form: what the person's own earlier run was sent with, when it is still kept",
+    "launch_card": "the launch stage card of the run page (launch-stage-card, #387): what the caller's own run was sent with, its sample count and job number; reads only; no MCP tool",
     "run_file": "GET /run/file (results-files): one result file of the caller's own run, read by the agent of the run's environment and sent as a download; no MCP tool (an AI has no use for 25 MB of base64)",
     "task_log_view": "GET /run/log (web-run-tasks-log): the log of one failed task of the caller's own run, read by the agent through a read_task_log job and shown as a page; the MCP tool read_task_log is the blocking sibling and is unchanged",
     "pipeline_files": "guided launch reads pipeline files and the newest release through the agent (release-lookup-job); no MCP tool yet",

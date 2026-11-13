@@ -60,8 +60,8 @@ STRINGS = {
         "c_next_text": "請開啟確認頁，核對將刪除的資料夾後再決定。",
         "f_step": "步驟", "f_reason": "原因", "f_next": "之後", "confirm_suffix": "（確認頁）",
         "r_stopped": "已取消", "r_site": "站台無回應",
-        "launch_pipeline": "管線", "launch_revision": "版本", "launch_samples": "樣本數", "launch_params": "已變更的參數", "launch_when": "送出時間",
-        "launch_job": "工作編號", "launch_state": "狀態", "launch_defaults": "沿用預設", "launch_gone": "該次送出的內容已不保留。",
+        "lc_pipeline": "管線", "lc_revision": "版本", "lc_samples": "樣本數", "lc_params": "已變更的參數", "lc_when": "送出時間",
+        "lc_job": "工作編號", "lc_state": "狀態", "lc_defaults": "沿用預設", "lc_gone": "該次送出的內容已不保留。",
         "stage_launch": "送出", "stage_running": "執行中", "stage_results": "結果", "stage_downstream": "下游", "stage_finished": "完成",
         "state_running": "執行中", "state_succeeded": "完成", "state_failed": "失敗", "state_lost": "失敗", "state_unknown": "未知",
         "count_succeeded": "完成", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",
@@ -138,9 +138,9 @@ STRINGS = {
         "c_next_text": "Open the confirmation page, check which folder will be deleted, then decide.",
         "f_step": "Step", "f_reason": "Reason", "f_next": "Next", "confirm_suffix": " (confirmation page)",
         "r_stopped": "Cancelled", "r_site": "Site not responding",
-        "launch_pipeline": "Pipeline", "launch_revision": "Version", "launch_samples": "Samples", "launch_params": "Changed parameters", "launch_when": "Launched",
-        "launch_job": "Job number", "launch_state": "Status", "launch_defaults": "All parameters use their defaults",
-        "launch_gone": "The content of this launch is no longer kept.",
+        "lc_pipeline": "Pipeline", "lc_revision": "Version", "lc_samples": "Samples", "lc_params": "Changed parameters", "lc_when": "Launched",
+        "lc_job": "Job number", "lc_state": "Status", "lc_defaults": "All parameters use their defaults",
+        "lc_gone": "The content of this launch is no longer kept.",
         "stage_launch": "Launch", "stage_running": "Running", "stage_results": "Results", "stage_downstream": "Downstream",
         "stage_finished": "Finished",
         "state_running": "Running", "state_succeeded": "Done", "state_failed": "Failed", "state_lost": "Failed", "state_unknown": "Unknown",
@@ -571,7 +571,7 @@ def _launch_card(t, run, sent):
     dash = "—"
     note = ""
     if sent.get("found") and not sent.get("kept"):
-        note = '<p class="muted" role="status"><span>—</span> %s</p>' % esc(t["launch_gone"])
+        note = '<p class="muted" role="status"><span>—</span> %s</p>' % esc(t["lc_gone"])
     kept = bool(sent.get("found") and sent.get("kept"))
     params = sent.get("params") if kept else None
     if params is None:
@@ -579,13 +579,13 @@ def _launch_card(t, run, sent):
     elif params:
         shown = "".join("<code>%s</code>" % esc("%s: %s" % (k, ("true" if v else "false") if isinstance(v, bool) else v)) for k, v in params.items())
     else:
-        shown = '<span class="muted">— %s</span>' % esc(t["launch_defaults"])
+        shown = '<span class="muted">— %s</span>' % esc(t["lc_defaults"])
     samples = sent.get("samples") if kept else None
     when = taipei_time(sent.get("launched_at")) if sent.get("found") else None
-    cells = [(t["launch_pipeline"], esc((sent.get("pipeline") if kept else None) or dash)), (t["launch_revision"], esc((sent.get("revision") if kept else None) or dash)),
-             (t["launch_samples"], esc(dash if samples is None else samples)), (t["launch_params"], shown),
-             (t["launch_when"], esc(when or dash)), (t["launch_job"], esc(sent.get("job_id") if sent.get("job_id") is not None else dash)),
-             (t["launch_state"], esc(_state(t, run["status"])))]
+    cells = [(t["lc_pipeline"], esc((sent.get("pipeline") if kept else None) or dash)), (t["lc_revision"], esc((sent.get("revision") if kept else None) or dash)),
+             (t["lc_samples"], esc(dash if samples is None else samples)), (t["lc_params"], shown),
+             (t["lc_when"], esc(when or dash)), (t["lc_job"], esc(sent.get("job_id") if sent.get("job_id") is not None else dash)),
+             (t["lc_state"], esc(_state(t, run["status"])))]
     return note + '<dl class="prov">%s</dl>' % "".join("<dt>%s</dt><dd>%s</dd>" % (esc(k), v) for k, v in cells)
 
 

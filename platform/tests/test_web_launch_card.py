@@ -196,7 +196,7 @@ def test_tc013_a_run_the_platform_did_not_send(w, monkeypatch):
     from abf_platform import actions
     ann = w.user("ann")
     rid = seed(w, "foreign", "succeeded", ann)
-    monkeypatch.setattr(actions, "launch_prefill", lambda *a, **k: {"found": False, "kept": False})
+    monkeypatch.setattr(actions, "launch_card", lambda *a, **k: {"found": False, "kept": False})
     c = log_in(w)
     for lang in ("", "en"):
         r = c.get(url(rid, lang))
@@ -389,11 +389,11 @@ def test_tc030_no_internal_paths_or_hosts(w):
 
 def test_tc031_a_refusal_with_a_path_and_a_command_stays_out_of_the_card(w):
     # TC-031
-    reason = "No slot. Try /work/proj/xyz and then run: rm -rf /work/proj/xyz"
+    reason = "No slot. Try /data/proj/xyz and then run: rm -rf /data/proj/xyz"
     _, rid = sent(w, status="running", job_state="refused", result={"message": reason}, finished=w.clock.t - 60)
     t = log_in(w).get(url(rid, "en")).text
     inner = card(t, "Launch")
-    for word in ("/work/proj/xyz", "rm -rf", "No slot"):
+    for word in ("/data/proj/xyz", "rm -rf", "No slot"):
         assert word not in inner
     assert '<section id="refusal">' in t
 
