@@ -192,6 +192,9 @@ _CHAT_SENTENCE = ("Or, when the person has answered yes in this chat in their ow
                   "again with the same arguments plus request_id (the id this returned) and user_confirmed=true; never set "
                   "user_confirmed before they answer.")
 _REQUEST_ID_DOC = "The id of the pending request that the first call returned; only together with user_confirmed=true, after the person answered yes in the chat."
+_DELETE_REQUEST_ID_DOC = "Has no effect on delete_figure: a deletion cannot be confirmed in the chat, only by the person on the confirmation page or in their own form."
+_DELETE_USER_CONFIRMED_DOC = ("Has no effect on delete_figure: whatever the person said in the chat, a deletion is confirmed only on the confirmation page "
+                              "or in their own form; do not set it.")
 _USER_CONFIRMED_DOC = "True only after the person themselves answered yes in the chat to this request; never fill it in for them."
 
 
@@ -320,12 +323,12 @@ def _add_write_tools(server, platform_path, index_path):
     @server.tool(name="delete_figure", annotations=_DELETES,
                  description="Propose deleting one figure (name, one figure at a time) of one of your own runs (run_id), together with its code and "
                              "parameter files; it also leaves the delivery package. The deletion is final. Nothing is deleted until the person says "
-                             "yes on the page this returns or in their own form; you cannot say it for them: only after they answered in this chat "
-                             "call again with request_id and user_confirmed=true (never before they answer). If the gallery changed after the "
-                             "question, the answer is refused and you propose again.")
+                             "yes on the confirmation page this returns or in their own form; you cannot say it for them, and an answer in this chat does "
+                             "not count: request_id and user_confirmed have no effect on this tool, so ask the person to open the page and press its button. "
+                             "If the gallery changed after the question, the answer is refused and you propose again.")
     async def delete_figure_tool(ctx: Context, run_id: str, name: str,
-                                 request_id: Annotated[str | None, Field(description=_REQUEST_ID_DOC)] = None,
-                                 user_confirmed: Annotated[bool, Field(description=_USER_CONFIRMED_DOC)] = False) -> dict:
+                                 request_id: Annotated[str | None, Field(description=_DELETE_REQUEST_ID_DOC)] = None,
+                                 user_confirmed: Annotated[bool, Field(description=_DELETE_USER_CONFIRMED_DOC)] = False) -> dict:
         return await actions.request_delete_figure(platform_path, run_id=run_id, name=name, caller=_caller(ctx), person=actions.person_at(ctx),
                                                    remote=_remote(ctx), index_path=index_path, request_id=request_id, user_confirmed=user_confirmed)
 

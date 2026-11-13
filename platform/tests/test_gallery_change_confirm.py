@@ -134,7 +134,13 @@ def test_delete_on_each_channel(w, channel):
     elif channel == "PAGE":
         press(w, "ann", tool(w, "delete_figure", args, caller=ann)["request_id"])
     else:
-        assert chat(w, ann, "delete", tool(w, "delete_figure", args, caller=ann)["request_id"], args)["state"] == "ok"
+        # R1 (delete-needs-click, TC-001/TC-033): a relayed yes no longer deletes; the gallery stays as it was and the request waits for the person
+        before = prints(gallery(w, ann, run))
+        rid = tool(w, "delete_figure", args, caller=ann)["request_id"]
+        assert chat(w, ann, "delete", rid, args)["state"] == "refused"
+        assert prints(gallery(w, ann, run)) == before
+        assert [r["state"] for r in rows(w)] == ["pending"] and rows(w)[0]["channel"] is None
+        return
     folder = gallery(w, ann, run)
     assert not any(p.name.startswith("a.png") for p in folder.iterdir()) and sorted(index_of(w, ann, run)) == ["b.png", "c.png"]
     assert packed_of(w, ann, run) == []
@@ -246,7 +252,8 @@ def test_a_replayed_yes_does_not_run_twice(w):
     assert again["state"] in ("ok", "refused") and packed_of(w, ann, run) == ["c.png"]
     dargs = del_args(run, "a.png")
     did = tool(w, "delete_figure", dargs, caller=ann)["request_id"]
-    assert chat(w, ann, "delete", did, dargs)["state"] == "ok"
+    press(w, "ann", did)                       # R2 (delete-needs-click, TC-033): the person confirms on the page, a relayed yes cannot delete
+    assert "a.png" not in index_of(w, ann, run)
     press(w, "ann", call(w, ann, run, [fig("a.png", code="x\n")])["request_id"])                # a new a.png
     before = prints(gallery(w, ann, run))
     chat(w, ann, "delete", did, dargs)
@@ -333,7 +340,12 @@ def test_a_figure_deleted_in_between_is_a_plain_refusal(w):
     rid = tool(w, "delete_figure", args, caller=ann)["request_id"]
     core_delete(w, ann, run, "a.png")
     out = chat(w, ann, "delete", rid, args)
-    assert out["state"] == "refused" and "圖庫已變動" in out["message"] and "Traceback" not in out["message"]
+    # R3 (delete-needs-click, TC-033, TC-008): the relay now gets the new refusal with the page; "the gallery changed" is what the person's press on the page sees
+    assert out["state"] == "refused" and "Traceback" not in out["message"] and "圖庫已變動" not in out["message"]
+    assert sorted(index_of(w, ann, run)) == ["b.png", "c.png"]
+    assert [r["state"] for r in rows(w)] == ["pending"]
+    err = refused_by_yes(w, ann, rid)
+    assert "圖庫已變動" in str(err) and "Traceback" not in str(err)
     assert sorted(index_of(w, ann, run)) == ["b.png", "c.png"]
 
 
@@ -422,8 +434,12 @@ def test_a2_a_reused_request_id_does_not_restate_the_result(w):
     ann, run = gal(w, packed=())
     for kind, args, ask in (("pack", pack_args(run), "pack_figures"), ("delete", del_args(run), "delete_figure")):
         rid = tool(w, ask, args, caller=ann)["request_id"]
-        first = chat(w, ann, kind, rid, args)
-        assert first["state"] == "ok" and ("已打包" in first["message"] or "已刪除" in first["message"])
+        if kind == "pack":
+            first = chat(w, ann, kind, rid, args)
+            assert first["state"] == "ok" and ("已打包" in first["message"] or "已刪除" in first["message"])
+        else:
+            press(w, "ann", rid)             # R4 (delete-needs-click, TC-033): the first confirmation of a delete is the page's
+            assert "a.png" not in index_of(w, ann, run)
         again = chat(w, ann, kind, rid, args)
         assert "先前已經確認並執行過" in again["message"] and "重新查詢" in again["message"]
         assert "已打包" not in again["message"] and "已刪除" not in again["message"] and "a.png" not in again["message"]
@@ -455,3 +471,209 @@ def test_a4_the_stale_answer_speaks_only_of_this_confirmation(w):
     assert "圖庫已變動，這次確認沒有變更任何內容，請重新提出" in out["message"]
     assert "this confirmation changed nothing" in out["message"]
     assert "與當初給本人看的不同" not in out["message"]
+
+
+# ---- delete-needs-click: a deletion is approved only on the form or the confirmation page -----------------------------------------------------
+
+def _relay(w, ann, rid, run, **kw):
+    return chat(w, ann, "delete", rid, del_args(run, **kw))
+
+
+def test_dnc_a_relayed_delete_is_refused_with_the_page_and_nothing_is_consumed(w):
+    # TC-001, TC-002, TC-003, TC-004, TC-010
+    from test_web_wording_sweep import banned_in
+    ann, run = gal(w, packed=("a.png",))
+    before = prints(gallery(w, ann, run))
+    first = tool(w, "delete_figure", del_args(run), caller=ann)
+    rid, url = first["request_id"], first["url"]
+    jobs = w.sql("SELECT * FROM jobs")
+    out = _relay(w, ann, rid, run)
+    assert out["state"] == "refused" and out["ok"] is False
+    assert prints(gallery(w, ann, run)) == before and packed_of(w, ann, run) == ["a.png"]
+    assert url and url in out["message"] and out["url"] == url
+    msg = out["message"]
+    assert "刪除無法復原" in msg and "須由本人在確認頁按下確認" in msg
+    assert "cannot be undone" in msg and "confirmation page" in msg
+    assert not banned_in(msg.split(" (")[0])
+    after = rows(w)
+    assert len(after) == 1 and after[0]["state"] == "pending" and after[0]["channel"] is None
+    assert w.sql("SELECT * FROM jobs") == jobs
+    for m in (msg, first["message"]):
+        assert "Traceback" not in m and "SELECT" not in m and str(w.ip.state_db.parent) not in m
+
+
+def test_dnc_the_person_can_still_press_after_the_relay_was_refused(w):
+    # TC-005
+    ann, run = gal(w, packed=("a.png",))
+    rid = tool(w, "delete_figure", del_args(run), caller=ann)["request_id"]
+    assert _relay(w, ann, rid, run)["state"] == "refused"
+    press(w, "ann", rid)
+    folder = gallery(w, ann, run)
+    assert not any(p.name.startswith("a.png") for p in folder.iterdir()) and sorted(index_of(w, ann, run)) == ["b.png", "c.png"]
+    assert packed_of(w, ann, run) == []
+    r = rows(w)
+    assert len(r) == 1 and r[0]["state"] == "confirmed" and r[0]["channel"] == "PAGE" and no_jobs(w)
+
+
+def test_dnc_thirty_relays_delete_nothing(w):
+    # TC-006
+    ann, run = gal(w, packed=("a.png",))
+    before = prints(gallery(w, ann, run))
+    rid = tool(w, "delete_figure", del_args(run), caller=ann)["request_id"]
+    for _ in range(30):
+        assert _relay(w, ann, rid, run)["state"] == "refused"
+    assert prints(gallery(w, ann, run)) == before
+    assert len(rows(w)) == 1 and rows(w)[0]["state"] == "pending"
+    press(w, "ann", rid)
+    assert sorted(index_of(w, ann, run)) == ["b.png", "c.png"]
+
+
+def test_dnc_after_the_time_limit_the_old_refusals_stand(w):
+    # TC-007
+    from abf_platform import confirm
+    ann, run = gal(w, packed=("a.png",))
+    rid = tool(w, "delete_figure", del_args(run), caller=ann)["request_id"]
+    for _ in range(30):
+        _relay(w, ann, rid, run)
+    before = prints(gallery(w, ann, run))
+    w.clock.t += confirm.PENDING_SECONDS + 5
+    out = ask_delete(w, ann, run, "a.png", request_id=rid, user_confirmed=True)          # the action layer takes the test clock
+    assert out["state"] == "refused" and "逾時" in out["message"] and "/c/" not in out["message"] and not out.get("url")
+    from test_confirm_page import logged_in
+    page = logged_in(w, "ann").get("/c/" + rid)          # the relay above already voided it as expired, so the page says void (409) or expired (410), never a button
+    assert page.status_code in (409, 410) and "逾時" in page.text and "name=\"csrf\"" not in page.text
+    assert prints(gallery(w, ann, run)) == before
+
+
+def test_dnc_the_page_says_the_gallery_changed(w):
+    # TC-008
+    ann, run = gal(w)
+    rid = tool(w, "delete_figure", del_args(run), caller=ann)["request_id"]
+    core_delete(w, ann, run, "a.png")
+    assert _relay(w, ann, rid, run)["state"] == "refused" and rows(w)[0]["state"] == "pending"
+    after = prints(gallery(w, ann, run))
+    c, r = press(w, "ann", rid)
+    assert r.status_code < 500 and "圖庫已變動" in r.text and "Traceback" not in r.text
+    assert prints(gallery(w, ann, run)) == after
+
+
+def test_dnc_user_confirmed_alone_points_to_the_page_and_makes_no_row(w):
+    # TC-009
+    ann, run = gal(w)
+    before = prints(gallery(w, ann, run))
+    out = tool(w, "delete_figure", dict(del_args(run), user_confirmed=True), caller=ann)
+    assert out["state"] == "refused" and "確認頁" in out["message"] and "等本人在聊天裡回覆" not in out["message"]
+    assert rows(w) == [] and prints(gallery(w, ann, run)) == before
+
+
+def test_dnc_the_refusals_of_other_people_and_other_kinds_give_no_page(w):
+    # TC-011, TC-012
+    ann, run = gal(w)
+    bob = w.user("bob")
+    rid = tool(w, "delete_figure", del_args(run), caller=ann)["request_id"]
+    pid = ask_pack(w, ann, run, ["b.png"])["request_id"]
+    before = prints(gallery(w, ann, run))
+    rows_before = [(r["id"], r["state"], r["channel"]) for r in rows(w)]
+    outs = [tool(w, "delete_figure", del_args(run, request_id=rid, user_confirmed=True), caller=bob),
+            tool(w, "delete_figure", del_args(run, request_id=rid, user_confirmed=True), caller=None),
+            tool(w, "delete_figure", del_args(run, request_id=pid, user_confirmed=True), caller=ann),
+            tool(w, "pack_figures", pack_args(run, ["b.png"], request_id=rid, user_confirmed=True), caller=ann)]
+    for out in outs:
+        assert out["state"] == "refused" and "/c/" not in out["message"] and not out.get("url")      # stdio sees no gallery of ann: its own refusal may name the figure it typed itself
+    # bob cannot even see ann's run, so his relay is answered as a missing run: no page, no name of a figure (checked above)
+    assert prints(gallery(w, ann, run)) == before
+    assert [(r["id"], r["state"], r["channel"]) for r in rows(w)] == rows_before
+
+
+def test_dnc_invented_ids_and_a_changed_name_give_the_old_refusals(w):
+    # TC-013, TC-014
+    ann, run = gal(w)
+    before = prints(gallery(w, ann, run))
+    for rid in ("f" * 32, "x", "../../etc/passwd", "a" * 100):
+        out = tool(w, "delete_figure", del_args(run, request_id=rid, user_confirmed=True), caller=ann)
+        assert out["state"] == "refused" and "Traceback" not in out["message"] and "/c/" not in out["message"]
+    assert rows(w) == []
+    did = ask_delete(w, ann, run, "a.png")["request_id"]
+    out = tool(w, "delete_figure", del_args(run, "b.png", request_id=did, user_confirmed=True), caller=ann)
+    assert out["state"] == "refused" and "不同" in out["message"] and "/c/" not in out["message"] and not out.get("url")
+    assert prints(gallery(w, ann, run)) == before
+
+
+def test_dnc_an_expired_and_a_voided_request_keep_their_own_refusals(w):
+    # TC-015
+    from abf_platform import confirm
+    ann, run = gal(w)
+    before = prints(gallery(w, ann, run))
+    old = ask_delete(w, ann, run, "a.png")["request_id"]
+    w.clock.t += confirm.PENDING_SECONDS + 5
+    out = ask_delete(w, ann, run, "a.png", request_id=old, user_confirmed=True)
+    assert out["state"] == "refused" and "逾時" in out["message"] and "/c/" not in out["message"]
+    tool(w, "delete_figure", del_args(run, "b.png"), caller=ann, answer=form_answer("decline"))
+    voided = [r["id"] for r in rows(w) if r["state"] == "void" and r["void_reason"] and "expired" not in r["void_reason"]][0]
+    out = _relay(w, ann, voided, run, name="b.png")
+    assert out["state"] == "refused" and "作廢" in out["message"] and "/c/" not in out["message"]
+    assert prints(gallery(w, ann, run)) == before
+
+
+def test_dnc_a_request_the_person_already_confirmed_is_not_a_new_refusal(w):
+    # TC-016
+    ann, run = gal(w)
+    rid = tool(w, "delete_figure", del_args(run), caller=ann)["request_id"]
+    press(w, "ann", rid)
+    press(w, "ann", call(w, ann, run, [fig("a.png", code="x\n")])["request_id"])
+    before = prints(gallery(w, ann, run))
+    out = _relay(w, ann, rid, run)
+    assert "先前已經確認並執行過" in out["message"] and "重新查詢" in out["message"] and "a.png" not in out["message"] and "/c/" not in out["message"]
+    assert "a.png" in index_of(w, ann, run) and prints(gallery(w, ann, run)) == before
+
+
+def test_dnc_the_form_still_deletes_and_a_no_still_voids(w):
+    # TC-017, TC-019 (the page, TC-018, is test_delete_on_each_channel[PAGE])
+    ann, run = gal(w, packed=("a.png",))
+    assert tool(w, "delete_figure", del_args(run), caller=ann, answer=form_answer())["state"] == "ok"
+    assert sorted(index_of(w, ann, run)) == ["b.png", "c.png"] and packed_of(w, ann, run) == []
+    assert [r["channel"] for r in rows(w)] == ["ELICITED"]
+    ann2, run2 = gal(w, name="ann2", run_name="r2")
+    before = prints(gallery(w, ann2, run2))
+    out = tool(w, "delete_figure", del_args(run2), caller=ann2, answer=form_answer("decline"))
+    assert out["state"] == "refused" and out["message"] and prints(gallery(w, ann2, run2)) == before
+    assert [r["state"] for r in rows(w)][-1] == "void"
+
+
+def test_dnc_the_first_answer_names_only_the_page(w):
+    # TC-020, TC-026
+    ann, run = gal(w)
+    before = prints(gallery(w, ann, run))
+    out = tool(w, "delete_figure", del_args(run), caller=ann)
+    assert out["state"] == "pending" and out["request_id"] and out["url"] and out["summary"]
+    m = out["message"]
+    assert out["url"] in m and "user_confirmed" not in m and "request_id" not in m
+    assert prints(gallery(w, ann, run)) == before
+    pk = tool(w, "pack_figures", pack_args(run), caller=ann)["message"]
+    assert "user_confirmed=true" in pk and "request_id=" in pk
+
+
+def test_dnc_nobody_to_ask_is_as_it_was(w):
+    # TC-021
+    import shutil
+    from abf_platform import store
+    ann, run = gal(w)
+    shutil.copytree(gallery(w, ann, run), store.figures_root(w.ip.state_db) / "local" / run)
+    before = prints(gallery(w, ann, run))
+    out = tool(w, "delete_figure", del_args(run), caller=None)
+    assert out["state"] == "refused" and "沒有人可以" in out["message"]
+    assert rows(w) == [] and prints(gallery(w, ann, run)) == before
+
+
+def test_dnc_a_relayed_pack_still_works_and_the_database_holds_no_chat_delete(w):
+    # TC-025, TC-035
+    ann, run = gal(w, packed=())
+    args = pack_args(run)
+    rid = tool(w, "pack_figures", args, caller=ann)["request_id"]
+    assert chat(w, ann, "pack", rid, args)["state"] == "ok" and packed_of(w, ann, run) == ["a.png", "b.png"]
+    did = tool(w, "delete_figure", del_args(run, "c.png"), caller=ann)["request_id"]
+    _relay(w, ann, did, run, name="c.png")
+    for r in rows(w):
+        if '"delete"' in r["bundle_json"]:
+            assert r["channel"] != "CHAT" and not (r["state"] == "confirmed" and r["channel"] is None)
+    assert "c.png" in index_of(w, ann, run) and rows(w)[-1]["channel"] is None and no_jobs(w)

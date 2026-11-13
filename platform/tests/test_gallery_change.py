@@ -530,8 +530,14 @@ def test_the_tool_descriptions_say_the_three_things(w):
     assert list(pack.input_schema["properties"]) == ["run_id", "names", "request_id", "user_confirmed"]
     assert list(dele.input_schema["properties"]) == ["run_id", "name", "request_id", "user_confirmed"]
     assert pack.input_schema["required"] == ["run_id", "names"] and dele.input_schema["required"] == ["run_id", "name"]
-    for t in (pack, dele):
-        assert "user_confirmed" in t.description and "only after" in t.description and len(t.description) < 1200
+    assert "user_confirmed" in pack.description and "only after" in pack.description and len(pack.description) < 1200
+    # R5 (delete-needs-click, TC-022/TC-033): the delete description no longer teaches the relay; it says user_confirmed has no effect
+    assert "user_confirmed" in dele.description and "only after" not in dele.description and len(dele.description) < 1200
+    assert "no effect" in dele.description and "page" in dele.description and dele.annotations.destructive_hint is True
+    props = dele.input_schema["properties"]                                              # TC-023
+    for k in ("request_id", "user_confirmed"):
+        assert "no effect" in props[k]["description"] and "only after the person" not in props[k]["description"].lower()
+    assert "only after the person" in pack.input_schema["properties"]["user_confirmed"]["description"].lower() or "True only after" in pack.input_schema["properties"]["user_confirmed"]["description"]
     assert "exactly this set" in pack.description and "stay in the gallery" in pack.description and "not deleted" in pack.description
     assert "one figure" in dele.description.lower() and "cannot be undone" not in dele.description.lower()
 
