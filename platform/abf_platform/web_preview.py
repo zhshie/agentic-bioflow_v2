@@ -138,7 +138,7 @@ def _links(lang, run_id, path, t):
     esc = web_board.esc
     return '<p><a href="%s">%s</a> <a href="%s">%s</a></p>' % (
         web_board._url(lang, run_id, path="/run/file", sub=path), esc(t["p_download"]),
-        web_board._url(lang, run_id, "results", tab="outputs"), esc(t["p_back"]))
+        web_board.outputs_back(lang, run_id, path), esc(t["p_back"]))
 
 
 def render_none(run_id, path, lang="zh"):
