@@ -65,6 +65,14 @@ rs=$(printf '%s\n' "$ops" | awk '/RStudio in the downstream page/{on=1} on' | he
 if has "$rs" "http://127.0.0.1:$port"; then ok "TC-032 OPERATIONS names the same address as the example"; else bad "TC-032 OPERATIONS address"; fi
 if bash tests/hosted_deploy_test.sh 2>&1 | grep -E 'TC-01[56]' | grep FAIL >/dev/null; then bad "TC-032 hosted_deploy_test TC-015/016 on env.example"; else ok "TC-032 env.example still passes hosted_deploy_test TC-015/016"; fi
 
+
+# ---------- desktop trial (2026-11-13): the two cookie options, a private cookie key, USER set ----------
+if has "$exec_line" '--www-same-site=none' && has "$exec_line" '--auth-cookies-force-secure=1'; then ok "TC-029 the unit sets --www-same-site=none and --auth-cookies-force-secure=1 (a cookie the framed page can keep)"; else bad "TC-029 same-site and force-secure options"; fi
+if has "$exec_line" 'chmod 600' && has "$exec_line" 'cookie-key'; then ok "TC-029 the cookie key file is made mode 600"; else bad "TC-029 chmod 600 of the cookie key"; fi
+if has "$exec_line" 'export USER=%u'; then ok "TC-029 USER is set for rserver (export USER=%u)"; else bad "TC-029 export USER=%u"; fi
+if printf '%s\n' "$unit" | grep -iE 'not (been )?(verified|checked)|checked on the computer' >/dev/null; then bad "TC-029 the unit header still says the options are not verified"; else ok "TC-029 the unit header states what was verified"; fi
+if has "$ops" 'allow' && hasre "$ops" 'local network' && has "$tst" 'local network' && has "$plat" 'local network'; then ok "TC-043 OPERATIONS, TESTING and PLATFORM tell the browser asks to allow local network access"; else bad "TC-043 local network permission in the docs"; fi
+if has "$ops" 'LAB_SETTINGS_FILE=<' && hasre "$ops" 'LAB_SETTINGS_FILE=<[^>]*> scripts/on_site.sh --check-reach' && hasre "$ops" 'LAB_SETTINGS_FILE=<[^>]*> scripts/on_site.sh --check-master; echo \$\?'; then ok "TC-D the reconnect steps name the agent's settings file"; else bad "TC-D reconnect steps with LAB_SETTINGS_FILE"; fi
 # ---------- TC-033: the two tests that count files were rewritten, nothing else under deploy/ ----------
 if git rev-parse --git-dir >/dev/null 2>&1; then
   base=$(git merge-base origin/v3 HEAD 2>/dev/null || true)

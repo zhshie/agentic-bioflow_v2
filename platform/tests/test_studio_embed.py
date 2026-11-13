@@ -215,8 +215,8 @@ def test_tc009_a_studio_query_never_reaches_the_frame(w, studio):
     assert "%s" % quote(studio, safe="") not in r.text
 
 
-@pytest.mark.parametrize("lang,words", [(False, ["空白", "尚未啟動", "擋下", "在新分頁開啟 RStudio", "docs/OPERATIONS.md"]),
-                                        (True, ["blank", "not started", "blocked", "Open RStudio in a new tab", "docs/OPERATIONS.md"])])
+@pytest.mark.parametrize("lang,words", [(False, ["空白", "尚未啟動", "擋下", "在新分頁開啟 RStudio", "docs/OPERATIONS.md", "允許", "本機網路"]),
+                                        (True, ["blank", "not started", "blocked", "Open RStudio in a new tab", "docs/OPERATIONS.md", "allow", "local network"])])
 def test_tc010_a_hint_for_a_blank_frame(w, lang, words):
     # TC-010: the platform does not know whether RStudio runs; the page is the same either way and says what to do
     rid = succeeded(w)
