@@ -715,6 +715,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         """What the finished stage shows of how the run was sent: the action `launch_prefill` (reads only)."""
         return actions.launch_prefill(platform_path, view["name"], caller=caller)
 
+    def read_launch(view, caller):
+        """What the launch stage card shows of how the run was sent: the action `launch_card` (reads only; it asks no site)."""
+        return actions.launch_card(platform_path, view["name"], caller=caller)
+
     def read_outputs_look(run_id, caller):
         """The output folder as it is now, for the delivery list of the finished stage: it only looks, it never queues a listing."""
         try:
@@ -741,6 +745,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         selected = None
         outputs = None
         finished = None
+        sent = None
         gallery = None
         embed = None
         headers = _HEADERS
@@ -760,6 +765,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
                 finished = await run_in_threadpool(read_finished, selected, caller)
                 outputs = await run_in_threadpool(read_outputs_look, selected["id"], caller)
                 gallery = await run_in_threadpool(read_gallery, sid, selected["id"], caller)
+            if web_board.pick_stage(stage, None) == "launch" and not flash:
+                sent = await run_in_threadpool(read_launch, selected, caller)
             if gallery and gallery.get("figures"):
                 headers = FINISHED_HEADERS       # a page that holds a picture of the gallery may load pictures, from this site only; every other page keeps the base policy
             if selected["status"] == "succeeded" and web_board.pick_stage(stage, None) == "downstream" and not flash:
@@ -776,7 +783,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         except sqlite3.Error:
             refusal = None
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
-                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio, gallery=gallery, studio_embed=embed)
+                                     act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio, gallery=gallery, studio_embed=embed, sent=sent)
         return await _html(doc, code, headers, force=headers is FINISHED_HEADERS and not flash)      # the finished stage with figures never reloaded, and carries the script all the same
 
     async def board(request):

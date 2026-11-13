@@ -1436,7 +1436,7 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))
     names = [n for n in names if n not in ("request_publish_figure", "list_figures", "screen_for_page", "request_pack_figures", "request_delete_figure")]      # mcp-publish-figure adds these three, mcp-gallery-actions the last two (and nothing else) to the action layer
-    assert len(names) == 60 and digest(repr(names)) == "49b160116a812f893f51786365283176959c1e2b48396f3db60e26d721757cfb"      # web-run-tasks-log adds task_log_view (59 -> 60); pipe-reg-store adds four registration actions (54 -> 58, 012b-2 adds preview_samplesheet); cost-page-by-environment adds run_usage (58 -> 59); mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
+    assert len(names) == 61 and digest(repr(names)) == "2397ad4e9046c928095880d1a58af29a60b1d4958e681416e7a9c18b6df44b3e"      # launch-stage-card (#387) adds launch_card (60 -> 61); web-run-tasks-log adds task_log_view (59 -> 60); pipe-reg-store adds four registration actions (54 -> 58, 012b-2 adds preview_samplesheet); cost-page-by-environment adds run_usage (58 -> 59); mcp-run-file adds read_run_file; results-files adds run_file; without it the 49 names hash as before
     assert not [n for n in names if re.search(r"k8s|kube|pod", n, re.I)]
 
 

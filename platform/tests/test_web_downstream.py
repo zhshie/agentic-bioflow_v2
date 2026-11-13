@@ -233,7 +233,7 @@ def test_no_new_route_no_new_action(w):
     assert sorted((r.path, tuple(sorted(r.methods or []))) for r in app.routes) == sorted(ROUTES_V3 + [("/run/figure", ("GET", "HEAD")), ("/run/figure/delete", ("POST",)), ("/run/figures/pack", ("POST",)), ("/static/live.js", ("GET", "HEAD")), ("/live/version", ("GET", "HEAD")), ("/live/content", ("GET", "HEAD"))])      # live-sync adds the last three; mcp-publish-figure-gallery adds these three
     names = sorted(n for n in dir(actions) if not n.startswith("_") and callable(getattr(actions, n))
                    and getattr(getattr(actions, n), "__module__", "").startswith("abf_platform.actions"))
-    assert names == sorted(ACTIONS_V3 + ["list_figures", "request_publish_figure", "screen_for_page", "request_pack_figures", "request_delete_figure"])    # mcp-publish-figure adds these three, mcp-gallery-actions the last two
+    assert names == sorted(ACTIONS_V3 + ["list_figures", "request_publish_figure", "screen_for_page", "request_pack_figures", "request_delete_figure", "launch_card"])    # mcp-publish-figure adds these three, mcp-gallery-actions the next two, launch-stage-card the last
 
 
 def test_style_untouched_and_csp_same(w):
@@ -273,7 +273,7 @@ def test_board_touches_are_minimal():
     from abf_platform import web_board
     src = (ROOT / "abf_platform" / "web_board.py").read_text(encoding="utf-8")
     assert len(re.findall(r"^from \. import web_downstream", src, re.M)) == 1
-    assert web_board.PLACEHOLDER == ("launch", "downstream")
+    assert web_board.PLACEHOLDER == ("downstream",)      # launch-stage-card (#387): the launch stage has its own card now
     import inspect
     for fn in (web_board.render_board, web_board._run_page, web_board._stage_card):
         assert inspect.signature(fn).parameters["studio"].default is None

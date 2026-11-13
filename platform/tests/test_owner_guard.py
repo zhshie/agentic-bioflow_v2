@@ -150,6 +150,7 @@ NO_TOOL = {
     "cancel": "the confirmed path (confirmed_by), not a tool",
     "forget": "the confirmed path (confirmed_by), not a tool",
     "launch_prefill": "web launch page",
+    "launch_card": "web run page, launch stage card (launch-stage-card, #387): what the caller's own run was sent with, read only",
     "list_samplesheets": "web launch page",
     "nfcore_catalogue": "web launch page",
     "pipeline_files": "web launch page",
