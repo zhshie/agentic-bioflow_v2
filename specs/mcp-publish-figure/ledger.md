@@ -51,3 +51,10 @@
 - `docs/PLATFORM.md` publish_figure 段落補上以上可見行為。
 - N1 與裁決文字的一處差異（請 lead 知悉）：`code`／`params` 裡的 `\r\n`（Windows 存檔的換行）仍然放行，單獨的 `\r` 才拒絕。原因：既有測試 `test_studio_publish.py`（TC-056、TC-065，`plot(x)\r\n圖\n`）要求 CR LF 的程式碼檔能送出，照字面拒 `\r` 會讓 Windows 使用者的程式碼檔全被擋。新測試 `test_n1_a_windows_line_ending_stays_legal_but_a_lone_cr_does_not`。
 - 併入第 3 片（gallery_change 的 pack／delete 申請）後：N2（代理字元與回顯）、N5（`is True`）、N6（以 `_own_request` 讀自己的申請，不再用 `confirm.facts`）同樣套用在 `_request_change`；pack／delete 的鎖內開頭也 `_sweep_tmp`。測試 `test_n2_n5_n6_hold_for_the_gallery_change_requests_too`。
+
+## 補強輪二（lead 裁決 N7、N8、N9，2026-11-13；N1–N6 驗收 ACCEPT 附條件之後）
+
+- [x] N7：`code`／`params` 另拒 Unicode 類別 Cn（未指派）與 Co（私用區）。顯示時的收斂 `_squeeze` 把「空白」與下列填充字元視為同一類，交錯也算，連續超過 8 個顯示成 8 個空白：U+034F、U+115F、U+1160、U+17B4、U+17B5、U+180B–180D、U+180F（蒙古文自由變體選擇符）、U+2800（空白點字）、U+3164、U+FE00–FE0F、U+FFA0、U+E0100–E01EF。理由：這些是 Default_Ignorable_Code_Point 中不屬 Cf（Cf 已在 N1 整個拒絕）、因此仍被放行、而畫面上什麼都不畫的字元，外加 U+2800（不是 Default_Ignorable，但看起來是空白）；清單取 Unicode 的 Default_Ignorable 去掉 Cf／Cn 之後的全部，再加 U+2800。存檔內容不動。測試 `test_n7_*`：Cn／Co 拒絕（5 個字元×2 欄），填充收斂（8 種填充含 `"ㅤ"*200`、`" ͏"*30`、混合空白與填充，×code／params，驗表單文字、`screen_text`、英文頁，偽造的那一行前最多 8 個位置，落地檔位元組不變）。
+- [x] N8：`_squeeze` 同時把連續空行（含只有空白或填充字元的行）最多留 2 行，其餘丟掉；空白行顯示成空字串。code 與 params 都適用（它們都經 `_screen`），存檔不變。測試 `test_n8_*`（三個通道）。
+- [x] N9：`_clean_names` 回傳的壞名字改經 `_safe`（去 Cc／Cf／Cs／Zl／Zp、截 80 字元），`pack_figures` 與 `delete_figure` 的答覆都由此回顯。測試 `test_n9_*`（`test_gallery_change.py`）。
+- 既有測試改動：無（`test_n8` 的一個斷言在 RED 提交後自己修正，那是本輪新寫的測試）。`docs/PLATFORM.md` publish_figure 段落兩句已更新。

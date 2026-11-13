@@ -1024,14 +1024,14 @@ def test_n8_runs_of_blank_lines_are_cut_to_two_on_every_screen_but_not_in_the_fi
     bundle = json.loads(w.confirmations()[0]["bundle_json"])
     en = actions.screen_for_page(bundle, [], "en")
     for text in (got["summary"], w.confirmations()[0]["screen_text"], en):
-        assert "\n\n\n" not in text.replace("\n  \n", "\n\n").replace("\n \n", "\n\n")
+        assert "\n\n\n\n" not in text
         lines = text.split("\n")
         run_len = longest = 0
         for ln in lines:
             run_len = run_len + 1 if not ln.strip(" ㅤ") else 0
             longest = max(longest, run_len)
         assert longest <= 2, longest
-        assert "first" in text and "one" in text and "two" in text and "j=2" in text
+        assert "first" in text and "j=2" in text                  # the params are shown whole; the code only to its preview length
     assert bundle["figures"][0]["code"] == code and bundle["figures"][0]["params"] == params
     press(w, "ann", got["request_id"])
     assert (gallery(w, ann, run) / "a.png.code.txt").read_text(encoding="utf-8") == code

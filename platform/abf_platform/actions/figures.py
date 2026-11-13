@@ -66,7 +66,14 @@ def _mb(n):
 
 
 _UNSEEN = ("Cc", "Cf", "Cs", "Zl", "Zp")          # control, format (bidi, zero width), surrogate, line and paragraph separators
-_LONG_SPACE = re.compile(r"[^\S\r\n]{9,}")
+# Default_Ignorable_Code_Point characters that are not category Cf (those are refused outright) and still draw nothing, plus the blank braille cell
+# U+2800 (category So): Hangul fillers U+115F U+1160 U+3164 U+FFA0, Khmer inherent vowels U+17B4 U+17B5, U+034F, Mongolian free variation selectors
+# U+180B-180D U+180F, variation selectors U+FE00-FE0F and U+E0100-E01EF. A person sees nothing where they are, so they count as blank (ruling N7).
+_FILLER = "͏ᅟᅠ឴឵᠋-᠍᠏⠀ㅤ︀-️ﾠ\U000e0100-\U000e01ef"
+_BLANK = r"(?:[^\S\r\n]|[" + _FILLER + r"])"
+_LONG_SPACE = re.compile(_BLANK + "{9,}")
+_BLANK_LINE = re.compile(_BLANK + "*")
+MAX_BLANK_LINES = 2
 
 
 def _safe(value, limit=80):
@@ -84,8 +91,19 @@ def _lone_surrogate(value):
 
 def _squeeze(text):
     """For display only (ruling N1): a run of more than 8 blank characters is shown as 8, so padding cannot push a forged line to the start of a
-    visual line. What is stored is never passed through here."""
-    return _LONG_SPACE.sub(" " * 8, text)
+    visual line; more than MAX_BLANK_LINES blank lines in a row (a line of spaces or filler counts as blank) are shown as 2 (rulings N1, N7, N8).
+    What is stored is never passed through here."""
+    out, blanks = [], 0
+    for line in _LONG_SPACE.sub(" " * 8, text).split("\n"):
+        if _BLANK_LINE.fullmatch(line):
+            blanks += 1
+            if blanks > MAX_BLANK_LINES:
+                continue
+            line = ""
+        else:
+            blanks = 0
+        out.append(line)
+    return "\n".join(out)
 
 
 # ---- checks (before any request exists, and again when the person says yes) -----------------------------------------------------
@@ -119,6 +137,8 @@ def _text_problem(value, label, limit, unit):
         raise FigureRefused("%s 含有不成對的代理字元，不是正確的文字 (%s contains a lone surrogate, which is not valid text)" % (label, label))
     if label == "caption" and any(unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp") for ch in value):
         raise FigureRefused("caption 不可含換行、控制字元或不可見的格式字元（說明只能是單行文字）(the caption must be one line of text: no line break, control or invisible format character)")
+    if label != "caption" and any(unicodedata.category(ch) in ("Cn", "Co") for ch in value):
+        raise FigureRefused("%s 含有未指派或私用區的字元（看不見的填充）(%s contains an unassigned or private-use character)" % (label, label))
     if label != "caption" and any((unicodedata.category(ch) == "Cc" and ch not in "\n\t") or unicodedata.category(ch) in ("Cf", "Zl", "Zp") for ch in value.replace("\r\n", "\n")):       # a Windows file ends its lines with CR LF; a CR on its own moves the cursor and is refused
         raise FigureRefused("%s 含有控制字元或不可見的格式字元（只有換行與 Tab 可以）(%s contains a control or invisible format character; only a line break and a tab are allowed)" % (label, label))
     size = len(value) if unit == "chars" else len(encoded)
@@ -722,7 +742,7 @@ def _clean_names(names):
     out, seen = [], set()
     for n in names:
         if not isinstance(n, str) or not n or len(n) > NAME_LIMIT or any(ord(c) < 32 or ord(c) == 127 for c in n):
-            return None, "bad_name", n[:NAME_LIMIT] if isinstance(n, str) else ""
+            return None, "bad_name", _safe(n) if isinstance(n, str) else ""
         if n not in seen:
             seen.add(n)
             out.append(n)
