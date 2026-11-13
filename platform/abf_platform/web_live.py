@@ -16,7 +16,6 @@ import hashlib
 import html
 import json
 import re
-import threading
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -184,28 +183,53 @@ class Recent:
 
 
 _MEMO = collections.OrderedDict()      # sha1 of a page -> its layout: a page asked about twice (the version, then the content) is read once
-_MEMO_LOCK = threading.Lock()
 MEMO_PAGES = 16
 
 
-def layout(doc):
-    """`_layout` with a small memory of the last pages: the same text is never parsed twice in a row. The answer is shared; nobody changes it."""
+def recall(doc):
+    """The layout kept for exactly this text, or None. Called only on the event loop, which is the only place the memory is read or written."""
     key = hashlib.sha1(doc.encode("utf-8")).hexdigest()
-    with _MEMO_LOCK:
-        if key in _MEMO:
-            _MEMO.move_to_end(key)
-            return _MEMO[key]
-    got = _layout(doc)
-    _remember(key, got)
+    got = _MEMO.get(key)
+    if got is not None:
+        _MEMO.move_to_end(key)
     return got
 
 
-def _remember(key, got):
-    with _MEMO_LOCK:
-        _MEMO[key] = got
+def remember(doc, lay):
+    """Keep the layout of this text (the last MEMO_PAGES pages). Only on the event loop; the work in a thread is the pure `layout` and its answer is stored by the caller."""
+    _MEMO[hashlib.sha1(doc.encode("utf-8")).hexdigest()] = lay
+    _MEMO.move_to_end(hashlib.sha1(doc.encode("utf-8")).hexdigest())
+    while len(_MEMO) > MEMO_PAGES:
+        _MEMO.popitem(last=False)
+
+
+def _page_key(doc, headers, force):
+    return hashlib.sha1(("page|%s|%s|" % (headers.get("Content-Security-Policy", ""), bool(force)) + doc).encode("utf-8")).hexdigest()
+
+
+def recall_page(doc, headers, force=False):
+    """(page, headers, layout) of what `decorate_with_layout` made of exactly this text with these headers a moment ago, or None. Event loop only."""
+    key = _page_key(doc, headers, force)
+    got = _MEMO.get(key)
+    if got is not None:
         _MEMO.move_to_end(key)
-        while len(_MEMO) > MEMO_PAGES:
-            _MEMO.popitem(last=False)
+    return got
+
+
+def remember_page(doc, headers, force, made):
+    """Keep what `decorate_with_layout` made, and the layout under the text of the page it made. Event loop only."""
+    key = _page_key(doc, headers, force)
+    _MEMO[key] = made
+    _MEMO.move_to_end(key)
+    if made[2] is not None:
+        remember(made[0], made[2])
+    while len(_MEMO) > MEMO_PAGES * 2:
+        _MEMO.popitem(last=False)
+
+
+def layout(doc):
+    """The regions of a page (pure: nothing is kept, so it may run in a thread)."""
+    return _layout(doc)
 
 
 def _layout(doc):
@@ -247,13 +271,18 @@ def decorate(doc, headers, force=False):
     when `force` says so (the finished stage with figures, which never reloaded). The meta refresh then moves inside <noscript>, the script goes at the end of
     the body, the body gets the `data-live` attribute (and `data-live-u`, the address a whole reload goes to), and the policy gets the two sources. Any other page
     is returned as it is, byte for byte."""
+    return decorate_with_layout(doc, headers, force)[:2]
+
+
+def decorate_with_layout(doc, headers, force=False):
+    """`decorate`, and the layout of the page it made (None when the page is returned as it was); pure, so it may run in a thread: the caller keeps the layout."""
     found = META.search(doc)
     if found is None and not force:
-        return doc, headers
+        return doc, headers, None
     try:
         return _decorate(doc, headers, found)
     except RecursionError:      # a page nested deeper than the parser can follow is sent as it is: no script, and the refresh as it always was
-        return doc, headers
+        return doc, headers, None
 
 
 def _decorate(doc, headers, found):
@@ -269,6 +298,4 @@ def _decorate(doc, headers, found):
     attr = ' data-live="%s"%s' % (html.escape(json.dumps(info_of(lay, given), separators=(",", ":")), quote=True), go)
     final = doc.replace("<body>", "<body" + attr + ">", 1)
     shift = len(final) - len(doc)      # the body's attribute moved everything after it; the look that follows asks about this very text
-    _remember(hashlib.sha1(final.encode("utf-8")).hexdigest(),
-              [dict(c, regions=[dict(r, start=r["start"] + shift, end=r["end"] + shift) for r in c["regions"]]) for c in lay])
-    return final, given
+    return final, given, [dict(c, regions=[dict(r, start=r["start"] + shift, end=r["end"] + shift) for r in c["regions"]]) for c in lay]

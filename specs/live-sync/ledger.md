@@ -208,6 +208,10 @@ A real defect found on the way: a figure's ids were made of a hash of its name; 
 
 **Browser checks after this round.** `scripts/dev/check_live_sync.py` has 20 cases (the 16 of the contract, `S3`, `S3B`, `DIRTY`, `TWO-TABS`).
 
+## Round 4: the CI rules that scan the platform sources
+
+Four existing tests (not edited) failed on CI because `web_live.py` used `threading` (`test_scope.py::test_tc071_*`, `test_cleanup_confirm.py::test_tc068_tc076_*`; the same word is banned by `test_aws_upload.py` and `test_azure_upload.py::test_no_cloud_library_and_no_station_word_in_platform_sources`). The layout memory had a `threading.Lock()` because `layout` ran in the thread pool and wrote the memory. Now the thread pool only does pure work: `web_live.layout` and `decorate_with_layout` keep nothing and return their result; the memory (`recall`, `remember`, `recall_page`, `remember_page`) is read and written only on the event loop, by `web._html` and `page_layout` after the thread has returned. No lock, no other synchronisation. The page memory is keyed by the text, the policy and `force`, and holds scripted pages only. (A first version wrote a literal NUL character into a cache key; the scan tests refused the source; it is a `|` now.)
+
 ## Results of the platform tests (WSL, `~/abf-venv`, no `-x`)
 
 - Whole `platform/tests` on the branch before the last two merges: 8641 passed, 4 failed, 25 errors, 52 minutes. The 25 errors are the tests that need the pinned Nextflow (`test_nextflow_e2e`, `test_launch_nextflow`, `test_launch_e2e`, `test_pipeline_export`): not available here, not caused by this change. The 4 failures: `test_studio_embed.py::test_tc015_*` (the route pin, fixed afterwards) and `test_aws_upload.py::test_clean_work_is_taken_for_aws_since_aws_clean`, `test_azure_upload.py::test_clean_work_and_resume_still_refused_for_azure`, `test_byte_channel_a.py::test_tc076_tc077_*`: these three say "agent ... is offline" in a long run and pass on their own, on `origin/v3` and on this branch (138 passed each way, also after `test_web_live_sync.py`); I could not find the cause: unverified, the CI is the judge.

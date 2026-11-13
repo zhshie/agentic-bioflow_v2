@@ -173,7 +173,13 @@ def _page(title, body, status=200, form_action=None, lang="zh"):
 async def _html(doc, status_code=200, headers=None, force=False):
     """An HTML answer of a page that may carry the script of live-sync: such a page gets its marks (the body's `data-live`) and the two sources in its policy,
     any other page goes out as it is."""
-    doc, headers = await run_in_threadpool(web_live.decorate, doc, headers if headers is not None else _HEADERS, force)      # reading a page is work for a thread, not for the loop
+    headers = headers if headers is not None else _HEADERS
+    made = web_live.recall_page(doc, headers, force)      # the same render a moment ago (the look that follows a page): not read again
+    if made is None:
+        made = await run_in_threadpool(web_live.decorate_with_layout, doc, headers, force)      # reading a page is work for a thread, not for the loop
+        if made[2] is not None:      # only a page that carries the script is looked at
+            web_live.remember_page(doc, headers, force, made)      # kept here, on the loop
+    doc, headers = made[0], made[1]
     return HTMLResponse(doc, status_code=status_code, headers=headers)
 
 
@@ -1779,6 +1785,14 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return None, {"user": user, "key": hashlib.sha1(raw.encode("utf-8")).hexdigest(), "state": state, "doc": body, "headers": response.headers,
                       "scripted": web_live.SCRIPT_TAG in body, "page": response.status_code == 200}
 
+    async def page_layout(doc):
+        """The regions of a page: from the memory when this very text was read a moment ago, else read in a thread and kept (the memory is touched on the loop only)."""
+        lay = web_live.recall(doc)
+        if lay is None:
+            lay = await run_in_threadpool(web_live.layout, doc)
+            web_live.remember(doc, lay)
+        return lay
+
     async def live_script(request):
         return Response(web_live.script_bytes(), media_type="text/javascript", headers=_HEADERS)
 
@@ -1816,7 +1830,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         # a page that has stopped asking for a refresh (everything it waited for has come) is shown in place one last time, and the script then stops
         headers = page["headers"] if page["scripted"] else web_live.with_script(page["headers"])
         try:
-            lay = await run_in_threadpool(web_live.layout, page["doc"])
+            lay = await page_layout(page["doc"])
         except RecursionError:      # a page too deeply nested to follow: the script is told to load it whole (at most every 15 seconds)
             return live_answer({"s": "reload"} if may_reload(page["user"]["user_id"], page["key"]) else {"s": "wait"})
         return live_answer(dict(web_live.info_of(lay, headers), s="ok", **({} if page["scripted"] else {"x": 1})))
@@ -1829,7 +1843,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return live_answer({"s": "reload"})
         want = {n for n in (request.query_params.get("n") or "").split(",")[:300] if n}
         try:
-            lay = await run_in_threadpool(web_live.layout, page["doc"])
+            lay = await page_layout(page["doc"])
         except RecursionError:
             return live_answer({"s": "reload"})
         got = [r for c in lay for r in c["regions"] if r["name"] in want]
