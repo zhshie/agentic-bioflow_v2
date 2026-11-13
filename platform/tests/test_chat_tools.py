@@ -100,12 +100,15 @@ def test_a_chat_pack_asks_then_the_persons_press_packs_and_a_chat_delete_only_gi
     refused = chat(w, ann, "delete", gone["request_id"], del_args(run, "a.png"))                      # TC-023
     assert refused["state"] == "refused" and gone["url"] in refused["message"] and prints(gallery(w, ann, run)) == before
     assert [r["state"] for r in rows(w)] == ["pending", "pending"]
-    assert tool(w, "pack_figures", pack_args(run, ["a.png"]), caller=bob) == tool(w, "pack_figures", pack_args("no-such-run", ["a.png"]), caller=bob)   # TC-027
-    assert tool(w, "delete_figure", del_args(run), caller=bob) == tool(w, "delete_figure", del_args("no-such-run"), caller=bob)
+    def same(a, b):      # the answer echoes the run id the caller typed and nothing else may differ
+        return str(a).replace(run, "R") == str(b).replace("no-such-run", "R") and a["state"] == "refused"
+    assert same(tool(w, "pack_figures", pack_args(run, ["a.png"]), caller=bob), tool(w, "pack_figures", pack_args("no-such-run", ["a.png"]), caller=bob))   # TC-027
+    assert same(tool(w, "delete_figure", del_args(run), caller=bob), tool(w, "delete_figure", del_args("no-such-run"), caller=bob))
     assert len(rows(w)) == 2
     press(w, "ann", out["request_id"])                                                                # TC-020: the person's own press
     assert packed_of(w, ann, run) == ["a.png", "b.png"]
-    press(w, "ann", gone["request_id"])                                                               # TC-025
+    again = tool(w, "delete_figure", del_args(run, "a.png"), caller=ann)      # the pack changed the gallery, so the first delete request is stale: ask again
+    press(w, "ann", again["request_id"])                                                              # TC-025
     assert "a.png" not in prints(gallery(w, ann, run)) and packed_of(w, ann, run) == ["b.png"]
 
 
