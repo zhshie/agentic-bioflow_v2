@@ -48,10 +48,11 @@ def stamp(w, name):
 def scene(w):
     """ann has a running, a failed and a succeeded run; bob has one of his own; both are logged in."""
     ann, bob = w.user("ann"), w.user("bob")
-    ids = {"run": seed(w, "ann-run", "running", ann, counts=dict(succeeded=1, running=2)),
+    began = w.clock.t - HOUR - 20      # twenty seconds past a whole minute on the app's clock: the few seconds a test moves it never change the elapsed time shown
+    ids = {"run": seed(w, "ann-run", "running", ann, started=began, counts=dict(succeeded=1, running=2)),
            "bad": seed(w, "ann-bad", "failed", ann, counts=dict(succeeded=1, failed=1), reason="boom"),
            "ok": seed(w, "ann-ok", "succeeded", ann, started=NOW - 3 * HOUR, ended=NOW - 2 * HOUR, counts=dict(succeeded=4)),
-           "bob": seed(w, "bob-run", "running", bob, counts=dict(running=1))}
+           "bob": seed(w, "bob-run", "running", bob, started=began, counts=dict(running=1))}
     stamp(w, "ann-ok")
     return ann, bob, ids, login(w, "ann"), login(w, "bob")
 
