@@ -516,7 +516,7 @@ def test_tc026_the_golden_files_carry_r_on_the_fetch_results_row_only():
     assert [l for l in tree if "--r｜" in l or ",--r," in l] == [l for l in tree if l.startswith("fetch-results｜")]
     assert tree[16].startswith("fetch-results｜run,--dir,--r｜")
     top = (REPO_ROOT / "platform/tests/__golden__/cli_help_top.txt").read_text(encoding="utf-8")
-    assert top.count("[--r]") == 1 and "[--r]" in [l for l in top.split("\n") if "fetch-results" in l][0]
+    assert top.count("[--r]") == 1 and "fetch-results RUN [--dir DIR] [--r]" in top
 
 
 def test_tc028_the_second_line_stands_alone(w):
