@@ -47,3 +47,16 @@
 ## 測試怎麼做
 
 先寫會失敗的測試；三個通道各有案例；其他種類以既有測試為證；被反轉的既有測試由合約逐條點名，只准改那些；L 級證明寫進 ledger。全套以 PR 上的 CI 為準（含 `platform/tests/mcp/`，該目錄在 `fable/mcp-tests-in-ci` 合併前不在 CI 內，須在本機跑到實際結果）。
+
+## 裁決（lead，2026-11-13，回應 verifier Q1–Q9）
+
+Q1–Q9 全部照 verifier 的建議答案（原文在 `test-case-overview.md`「我不確定的地方」）。要點：
+Q1 計畫第 4 點不改程式，只加測試釘住既有行為（CHAT 為 refused 並作廢，PAGE 為 409）。
+Q2 拒絕答覆把確認頁網址放進 `url`。
+Q3 `publish_figure` 描述重寫並維持在 600 字內，不新增任何豁免清單項目。
+Q4 `publish_figure` 用自己的兩段參數說明，共用字串不動。
+Q5 邊界比照 delete-needs-click 的 Q1–Q4。
+Q6 以申請當時 bundle 的 `replaces` 判斷；清單中有一個名稱會取代，整份申請只能由表單或確認頁核准。
+Q7 `publish_figure` 的工具標註本案不改，ledger 記為已知限制，是否改列入給維護者的問題。
+Q8 沒有可反轉的既有測試；既有檔只准改 `tools.json` 中 publish_figure 的兩段參數說明（R1）。發現還有別的非改不可，停手回報。
+Q9 `_ask` 只在 publish_figure 且 `replaces` 非空時多一道只讀攔截；`confirm.py`、`store.py` 不動。
