@@ -394,3 +394,43 @@ def mcp_http_call(url, calls, token=None):
             return tools, outs
 
     return asyncio.run(go())
+
+
+# ---- live-sync: what the pages that carry the one script look like (specs/live-sync) ---------------------------------------------------------------------
+LIVE_SCRIPT_TAG = '<script src="/static/live.js"></script>'
+LIVE_CSP_ADD = "; script-src 'self'; connect-src 'self'"
+
+
+def one_live_script(text):
+    """The page carries exactly one script, `<script src="/static/live.js">`: a same-origin path, no inline content (the one-script exception of live-sync)."""
+    assert text.lower().count("<script") == 1 and text.count(LIVE_SCRIPT_TAG) == 1, "not exactly the one live script"
+    return True
+
+
+def live_csp(base_csp):
+    """The policy of a page that carries the script: today's string plus exactly the two sources."""
+    return base_csp + LIVE_CSP_ADD
+
+
+def strip_live(text):
+    """A page that carries the script, as it was before live-sync (for a pin that is about the rest of the page): the <noscript> around the refresh, the script
+    tag and the body's data-live attributes are taken off."""
+    import re
+    text = re.sub(r"<noscript>(<meta http-equiv=\"refresh\"[^>]*>)</noscript>", r"\1", text)
+    text = text.replace(LIVE_SCRIPT_TAG, "")
+    return re.sub(r"<body [^>]*>", "<body>", text, count=1)
+
+
+def live_rules(text, csp=None):
+    """The rule of live-sync for a page whatever its kind: a page that reloads itself today (it has the meta refresh, now inside <noscript>) carries exactly the one
+    live script and, when its policy is given, today's policy plus exactly the two sources; every other page has no script and no script-src, as before."""
+    if 'http-equiv="refresh"' in text:
+        one_live_script(text)
+        assert 'noscript><meta http-equiv="refresh"' in text
+        if csp is not None:
+            assert csp.endswith(LIVE_CSP_ADD) and csp.count("script-src") == 1 and "'unsafe-eval'" not in csp and "'unsafe-inline'" not in csp
+    else:
+        assert "<script" not in text and "<noscript" not in text
+        if csp is not None:
+            assert "script-src" not in csp and "connect-src" not in csp
+    return True

@@ -297,7 +297,7 @@ def test_tc027_every_login_route_sends_a_temporary_session_to_the_password_page(
     seen = 0
     for route in c.app.routes:
         path = getattr(route, "path", "")
-        if (path in ("/login", "/logout", "/welcome", "/authorize") or path.startswith("/.well-known")
+        if (path in ("/login", "/logout", "/welcome", "/authorize", "/static/live.js") or path.startswith("/.well-known")      # live-sync: the one script is public (the same bytes for everybody)
                 or path in ("/register", "/token", "/revoke")):
             continue
         path = consent_path if path.startswith("/consent/") else path.replace("{rid}", rid).replace("{verb}", "resume")

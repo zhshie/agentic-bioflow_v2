@@ -146,7 +146,8 @@ def test_studio_link_opens_new_tab(w, studio):
         assert not re.search(r"<script|<iframe|style=|<img", page) and 'http-equiv="refresh"' not in page
         others = [h for h in re.findall(r'(?:href|src)="([^"]*)"', page) if re.match(r"(https?:)?//", h)]
         assert others == ([studio] if page is r.text else [])
-    assert r.headers["content-security-policy"] == c.get("/").headers["content-security-policy"] == empty.headers["content-security-policy"]
+    from abf_platform import web
+    assert r.headers["content-security-policy"] == empty.headers["content-security-policy"] == web._HEADERS["Content-Security-Policy"]      # live-sync: `/` now carries the script, the downstream stage still has today's policy
     for part in ("default-src 'none'", "form-action 'self'", "frame-ancestors 'none'"):
         assert part in r.headers["content-security-policy"]
 
@@ -229,7 +230,7 @@ def test_no_new_route_no_new_action(w):
     # TC-012
     from abf_platform import actions
     app = w.web().app
-    assert sorted((r.path, tuple(sorted(r.methods or []))) for r in app.routes) == sorted(ROUTES_V3 + [("/run/figure", ("GET", "HEAD")), ("/run/figure/delete", ("POST",)), ("/run/figures/pack", ("POST",))])      # mcp-publish-figure-gallery adds these three
+    assert sorted((r.path, tuple(sorted(r.methods or []))) for r in app.routes) == sorted(ROUTES_V3 + [("/run/figure", ("GET", "HEAD")), ("/run/figure/delete", ("POST",)), ("/run/figures/pack", ("POST",)), ("/static/live.js", ("GET", "HEAD")), ("/live/version", ("GET", "HEAD")), ("/live/content", ("GET", "HEAD"))])      # live-sync adds the last three; mcp-publish-figure-gallery adds these three
     names = sorted(n for n in dir(actions) if not n.startswith("_") and callable(getattr(actions, n))
                    and getattr(getattr(actions, n), "__module__", "").startswith("abf_platform.actions"))
     assert names == sorted(ACTIONS_V3 + ["list_figures", "request_publish_figure", "screen_for_page", "request_pack_figures", "request_delete_figure"])    # mcp-publish-figure adds these three, mcp-gallery-actions the last two

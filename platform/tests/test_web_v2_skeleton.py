@@ -401,7 +401,8 @@ def test_v15_constraints_hold(w):
     pages += [c0.get("/"), c0.get("/?run=id-ann-f")]
     for r in pages:
         t = r.text
-        assert "<script" not in t and "style=" not in t and len(re.findall(r"<style>", t)) == 1 and "<link" not in t
+        from helpers import one_live_script
+        assert one_live_script(t) and "style=" not in t and len(re.findall(r"<style>", t)) == 1 and "<link" not in t      # live-sync
         assert '<meta http-equiv="refresh" content="15">' in t
         assert not re.search(r'(src|href)="https?://', t) and "@import" not in t
         css = re.search(r"<style>(.*?)</style>", t, re.S).group(1)

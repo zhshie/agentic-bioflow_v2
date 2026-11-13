@@ -591,7 +591,8 @@ def test_tc037_the_cards_keep_two_greyed_words_and_the_tabs_stay(w):
         assert re.search(r'<span class="off">%s <span class="later">之後開放</span></span>' % word, cells), word
     nav = re.search(r'<nav class="rtabs">(.*?)</nav>', mid(t), re.S).group(1)
     assert [plain(x) for x in re.findall(r"<a [^>]*>(.*?)</a>", nav)] == ["輸出", "執行資訊", "任務", "日誌"]
-    assert "<iframe" not in t and "<script" not in t
+    from helpers import one_live_script
+    assert "<iframe" not in t and one_live_script(t)      # live-sync
 
 
 def test_tc037_038_only_one_new_route_and_no_bulk_download(w):
@@ -646,7 +647,8 @@ def test_tc027_044_chinese_pages_use_written_language_and_state_symbols(w):
         for banned in BANNED:
             assert banned not in text, (name, banned)
         assert "超" not in text.replace("超過", ""), name
-        assert "style=" not in t and "<script" not in t and "<iframe" not in t, name
+        from helpers import live_rules
+        assert "style=" not in t and live_rules(t) and "<iframe" not in t, name      # live-sync
         assert not re.search(r'(src|href|action)="https?://', t), name
         assert len(re.findall(r"<style>", t)) == 1, name
     assert "✕" in plain(got["bad_path"]) and "◌" in plain(got["waiting"]) and "✕" in plain(got["too_large"])
@@ -701,9 +703,10 @@ def test_tc039_style_and_csp_are_those_of_the_base(w):
     finish_listing(w, RESULTS, top_entries())
     policy = None
     for url in ("/", "/settings", "/usage", outputs_url(rid), file_url(rid, REPORT), file_url(rid, "..")):
-        csp = c.get(url).headers["content-security-policy"]
-        policy = policy or csp
-        assert csp == policy, url
+        r = c.get(url)
+        csp = r.headers["content-security-policy"]
+        policy = policy or csp.removesuffix("; script-src 'self'; connect-src 'self'")
+        assert csp == policy + ("; script-src 'self'; connect-src 'self'" if 'http-equiv="refresh"' in r.text else ""), url      # live-sync: the pages that reload themselves add the two sources
     assert policy == ("default-src 'none'; style-src 'sha256-%s'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
                       % base64.b64encode(hashlib.sha256(web_board.STYLE.encode("utf-8")).digest()).decode())
 

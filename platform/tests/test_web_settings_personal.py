@@ -387,9 +387,10 @@ def test_no_script_no_inline_style(w):
         post(c, "dev_mode", on)
         for path in ("/settings", "/"):
             r = c.get(path)
-            assert "<script" not in r.text and "style=" not in r.text and r.text.count("<style>") == 1
+            from helpers import live_rules
             csp = r.headers["content-security-policy"]
-            assert csp.startswith("default-src 'none'; style-src 'sha256-") and csp.endswith("form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+            assert live_rules(r.text, csp) and "style=" not in r.text and r.text.count("<style>") == 1      # live-sync: `/` carries the one script, /settings none
+            assert csp.startswith("default-src 'none'; style-src 'sha256-") and csp.removesuffix("; script-src 'self'; connect-src 'self'").endswith("form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
             digest = base64.b64encode(hashlib.sha256(re.search(r"<style>(.*?)</style>", r.text, re.S).group(1).encode()).digest()).decode()
             assert "'sha256-%s'" % digest in csp
 

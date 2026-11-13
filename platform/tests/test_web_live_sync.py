@@ -305,9 +305,10 @@ def test_tc010_tc053_without_a_login_it_is_401_and_nothing_else(w):
         for r in (version(anon, u), content(anon, u, ["mid-0"])):
             assert r.status_code == 401, u
             assert "ann" not in r.text and ids["run"] not in r.text
-    from abf_platform import store
-    store.create_user(w.ip.tokens, "tmp", "lab-x")
-    store.set_web_password(w.ip.tokens, "tmp", "temporary-pass-1", temporary=True) if "temporary" in store.set_web_password.__code__.co_varnames else None
+    from test_temp_password import login_temp
+    ct, _r, _ = login_temp(w)      # a login made with a temporary password: it may do nothing but set its own
+    for r in (version(ct, "/"), content(ct, "/", ["mid-0"]), ct.get("/live/version")):
+        assert r.status_code == 303 and r.headers["location"] == "/welcome" and "ann" not in r.text
 
 
 def test_tc020_text_from_a_run_is_escaped_in_the_content(w):
@@ -547,9 +548,10 @@ def test_tc026_a_look_at_the_launch_page_reads_nothing_from_the_site(tmp_path, m
 def test_tc064_tc067_tc062_no_new_route_tool_or_dependency(w):
     # TC-064, TC-067, TC-062
     c = w.web()
-    assert not [r.path for r in c.app.routes if r.path.startswith(("/live", "/static"))]
+    new = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes if r.path.startswith(("/live", "/static")))
+    assert new == [("/live/content", ("GET", "HEAD")), ("/live/version", ("GET", "HEAD")), ("/static/live.js", ("GET", "HEAD"))]      # exactly the three new routes
     for path in ("/static/live.js", "/live/version", "/live/content"):
-        assert c.get(path).status_code in (200, 401, 404) and c.post(path).status_code in (405, 404)
+        assert c.post(path).status_code == 405
     assert c.get("/live/version").status_code == 401 and c.get("/live/content").status_code == 401
     pyproject = (PLATFORM_DIR / "pyproject.toml").read_text(encoding="utf-8")
     assert 'dependencies = ["mcp>=2.3,<3", "python-multipart"]' in pyproject and 'test = ["pytest", "httpx"]' in pyproject
@@ -575,3 +577,75 @@ def test_tc063_in_scope_pages_differ_from_before_only_by_the_marks(w):
         old = re.sub(r"<body [^>]*>", "<body>", old, count=1)
         assert META15 in old or 'http-equiv="refresh" content="15;url=' in old
         assert "<script" not in old and "<noscript" not in old and "data-live" not in old
+
+
+# ---- R-C: the whole data folder and the queue are the same before and after a look, for every page that carries the script ------------------
+
+def whole(w):
+    return snapshot(w), len(w.sql("SELECT * FROM jobs")), len(w.sql("SELECT * FROM confirmations"))
+
+
+def look_all(c, u, extra=("", "&retry=1", "&relist=1")):
+    for tail in extra:
+        for r in (version(c, u + tail), content(c, u + tail, ["mid-0", "narrow-0", "left-0", "form-0", "steps-0"])):
+            assert r.status_code in (200, 404), (u + tail, r.status_code)
+
+
+def test_rc_a_file_and_a_preview_page_that_is_waiting_change_nothing_with_retry_either(w):
+    # TC-029, R-C
+    from test_results_files import file_jobs, file_url, world
+    ann, c, rid = world(w)
+    for route in ("/run/file", "/run/preview"):
+        u = file_url(rid, "plots/a.png").replace("/run/file", route)
+        c.get(u)                                    # the real page queues its one read
+        before = whole(w)
+        look_all(c, u)
+        assert whole(w) == before, route
+
+
+def test_rc_the_launch_page_with_the_real_actions_changes_nothing(tmp_path, monkeypatch):
+    # TC-022, TC-026, R-C: no fake of the pipeline reads, so the real queue is the thing counted
+    from test_web_guided_launch import Rig, ready
+    r = Rig(tmp_path, monkeypatch)
+    _, c = ready(r)
+    for u in ("/launch?pipeline=nf-core/ampliseq&revision=2.18.0&src=used", "/launch?pipeline=nf-core/ampliseq&src=new"):
+        c.get(u)
+        before = whole(r.w)
+        look_all(c, u, extra=("",))
+        assert whole(r.w) == before, u
+    before = whole(r.w)
+    v = version(c, "/launch?pipeline=nf-core/ampliseq&revision=9.9.9&src=used")      # a pair nobody asked about yet: the look says "load it whole", it asks nothing
+    assert v.status_code == 200 and v.json() == {"s": "reload"} and whole(r.w) == before
+    assert version(c, "/launch?pipeline=nf-core/ampliseq&revision=9.9.9&src=used").json()["s"] == "ok"      # and not again inside 15 seconds
+
+
+def test_rc_the_resume_edit_page_with_the_real_actions_changes_nothing(tmp_path, monkeypatch):
+    # TC-027, TC-030, R-C
+    from test_web_guided_launch import Rig, ready
+    from test_web_resume_edit import edit_url, finish_run, make_run
+    r = Rig(tmp_path, monkeypatch)
+    ann, c = ready(r)
+    rid = make_run(r, ann)
+    u = edit_url(rid)
+    c.get(u)
+    before = whole(r.w)
+    look_all(c, u, extra=("",))
+    assert whole(r.w) == before
+    finish_run(r, "run-a")
+    before = whole(r.w)
+    look_all(c, u, extra=("",))
+    assert whole(r.w) == before and len(r.w.sql("SELECT * FROM confirmations")) == before[2]
+
+
+def test_rc_an_upload_that_is_complete_but_not_registered_stays_so(tmp_path, monkeypatch):
+    # TC-028, R-C
+    from test_web_upload import Up
+    up = Up(tmp_path, monkeypatch)
+    c = up.client()
+    batch = up.ok(c)
+    for j in up.jobs():
+        up.finish(j["id"])
+    u = "/upload/" + batch
+    before = whole(up.w)
+    look_all(c, u, extra=("",))
+    assert whole(up.w) == before and up.datasets() == []

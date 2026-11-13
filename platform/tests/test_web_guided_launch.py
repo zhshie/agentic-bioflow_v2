@@ -394,9 +394,10 @@ def test_gl12_constraints_hold(rig):
         pages.append(c.post("/launch", data=form_values(rig, c, "ann", run_name="")))
     for r in pages:
         t = r.text
-        assert "<script" not in t and not re.search(r"\son\w+=", t) and "style=" not in t and len(re.findall(r"<style\b", t)) == 1 and "<link" not in t
+        from helpers import live_rules
         csp = r.headers["content-security-policy"]
-        assert web_board.style_source() in csp and "script-src" not in csp and "'unsafe-inline'" not in csp
+        assert live_rules(t, csp) and not re.search(r"\son\w+=", t) and "style=" not in t and len(re.findall(r"<style\b", t)) == 1 and "<link" not in t      # live-sync: a /launch page that is reading carries the one script
+        assert web_board.style_source() in csp and "'unsafe-inline'" not in csp
         assert "<img" not in t and "<svg" not in t
     zh, en = web_board.STRINGS["zh"], web_board.STRINGS["en"]
     for key, text in zh.items():

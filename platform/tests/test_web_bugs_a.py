@@ -293,5 +293,6 @@ def test_page_constraints_after_changes(w):
     c = login(w, "ann")
     for url in ("/?run=id-q1&stage=running&tab=tasks", "/?run=id-q1&stage=launch", "/?run=id-q1&stage=running&tab=tasks&lang=en"):
         r = c.get(url)
-        assert "<script" not in r.text and "style=" not in r.text and r.text.count("<style>") == 1
+        from helpers import live_rules
+        assert live_rules(r.text, r.headers["content-security-policy"]) and "style=" not in r.text and r.text.count("<style>") == 1
         assert "default-src" in r.headers["content-security-policy"]

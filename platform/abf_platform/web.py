@@ -170,10 +170,10 @@ def _page(title, body, status=200, form_action=None, lang="zh"):
     return HTMLResponse(web_board.document(title, "<h1>%s</h1>%s" % (_esc(title), body), lang=lang), status_code=status, headers=headers)
 
 
-def _html(doc, status_code=200, headers=None):
+def _html(doc, status_code=200, headers=None, force=False):
     """An HTML answer of a page that may carry the script of live-sync: such a page gets its marks (the body's `data-live`) and the two sources in its policy,
     any other page goes out as it is."""
-    doc, headers = web_live.decorate(doc, headers if headers is not None else _HEADERS)
+    doc, headers = web_live.decorate(doc, headers if headers is not None else _HEADERS, force)
     return HTMLResponse(doc, status_code=status_code, headers=headers)
 
 
@@ -761,7 +761,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             refusal = None
         doc = web_board.render_board(user["name"], csrf(sid, "logout"), runs, selected, stage, lang, tab, clock(),
                                      act_csrf=lambda rid: csrf(sid, "act:" + rid), flash=flash, outputs=outputs, finished=finished, refusal=refusal, studio=studio, gallery=gallery)
-        return _html(doc, code, headers)
+        return _html(doc, code, headers, force=headers is FINISHED_HEADERS and not flash)      # the finished stage with figures never reloaded, and carries the script all the same
 
     async def board(request):
         sid, user = user_of(request)
@@ -1059,9 +1059,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         files = image = latest = None
         look = web_live.looking()      # live-sync: a look reads what is there and never queues a read of the site, nor writes the release cache
         enqueue = enqueue and not look
-        more = {"write_cache": False} if look else {}
         if full and src == "new":
-            latest = actions.latest_release(platform_path, full, caller=caller, compute_env=ce_name, enqueue=enqueue, **more)
+            latest = actions.latest_release(platform_path, full, caller=caller, compute_env=ce_name, enqueue=enqueue)
             if not revision and latest.get("state") == "ready" and latest.get("revision"):
                 revision = latest["revision"]
         if full and revision:
@@ -1716,7 +1715,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         gone = consent_gone(provider.consent_request(rid)) if status in ("decided", "expired") else None
         return gone or _page("未處理", "<p class=\"bad\">未變更任何內容。請返回連接器重新開始。</p>", 403 if status == "user" else 404)
 
-    # ---- live-sync: the script and the two read-only answers it asks for. They are answered by a middleware, not by routes: the list of routes of the app is the list it was.
+    # ---- live-sync: the script and the two read-only answers it asks for (three routes; the answers have the login and owner checks of the pages they look at).
     LIVE_PAGES = {"/": board, "/launch": launch_get, "/act/resume/edit": edit_get, "/run/file": run_file_get, "/run/preview": run_preview_get}
     UPLOAD_PAGE = re.compile(r"^/upload/[0-9a-f]{32}\Z")
     reload_asked = {}      # (user, page) -> when this app last told that page to load whole: the server keeps it to one in RELOAD_SECONDS, whatever the script does
@@ -1749,7 +1748,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         missing one and a page that is not one of the six are one answer; without a login it is a plain 401, never a redirect."""
         sid, user = user_of(request)
         if user is None:
-            return live_answer({"s": "auth"}, 401), None
+            return to_welcome(request) or live_answer({"s": "auth"}, 401), None      # a temporary-password login is sent to the password page, as every page does
         raw = request.query_params.get("u") or ""
         target = live_target(raw)
         lang = web_board.pick_lang((urllib.parse.parse_qs(target[1]).get("lang") or [""])[0]) if target else "zh"
@@ -1772,16 +1771,10 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return None, {"user": user, "key": hashlib.sha1(raw.encode("utf-8")).hexdigest(), "state": state, "doc": body, "headers": response.headers,
                       "scripted": web_live.SCRIPT_TAG in body, "page": response.status_code == 200}
 
-    async def live_method(request):
-        return Response(status_code=405, headers=dict(_HEADERS, Allow="GET, HEAD")) if request.method not in ("GET", "HEAD") else None
-
     async def live_script(request):
-        return await live_method(request) or Response(web_live.script_bytes(), media_type="text/javascript", headers=_HEADERS)
+        return Response(web_live.script_bytes(), media_type="text/javascript", headers=_HEADERS)
 
     async def live_version(request):
-        early = await live_method(request)
-        if early is not None:
-            return early
         early, page = await live_look(request)
         if early is not None:
             return early
@@ -1795,9 +1788,6 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         return live_answer(dict(web_live.info_of(web_live.layout(page["doc"]), headers), s="ok", **({} if page["scripted"] else {"x": 1})))
 
     async def live_content(request):
-        early = await live_method(request)
-        if early is not None:
-            return early
         early, page = await live_look(request)
         if early is not None:
             return early
@@ -1806,7 +1796,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         want = {n for n in (request.query_params.get("n") or "").split(",")[:300] if n}
         return live_answer({"s": "ok", "r": {r["name"]: r["html"] for c in web_live.layout(page["doc"]) for r in c["regions"] if r["name"] in want}})
 
-    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
+    app = Starlette(routes=[Route("/", board, methods=["GET"]), Route("/static/live.js", live_script, methods=["GET"]),
+                            Route("/live/version", live_version, methods=["GET"]), Route("/live/content", live_content, methods=["GET"]), Route("/settings", settings, methods=["GET"]),
                             Route("/settings/personal", personal_post, methods=["POST"]),
                             Route("/settings/pipelines", pipelines_post, methods=["POST"]),
                             Route("/settings/pipelines/confirm", pipelines_confirm_post, methods=["POST"]),
@@ -1838,7 +1829,6 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             response.headers.setdefault(k, v)
         return response
 
-    app.add_middleware(web_live.Answers, table={web_live.SCRIPT_URL: live_script, "/live/version": live_version, "/live/content": live_content})
     app.add_middleware(BaseHTTPMiddleware, dispatch=add_headers)
     app.state.csrf_token = csrf_token
     return app

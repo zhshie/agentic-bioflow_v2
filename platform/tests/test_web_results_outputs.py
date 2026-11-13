@@ -381,7 +381,8 @@ def test_ro11_constraints_hold(w):
     pages = states(w, c, rid) + [c.get(url(rid, tab=x)) for x in ("info", "tasks", "logs")]
     for r in pages:
         assert r.status_code == 200
-        assert "<script" not in r.text and "style=" not in r.text
+        from helpers import live_rules
+        assert live_rules(r.text, r.headers["content-security-policy"]) and "style=" not in r.text      # live-sync
         assert len(re.findall(r"<style>", r.text)) == 1
         style = re.search(r"<style>(.*?)</style>", r.text, re.S).group(1)
         digest = base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()

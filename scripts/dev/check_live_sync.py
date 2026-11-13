@@ -17,7 +17,6 @@ import argparse
 import base64
 import json
 import os
-import socket
 import sqlite3
 import subprocess
 import sys
@@ -25,6 +24,9 @@ import tempfile
 import time
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ui_check import free_port  # noqa: E402  (one helper, not two copies)
 
 USER, PASSWORD = "alice", "correct horse battery"
 CASES = ["TC-001", "TC-004", "TC-005", "TC-006", "TC-007", "TC-008", "TC-009", "TC-011", "TC-014", "TC-017", "TC-018", "TC-019", "TC-032", "TC-034", "TC-035", "TC-040"]
@@ -102,10 +104,6 @@ def parse(argv):
     return a
 
 
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 class Platform:

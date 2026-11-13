@@ -14,6 +14,7 @@ import contextvars
 import hashlib
 import html
 import json
+import re
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -150,6 +151,11 @@ def _digest(text):
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
 
 
+def _same_text(text):
+    """What a region is worth to the script: its text without the per-login form tokens (64 hex characters), which are the same for one login all along."""
+    return re.sub(r'value="[0-9a-f]{64}"', 'value=""', text)
+
+
 def layout(doc):
     """[{n: container name, p: its place (the index of each ancestor among the element children, from the body), regions: [{name, html, start, end, hash}]}], in page
     order. A page with no body has none."""
@@ -166,7 +172,7 @@ def layout(doc):
                 if kid.tag == "script" or _container(kid) is not None:
                     continue
                 text = doc[kid.start:kid.end]
-                regions.append({"name": "%s-%d" % (name, len(regions)), "html": text, "start": kid.start, "end": kid.end, "hash": _digest(text)})
+                regions.append({"name": "%s-%d" % (name, len(regions)), "html": text, "start": kid.start, "end": kid.end, "hash": _digest(_same_text(text))})
             out.append({"n": name, "p": path, "regions": regions})
         for i, kid in enumerate(node.kids):
             walk(kid, path + [i])
@@ -181,26 +187,24 @@ def info_of(lay, headers):
             "c": [{"n": c["n"], "p": c["p"], "v": [r["hash"] for r in c["regions"]]} for c in lay]}
 
 
-def decorate(doc, headers):
-    """(page, headers) of a page that carries the script: the body gets the `data-live` attribute, the policy the two sources. Any other page is returned as it is."""
-    if SCRIPT_TAG not in doc:
+META = re.compile(r'<meta http-equiv="refresh" content="\d+(?:;url=([^"]*))?">')
+
+
+def decorate(doc, headers, force=False):
+    """(page, headers) of a page that carries the script. A page carries it when it asks for the meta refresh (the pages that reloaded every 15 seconds, exactly) or
+    when `force` says so (the finished stage with figures, which never reloaded). The meta refresh then moves inside <noscript>, the script goes at the end of
+    the body, the body gets the `data-live` attribute (and `data-live-u`, the address a whole reload goes to), and the policy gets the two sources. Any other page
+    is returned as it is, byte for byte."""
+    found = META.search(doc)
+    if found is None and not force:
         return doc, headers
+    go = ""
+    if found is not None:
+        doc = doc[:found.start()] + "<noscript>" + found.group(0) + "</noscript>" + doc[found.end():]
+        if found.group(1):
+            go = ' data-live-u="%s"' % found.group(1)
+    end = doc.rfind("</body>")
+    doc = doc[:end] + SCRIPT_TAG + doc[end:]
     given = with_script(headers)
-    attr = ' data-live="%s"' % html.escape(json.dumps(info_of(layout(doc), given), separators=(",", ":")), quote=True)
-    return doc.replace("<body", "<body" + attr, 1), given
-
-
-class Answers:
-    """A pure ASGI middleware that answers a few fixed paths itself and hands every other request on. The paths are not routes of the app: the routes of the web app
-    are listed exactly by tests that predate this feature, and the list stays what it was."""
-
-    def __init__(self, app, table):
-        self.app, self.table = app, table
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope["path"] in self.table:
-            from starlette.requests import Request
-            response = await self.table[scope["path"]](Request(scope, receive))
-            await response(scope, receive, send)
-            return
-        await self.app(scope, receive, send)
+    attr = ' data-live="%s"%s' % (html.escape(json.dumps(info_of(layout(doc), given), separators=(",", ":")), quote=True), go)
+    return doc.replace("<body>", "<body" + attr + ">", 1), given

@@ -280,7 +280,8 @@ def test_r60_r78_order_and_tabs(w):
         # every link keeps lang=en except the 中 link of the language switch, which is the one that drops it
         assert [h for h in hrefs(t) if (h.startswith("/?") or h.startswith("/settings")) and "lang=en" not in h] == \
             ["/?run=%s&amp;tab=%s" % (a, tab)], tab
-        assert "<script" not in t and not re.search(r"\son\w+=", t)
+        from helpers import one_live_script
+        assert one_live_script(t) and not re.search(r"\son\w+=", t)      # live-sync
     t = c.get("/?run=%s&stage=running&tab=info" % a).text
     sw = re.search(r'class="switch">(.*?)</span>', t, re.S).group(1)
     assert all("run=" in h and "stage=running" in h and "tab=info" in h for h in hrefs(sw))
@@ -339,10 +340,11 @@ def test_r103_r114_limits_and_readonly(w):
             for q in ("", "&lang=en"):
                 r = c.get("/?run=%s&tab=%s%s" % (rid, tab, q))
                 t = r.text
-                assert len(re.findall(r"<style\b", t)) == 1 and "<link" not in t and "<script" not in t and "style=" not in t
+                from helpers import one_live_script
+                assert len(re.findall(r"<style\b", t)) == 1 and "<link" not in t and one_live_script(t) and "style=" not in t      # live-sync
                 assert not re.search(r"\son\w+=", t) and not re.search(r"https?://|=\"//", t)
                 csp = r.headers["content-security-policy"]
-                assert "'unsafe-inline'" not in csp and "script-src" not in csp and web_board.style_source() in csp
+                assert "'unsafe-inline'" not in csp and csp.endswith("; script-src 'self'; connect-src 'self'") and web_board.style_source() in csp      # live-sync
                 assert len(re.findall(r"<form\b", t)) == 1 + 3 + {a: 1, b: 1, u: 0}[rid]          # 012b: log-out, the run page's three buttons, the notice's one
                 assert ("Seq" + "era") not in t and ("Je" + "v") not in t
                 assert 'http-equiv="refresh"' in t

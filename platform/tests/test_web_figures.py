@@ -197,9 +197,9 @@ def test_gallery_text_is_escaped(w):
     for extra in ("", "&lang=en"):
         page = c.get(url(rid, extra)).text
         live = tags(page)       # what a browser would build: no script element, no event attribute, no image of the user's making
-        assert "script" not in [tag for tag, _ in live.tags] and not [k for _, a in live.tags for k in a if k.startswith("on")]
+        assert [a for tag, a in live.tags if tag == "script"] == [{"src": "/static/live.js"}] and not [k for _, a in live.tags for k in a if k.startswith("on")]      # live-sync: only the one script of the page
         assert all(a["src"].startswith("/run/figure?") for tag, a in live.tags if tag == "img")
-        assert "<script" not in page.replace("&lt;script", "") and "<img src=x" not in page
+        assert page.replace("&lt;script", "").count("<script") == 1 and "<img src=x" not in page
         assert "&lt;script&gt;alert(1)&lt;/script&gt;" in gallery_part(page)
     page = c.get(url(rid)).text
     assert htmllib.unescape(re.search(r"<pre>(.*?)</pre>", page, re.S).group(1)).strip() == evil
@@ -255,7 +255,8 @@ def test_no_refresh_and_no_poll_on_finished(w):
     # TC-011
     ann, c, rid = setup(w)
     t = c.get(url(rid)).text
-    assert not re.search(r"http-equiv=.refresh", t) and "<script" not in t and not re.search(r"\son[a-z]+=", t)
+    from helpers import one_live_script
+    assert not re.search(r"http-equiv=.refresh", t) and "<noscript" not in t and one_live_script(t) and not re.search(r"\son[a-z]+=", t)      # live-sync: no refresh, exactly the one same-origin script
 
 
 def test_site_results_are_not_the_gallery(w):
@@ -470,14 +471,15 @@ def test_finished_csp_gets_img_src_but_other_pages_do_not(w):
     base = web._HEADERS["Content-Security-Policy"]
     assert "img-src" not in base
     for u in ("/", "/settings", "/usage", "/c/" + got["request_id"], "/?run=%s&stage=results" % rid, "/?run=%s&stage=running" % rid):
-        assert c.get(u).headers["content-security-policy"] == base, u
+        r = c.get(u)
+        assert r.headers["content-security-policy"] == (base + "; script-src 'self'; connect-src 'self'" if 'http-equiv="refresh"' in r.text else base), u      # live-sync: `/` and the run pages reload themselves
     assert c.get("/launch").headers["content-security-policy"] == web.LAUNCH_HEADERS["Content-Security-Policy"]
     csp = c.get(url(rid)).headers["content-security-policy"]
-    assert csp == base.replace("style-src", "img-src 'self'; style-src", 1) and "form-action 'self'" in csp
-    assert "script-src" not in csp and "data:" not in csp and "https:" not in csp
+    assert csp == base.replace("style-src", "img-src 'self'; style-src", 1) + "; script-src 'self'; connect-src 'self'" and "form-action 'self'" in csp      # live-sync
+    assert csp.endswith("; script-src 'self'; connect-src 'self'") and csp.count("script-src") == 1 and "data:" not in csp and "https:" not in csp      # live-sync: the finished stage with figures carries the one script
     assert figure_get(c, rid, "a.png").headers["content-security-policy"] != csp
     _, c2, rid2 = setup(w, items=[], name="empty-done", who="eve")      # a finished page that holds no picture keeps the base policy (nothing there loads an image)
-    assert c2.get(url(rid2)).headers["content-security-policy"] == base
+    assert c2.get(url(rid2)).headers["content-security-policy"] == base + "; script-src 'self'; connect-src 'self'"      # live-sync: an empty gallery reloads itself, so the page carries the script; no img-src
 
 
 def test_other_headers_of_the_finished_page_are_unchanged(w):
@@ -666,7 +668,8 @@ def test_no_inline_style_or_script_in_gallery(w):
     for cl, r in ((c, rid), (c2, rid2)):
         for extra in ("", "&lang=en"):
             t = cl.get(url(r, extra)).text
-            assert "style=" not in t and "<script" not in t and t.count("<style>") == 1 and not re.search(r"https?://", t)
+            from helpers import one_live_script
+            assert "style=" not in t and one_live_script(t) and t.count("<style>") == 1 and not re.search(r"https?://", t)
             assert not re.search(r"\son[a-z]+=", t)
     t = c.get(url(rid)).text
     assert 'width="240"' in t and not re.search(r"<img[^>]*(style|class)=", t)

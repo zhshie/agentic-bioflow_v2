@@ -464,9 +464,10 @@ def test_tc046_tc048_new_pages_have_no_script_one_stylesheet_and_both_languages(
                                          c.post("/act/resume", data=dict(fields, run="nope"))]
     for r in pages:
         t = r.text
-        assert "<script" not in t and not re.search(r"\son\w+=", t) and "style=" not in t and len(re.findall(r"<style\b", t)) == 1 and "<link" not in t
+        from helpers import live_rules
         csp = r.headers["content-security-policy"]
-        assert web_board.style_source() in csp and "script-src" not in csp and "'unsafe-inline'" not in csp
+        assert live_rules(t, csp) and not re.search(r"\son\w+=", t) and "style=" not in t and len(re.findall(r"<style\b", t)) == 1 and "<link" not in t      # live-sync: a page that reloads itself carries the one script
+        assert web_board.style_source() in csp and "'unsafe-inline'" not in csp
     for u in ("/launch?lang=en", "/launch?from=%s&lang=en" % failed, "/?run=%s&lang=en" % failed):
         t = c.get(u).text
         assert no_cjk(t), (u, re.findall(r"[一-鿿]+", t))

@@ -1431,7 +1431,7 @@ def test_the_user_visible_actions_are_those_of_the_base(tmp_path):
     assert sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in app.routes) == ROUTES_V3
     wapp = web.create_app(tmp_path / "index.db", tmp_path / "tokens.db", platform_path=tmp_path / "platform.db")
     got = sorted((getattr(r, "path", "?"), tuple(sorted(getattr(r, "methods", None) or []))) for r in wapp.routes)
-    got = [r for r in got if r[0] not in ("/run/figure", "/run/figure/delete", "/run/figures/pack")]      # mcp-publish-figure-gallery adds these three
+    got = [r for r in got if r[0] not in ("/run/figure", "/run/figure/delete", "/run/figures/pack", "/static/live.js", "/live/version", "/live/content")]      # mcp-publish-figure-gallery adds these three
     assert len(got) == 34 and digest(repr(got)) == "63dabb2accd8a810ff764ded6d9dd35983e318b0d4f20852b81f551ed7069757"      # resume-edit-web adds GET /act/{verb}/edit; web-run-tasks-log adds GET /run/log (30 -> 31); web-result-viewer adds GET /run/preview, /run/image, /run/report (31 -> 34)
     names = sorted(n for n, f in vars(actions).items() if inspect.isfunction(f) and f.__module__.startswith("abf_platform.actions")
                    and not n.startswith("_"))

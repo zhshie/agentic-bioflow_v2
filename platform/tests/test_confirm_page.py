@@ -303,7 +303,8 @@ def test_tcg04_g05_g06_the_web_app_has_the_routes_of_009c_plus_the_board_and_the
     c = w.web()
     routes = sorted((r.path, tuple(sorted(r.methods))) for r in c.app.routes)
     assert [r for r in routes if r[0] in ("/run/figure", "/run/figure/delete", "/run/figures/pack")] == [("/run/figure", ("GET", "HEAD")), ("/run/figure/delete", ("POST",)), ("/run/figures/pack", ("POST",))]      # mcp-publish-figure-gallery adds these three
-    routes = [r for r in routes if r[0] not in ("/run/figure", "/run/figure/delete", "/run/figures/pack")]
+    assert [r for r in routes if r[0] in ("/static/live.js", "/live/version", "/live/content")] == [("/live/content", ("GET", "HEAD")), ("/live/version", ("GET", "HEAD")), ("/static/live.js", ("GET", "HEAD"))]      # live-sync adds these three
+    routes = [r for r in routes if r[0] not in ("/run/figure", "/run/figure/delete", "/run/figures/pack", "/static/live.js", "/live/version", "/live/content")]
     assert routes == [("/", ("GET", "HEAD")), ("/.well-known/oauth-authorization-server", ("GET", "HEAD", "OPTIONS")),
                       ("/act/{verb}", ("POST",)), ("/act/{verb}/edit", ("GET", "HEAD")),      # resume-edit-web: the page that changes a resume
                       ("/authorize", ("GET", "HEAD", "POST")),

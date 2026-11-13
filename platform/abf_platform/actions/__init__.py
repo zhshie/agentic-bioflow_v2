@@ -34,6 +34,7 @@ from abf_launch import build
 from .. import agents, common, compute_envs, confirm, failures, jobs, pipeline_launch, status, store, su
 from .. import releases as _releases, schema as _schema
 from .. import cloud_cost as _cost
+from .. import web_live as _web_live      # live-sync: only to know that a look is running (a look writes no release-cache file)
 
 NotApproved = confirm.NotApproved
 
@@ -911,7 +912,7 @@ def _no_fetch(repo):
     raise LookupError("this platform does not connect out; the agent reads the tags")
 
 
-def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, enqueue=True, write_cache=True):
+def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, enqueue=True):
     """The newest release of a pipeline that can be launched as it is (a plain numbered tag), for a new project to pin. Returns {state:
     loading|ready|error, pipeline, revision, source: fetched|cache|stale-cache|none, checked_at, why, error, releases}; `releases` is every
     usable tag, newest first (`revision` is its first item; [] while loading or after an error; an older cache entry holds only [revision]). Like pipeline_files it never waits.
@@ -954,7 +955,7 @@ def latest_release(platform_path, pipeline, *, compute_env=None, caller=None, en
             part = (info.get("parts") or {}).get("tags") if isinstance(info.get("parts"), dict) else None
             if isinstance(part, dict) and part.get("status") == "ok" and isinstance(part.get("text"), str):
                 tags = _releases.parse_ls_remote(part["text"])
-                found = _releases.lookup(repo, lambda _repo: tags, cache_path=cache if write_cache else None, clock=status.now, ttl=ttl)      # live-sync: a look writes no cache file
+                found = _releases.lookup(repo, lambda _repo: tags, cache_path=None if _web_live.looking() else cache, clock=status.now, ttl=ttl)      # live-sync: a look writes no cache file
                 if found["source"] == "fetched":
                     return ready(found)
                 failure = ("no_release", found["why"])

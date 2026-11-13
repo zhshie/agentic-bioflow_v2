@@ -36,7 +36,8 @@ def mask(text):
 
 
 def snap(r):
-    return (r.status_code, hashlib.sha256(mask(r.text).encode("utf-8")).hexdigest()[:16])
+    from helpers import strip_live
+    return (r.status_code, hashlib.sha256(mask(strip_live(r.text)).encode("utf-8")).hexdigest()[:16])      # live-sync: the pin is about the rest of the page, so the one script and its marks are taken off
 
 
 def tables(w):
@@ -491,7 +492,7 @@ def test_no_inline_style_no_external_resource_and_the_same_headers_as_a_launch_p
         for url in re.findall(r'(?:src|href)="([^"]*)"', r.text):
             assert url.startswith("/") or url.startswith("#"), url
         for h in ("content-security-policy", "x-frame-options", "cache-control", "referrer-policy", "x-content-type-options"):
-            assert r.headers[h] == ref[h]
+            assert r.headers[h] == (ref[h] + "; script-src 'self'; connect-src 'self'" if h == "content-security-policy" and 'http-equiv="refresh"' in r.text else ref[h])      # live-sync
 
 
 def test_the_web_sources_have_no_program_start():

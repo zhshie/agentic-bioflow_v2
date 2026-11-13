@@ -821,10 +821,12 @@ def test_tch11_read_only(w):
                       ("/act/{verb}", ("POST",)), ("/act/{verb}/edit", ("GET", "HEAD")),      # resume-edit-web
                       ("/authorize", ("GET", "HEAD", "POST")), ("/c/{rid}", ("GET", "HEAD")), ("/c/{rid}", ("POST",)),
                       ("/consent/{rid}", ("GET", "HEAD")), ("/consent/{rid}", ("POST",)), ("/launch", ("GET", "HEAD")), ("/launch", ("POST",)), ("/launch/diagram", ("GET", "HEAD")),
+                      ("/live/content", ("GET", "HEAD")), ("/live/version", ("GET", "HEAD")),      # live-sync: the two read-only looks
                       ("/login", ("GET", "HEAD")),
                       ("/login", ("POST",)), ("/logout", ("POST",)), ("/register", ("OPTIONS", "POST")),
                       ("/revoke", ("OPTIONS", "POST")), ("/run/figure", ("GET", "HEAD")), ("/run/figure/delete", ("POST",)), ("/run/figures/pack", ("POST",)), ("/run/file", ("GET", "HEAD")),      # mcp-publish-figure-gallery: the gallery routes
                       ("/run/image", ("GET", "HEAD")), ("/run/log", ("GET", "HEAD")), ("/run/preview", ("GET", "HEAD")), ("/run/report", ("GET", "HEAD")), ("/settings", ("GET", "HEAD")), ("/settings/inventory", ("POST",)), ("/settings/personal", ("POST",)), ("/settings/pipelines", ("POST",)), ("/settings/pipelines/confirm", ("POST",)),      # settings-register-pipeline; settings-pick-installed: the reload button
+                      ("/static/live.js", ("GET", "HEAD")),      # live-sync: the one script
                       ("/token", ("OPTIONS", "POST")),
                       ("/upload", ("GET", "HEAD")), ("/upload", ("POST",)), ("/upload/{batch}", ("GET", "HEAD")),      # web-upload-page
                       ("/usage", ("GET", "HEAD")), ("/welcome", ("GET", "HEAD")), ("/welcome", ("POST",))], routes      # web-change-password: /welcome
@@ -880,14 +882,15 @@ def test_tch13_csp_and_markup(w):
              c.get("/c/" + "b" * 32), consent_page(w, "ann")]
     for r in pages:
         csp = r.headers["content-security-policy"]
-        assert "script-src" not in csp and "'unsafe-inline'" not in csp
+        from helpers import live_rules
+        assert live_rules(r.text, csp) and "'unsafe-inline'" not in csp      # live-sync: `/` and a run page reload themselves, so they carry the one script
         for keep in ("default-src 'none'", "form-action 'self'", "frame-ancestors 'none'", "base-uri 'none'"):
             assert keep in csp
         digest = base64.b64encode(hashlib.sha256(style_of(r.text).encode("utf-8")).digest()).decode()
         assert "style-src 'sha256-%s'" % digest in csp, r.url
     for r in pages:
         t = r.text
-        assert "<script" not in t.lower() and not re.search(r"\sstyle=", t) and not re.search(r"\son[a-z]+=", t, re.I)
+        assert live_rules(t) and not re.search(r"\sstyle=", t) and not re.search(r"\son[a-z]+=", t, re.I)
         assert "http://" not in t and "https://" not in t and not re.search(r"(src|href|action)=\"//", t)
 
 
@@ -1147,7 +1150,8 @@ def test_tcl44_no_external_url_script_or_style_attribute(w):
     assert "No runs yet" in empty.get("/?lang=en").text
     for u, t in pages:
         assert not re.search(r"https?://", t) and not re.search(r'(?:href|src|action)="(?:https?:)?//', t), u
-        assert "<script" not in t.lower() and not re.search(r"\sstyle=", t) and not re.search(r"\son[a-z]+=", t, re.I), u
+        from helpers import live_rules
+        assert live_rules(t) and not re.search(r"\sstyle=", t) and not re.search(r"\son[a-z]+=", t, re.I), u
 
 
 def test_tcs48_no_dead_links(w):
@@ -1215,7 +1219,10 @@ def test_tn06_no_push_routes(w):
     w.user("ann")
     c = login(w, "ann")
     assert not [r.path for r in c.app.routes if re.search(r"ws|stream|events|sse", r.path)]
-    assert "<script" not in c.get("/").text
+    from helpers import one_live_script
+    assert one_live_script(c.get("/").text)      # live-sync: the one script of the board, which opens no connection that stays open (see the next line)
+    js = c.get("/static/live.js").text
+    assert not re.search(r"WebSocket|EventSource|sendBeacon|\.submit\(|POST", js)
 
 
 def test_tn09_language_is_not_remembered(w):

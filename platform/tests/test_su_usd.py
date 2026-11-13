@@ -479,7 +479,8 @@ def test_tc072_run_page_limits(w, tmp_path, monkeypatch):
     for rid in ids:
         for lang in ("", "&lang=en"):
             t = login_get(w, "ann", "/?run=%s%s" % (rid, lang)).text
-            assert "<script" not in t and "style=" not in t and t.count("<style>") == 1
+            from helpers import one_live_script
+            assert one_live_script(t) and "style=" not in t and t.count("<style>") == 1      # live-sync
             with_usd[(rid, lang)] = (style_of(t), set(re.findall(r'class="([^"]+)"', t)))
     set_rates(tmp_path, monkeypatch, usd_twd="DROP")
     for (rid, lang), (style, classes) in with_usd.items():
