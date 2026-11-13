@@ -23,6 +23,9 @@ from pathlib import Path
 SCRIPT_URL = "/static/live.js"
 SCRIPT_TAG = '<script src="%s"></script>' % SCRIPT_URL
 CSP_ADD = "script-src 'self'; connect-src 'self'"
+MEMORY_CAP = 4096                # entries of the 15-second memory of reloads
+ANSWER_CAP = 256                # answers kept for the 1-second floor
+ANSWER_MAX_BYTES = 200_000      # a bigger answer is not kept (it is made again)
 LOOK_FLOOR_SECONDS = 1.0       # the same person asking the same thing about the same page sooner than this is told to slow down (429), nothing is run
 RELOAD_SECONDS = 15.0       # the pace of today's meta refresh: a page that must ask the site again is loaded whole at most this often
 LOOK = contextvars.ContextVar("abf_live_look", default=None)
@@ -160,8 +163,9 @@ def _same_text(text):
 
 
 class Recent:
-    """A bounded map of the last times something happened (the 15-second limit of reloads, the 1-second floor of the looks): when it is full the oldest entry goes,
-    so a flood of different keys cannot make it grow without end (an evicted key is simply allowed once more)."""
+    """A bounded map of what happened last for a key (when a page was last told to load whole; when and what a login was last answered): when it is full the
+    oldest entry goes, so a flood of different keys cannot make it grow without end. An evicted key is simply treated as new: its 15-second limit lapses for that
+    page (one more whole load, which is what a person pressing reload makes) and its next look is made afresh."""
 
     def __init__(self, cap=4096):
         self.cap, self.items = cap, collections.OrderedDict()

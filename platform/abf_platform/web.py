@@ -1728,8 +1728,8 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     # ---- live-sync: the script and the two read-only answers it asks for (three routes; the answers have the login and owner checks of the pages they look at).
     LIVE_PAGES = {"/": board, "/launch": launch_get, "/act/resume/edit": edit_get, "/run/file": run_file_get, "/run/preview": run_preview_get}
     UPLOAD_PAGE = re.compile(r"^/upload/[0-9a-f]{32}\Z")
-    reload_asked = web_live.Recent()      # (user, page) -> when this app last told that page to load whole: the server keeps it to one in RELOAD_SECONDS, whatever the script does
-    looked_at = web_live.Recent()      # (login, route, page) -> when it was last looked at: the floor of LOOK_FLOOR_SECONDS
+    reload_asked = web_live.Recent(web_live.MEMORY_CAP)      # (user, page) -> when this app last told that page to load whole: the server keeps it to one in RELOAD_SECONDS, whatever the script does
+    looked_at = web_live.Recent(web_live.ANSWER_CAP)      # (login, route, question) -> (when, the answer): the floor of LOOK_FLOOR_SECONDS
 
     def live_target(raw):
         """(path, query) of a page the script may ask about, else None. Only the pages that carry the script, by their exact path."""
@@ -1748,15 +1748,6 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         reload_asked.put((user_id, key), now)
         return True
 
-    def too_soon(sid, route, raw):
-        """True when this login asked this route about this page less than LOOK_FLOOR_SECONDS ago (the script asks every 2 seconds, so it never is)."""
-        now, key = clock(), (sid, route, hashlib.sha1(raw.encode("utf-8")).hexdigest())
-        last = looked_at.get(key)
-        if last is not None and 0 <= now - last < web_live.LOOK_FLOOR_SECONDS:
-            return True
-        looked_at.put(key, now)
-        return False
-
     def live_answer(payload, status=200):
         return JSONResponse(payload, status_code=status, headers=LIVE_HEADERS)
 
@@ -1767,8 +1758,6 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         if user is None:
             return to_welcome(request) or live_answer({"s": "auth"}, 401), None      # a temporary-password login is sent to the password page, as every page does
         raw = request.query_params.get("u") or ""
-        if too_soon(sid, request.url.path, raw):
-            return JSONResponse({"s": "slow"}, status_code=429, headers=dict(LIVE_HEADERS, **{"Retry-After": "1"})), None
         target = live_target(raw)
         lang = web_board.pick_lang((urllib.parse.parse_qs(target[1]).get("lang") or [""])[0]) if target else "zh"
         missing = HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=LIVE_HEADERS)
@@ -1793,7 +1782,29 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
     async def live_script(request):
         return Response(web_live.script_bytes(), media_type="text/javascript", headers=_HEADERS)
 
+    async def looked(request, answer):
+        """The floor of the looks: the same login asking the same route the same question inside LOOK_FLOOR_SECONDS is given the answer it was given a moment
+        ago, as it was (status, body, headers), and nothing is run. The answer is kept under the login's own key and is given to nobody else; only an answer of
+        200 is kept (a 401, a 303 or a 404 is never anyone's saved answer), and a request without a live login goes straight to `answer`."""
+        sid, user = user_of(request)
+        if user is None:
+            return await answer(request)
+        key = (sid, request.url.path, hashlib.sha1(request.url.query.encode("utf-8")).hexdigest())
+        now, kept = clock(), looked_at.get(key)
+        if kept is not None and 0 <= now - kept[0] < web_live.LOOK_FLOOR_SECONDS:
+            return Response(kept[1], status_code=kept[2], headers=kept[3])
+        response = await answer(request)
+        if response.status_code == 200 and len(response.body) <= web_live.ANSWER_MAX_BYTES:
+            looked_at.put(key, (now, bytes(response.body), 200, dict(response.headers)))
+        return response
+
     async def live_version(request):
+        return await looked(request, version_answer)
+
+    async def live_content(request):
+        return await looked(request, content_answer)
+
+    async def version_answer(request):
         early, page = await live_look(request)
         if early is not None:
             return early
@@ -1810,7 +1821,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             return live_answer({"s": "reload"} if may_reload(page["user"]["user_id"], page["key"]) else {"s": "wait"})
         return live_answer(dict(web_live.info_of(lay, headers), s="ok", **({} if page["scripted"] else {"x": 1})))
 
-    async def live_content(request):
+    async def content_answer(request):
         early, page = await live_look(request)
         if early is not None:
             return early

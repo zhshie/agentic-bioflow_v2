@@ -17,6 +17,7 @@
   var here = location.pathname + location.search;
   var firstPick = new WeakMap();      // the option each drop-down showed when the page (or the region) came
   var mismatches = 0;
+  var lastGo = Date.now();      // when this page came: a reload of its own is never made sooner than 15 seconds after it (the new page starts the count again)
   var failures = 0;
   var timer = null;
   var busy = false;
@@ -271,7 +272,7 @@
       var bad = wanted.some(function (n) { return ver[n] !== expect[n]; });
       if (bad) {
         mismatches++;
-        if (mismatches >= 2) { go(); }
+        if (mismatches >= 2 && Date.now() - lastGo >= 15000) { go(); }
         done({ retry: true });
         return;
       }
@@ -283,7 +284,7 @@
   function later(delay) {
     if (stopped) { return; }
     if (timer) { clearTimeout(timer); }
-    timer = setTimeout(poll, delay);
+    timer = setTimeout(poll, Math.max(500, delay + Math.round((Math.random() * 2 - 1) * 250)));      // a little jitter, so that two tabs of one person do not keep the same phase
   }
 
   function poll() {

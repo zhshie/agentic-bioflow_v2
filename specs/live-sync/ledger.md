@@ -94,6 +94,7 @@ Not carrying it: `/login`, `/welcome`, `/c/<id>`, `/consent/<id>`, `/settings`, 
 | test_su_usd.py::test_tc072_run_page_limits | `"<script" not in t` | `one_live_script(t)` | (i) | run pages |
 | test_clean_page.py::test_a_board_without_any_clean_request_is_byte_for_byte_what_it_was | golden hash of the whole board (`snap`) | the same golden hashes, of the board with the three additions of live-sync taken off (`snap_board`, used at this one place only; `snap` for the `/c/` confirmation pages is exactly as before and their hashes pass unchanged) | accepted by the lead | `/` |
 | test_clean_page.py::test_no_inline_style_*_same_headers_as_a_launch_page | each header == the confirmation page's | CSP of the board == the confirmation page's + `ADD` | (ii)/(i) | board (in scope); `/c/` pages unchanged |
+| test_temp_password.py::test_tc027_every_login_route_sends_a_temporary_session_to_the_password_page | the walk over every route of the app expects 303 `/welcome` for each, exempting `/login`, `/logout`, `/welcome`, `/authorize`, the `.well-known` paths and the three OAuth POST routes | the exempt list also has `/static/live.js` (public: the same bytes for everybody, TC-036); `/live/version` and `/live/content` are walked and answer a temporary login with 303 `/welcome` like every page | R-B (route pin) | every route |
 | test_web_live_sync.py | (new) | | | |
 | package-data pins: test_guidance.py::test_tc406_*, test_module_sources.py::test_package_data_gets_exactly_one_more_glob | `"data/*.json", "data/*.json.gz"]` | `..., "data/*.js"]` | R-E | `pyproject.toml` |
 
@@ -183,6 +184,29 @@ After the acceptance round the whole script (18 cases) was run again from a clea
 TC-063 golden: made with `git archive origin/v3 | tar -x -C /tmp/base3` (a4133ab6, before any live-sync code), `cp platform/tests/live_golden.py` and a three-line pytest that prints `board_digests(World(...))` and `launch_digests(...)` into `/tmp/base3/platform/tests/`, then `python -m pytest -s` there (twice, 70 s apart: the same digests). The scenario has fixed names, fixed times and a fixed clock; the launch time shown on the finished stage is set by the scenario (a first golden made at another minute differed: fixed).
 
 A real defect found on the way: a figure's ids were made of a hash of its name; they are now the name itself. A helper edit during this round briefly corrupted `web_finished.py` (a search for `def _figure` hit `def _figures_row`); the file was restored from origin/v3 and the three changes reapplied; `git diff origin/v3 -- platform/abf_platform/web_finished.py` is 12 insertions, 4 deletions.
+
+## Round 3: two tabs starving each other (blocking defect), and three low items
+
+**The defect.** The 1-second floor answered 429 to a login that asked the same page again inside a second. The script asks every 2 seconds without any jitter, so two tabs of one login on one page kept a fixed phase: tab A (t = 0, 2, 4 ...) always got 200, tab B (t = 0.5, 2.5 ...) always got 429 and never updated.
+
+**The fix.** Inside the floor the same (login, route, question) is given **its own last answer as it was** (status, body, headers; the page's handler is not run, nothing is parsed). `web_live.Recent` now keeps `(when, answer)` for this memory (`ANSWER_CAP` 256 entries, answers over `ANSWER_MAX_BYTES` 200 000 are not kept; oldest out first). The key contains the login's session id, so an answer is given only to the login that got it; only a 200 is kept, so a 401, a 303 or a 404 is never anyone's saved answer; a request without a live login goes straight to the old path (401, or 303 `/welcome` for a temporary login) and enters no memory. `live.js` still reads a 429 as "ask again later" (the server no longer sends it) and schedules every turn with 2 s plus or minus up to 250 ms of random (never under 0.5 s).
+
+| item | RED/GREEN test | implementation |
+|---|---|---|
+| floor gives the last answer as it was | `test_s2_inside_the_floor_the_same_login_is_given_its_last_answer_as_it_was` (same status, body, headers; `render_board` not called; no job; another page is another question; a full second later it is made afresh) | `web.py looked`, `web_live.Recent` |
+| two tabs | `test_s2_two_tabs_of_one_login_both_get_every_answer_and_both_see_a_change` (moved clock, A at 0, 1, 2 ..., B at 0.5, 1.5 ... six asks each, all 200 and ok; a change at 2.2 s is seen by both no later than the first ask after the floor) | same |
+| other login | `test_s2_another_login_inside_the_floor_gets_its_own_answer_never_the_kept_one_of_another` (bob inside the floor of ann's question gets bob's mast, not ann's; a second login of ann gets its own CSRF tokens, disjoint from the first login's, and equal to its own page's; two asks without a login are a plain 401 each) | key contains the session id |
+| S3 still holds with kept answers | `test_s3_an_old_answer_given_inside_the_floor_*` (the kept content carries the old `v`; it differs from the version the script plans for next, so the script throws it away; asked after the floor it matches) | `/live/content` `v`, `live.js` |
+| browser: two tabs | `TWO-TABS`: both tabs of one login update after 1.3 s | `live.js` jitter |
+| low 1: flooded memory | `test_s2_when_the_memory_is_flooded_the_oldest_page_loses_its_15_second_limit_and_that_is_accepted` (cap 20, thirty other would-ask pages inside the window: the oldest page is told to reload once more, then limited again) and `test_s2_the_reload_limit_holds_with_the_normal_memory_when_other_pages_ask` | `web_live.MEMORY_CAP` |
+| low 2: the script's own reload | browser `S3B`: every content answer is already old when it arrives (a figure is published during each); 7 content asks, 2 page loads, the gap between the two loads 17.0 s (never under 15 s) | `live.js`: `lastGo` (a memory variable set when the page came) and `Date.now() - lastGo >= 15000` before the second bad answer in a row loads the page; otherwise it keeps throwing away and asking again |
+| low 3 | this section and the `test_temp_password.py` row of the rewritten-tests table | |
+
+**Choice for low 1 and why.** The memory of reloads is bounded (4096 entries) and the oldest entry goes first. I kept that and say so: a page pushed out of the memory inside its 15 seconds can be told to load whole once more, which is exactly one real page load (what a person pressing reload makes, and what the page did every 15 seconds before this feature); to push it out one login would have to make more than 4096 distinct would-ask pages inside 15 seconds, and any one of those asks costs at most one real page load too. The alternative (never evicting) would let a flood grow the memory without end. An entry older than 15 seconds is expired anyway, so evicting it loses nothing.
+
+**Low 2: how it is done without sessionStorage.** The 15-second spacing counts from `lastGo = Date.now()` at the moment the page's script starts; a page loaded by a reload starts its own count, so two reloads of its own are always at least 15 seconds apart. No new field in `data-live` was needed.
+
+**Browser checks after this round.** `scripts/dev/check_live_sync.py` has 20 cases (the 16 of the contract, `S3`, `S3B`, `DIRTY`, `TWO-TABS`).
 
 ## Results of the platform tests (WSL, `~/abf-venv`, no `-x`)
 

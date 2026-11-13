@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ui_check import free_port  # noqa: E402  (one helper, not two copies)
 
 USER, PASSWORD = "alice", "correct horse battery"
-CASES = ["TC-001", "TC-004", "TC-005", "TC-006", "TC-007", "TC-008", "TC-009", "TC-011", "TC-014", "TC-017", "TC-018", "TC-019", "TC-032", "TC-034", "TC-035", "TC-040", "S3", "DIRTY"]
+CASES = ["TC-001", "TC-004", "TC-005", "TC-006", "TC-007", "TC-008", "TC-009", "TC-011", "TC-014", "TC-017", "TC-018", "TC-019", "TC-032", "TC-034", "TC-035", "TC-040", "S3", "S3B", "DIRTY", "TWO-TABS"]
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000000020001e221bc330000000049454e44ae426082")
 SCHEMA = json.dumps({"$schema": "https://json-schema.org/draft/2020-12/schema", "title": "t", "type": "object",
                      "$defs": {"opts": {"title": "Options", "type": "object", "properties": {
@@ -56,16 +56,16 @@ agents.register(state, "agent-t", "0.1.0", time.time, facts={"slurm_account": "A
 now = int(time.time())
 ix = store.connect_index(db)
 with ix:
-    for name, final in (("live-run", None), ("live-1", None), ("live-2", None), ("live-3", None), ("live-ok", "succeeded"), ("live-file", "succeeded")):
+    for name, final in (("live-run", None), ("live-4", None), ("live-1", None), ("live-2", None), ("live-3", None), ("live-ok", "succeeded"), ("live-file", "succeeded")):
         ix.execute("INSERT INTO runs (id, session_id, run_name, final_status, started_at, ended_at, last_message_at, n_succeeded, n_running) VALUES (?,?,?,?,?,?,?,?,?)",
                    ("id-" + name, "s-" + name, name, final, now - 3600, (now - 3500) if final else None, now - 3500 if final else now, 4 if final else 1, 0 if final else 2))
 ix.close()
 st = store.connect_state(state)
 with st:
-    for name in ("live-run", "live-1", "live-2", "live-3", "live-ok", "live-file"):
+    for name in ("live-run", "live-4", "live-1", "live-2", "live-3", "live-ok", "live-file"):
         st.execute("INSERT INTO launches (run_name, run_folder, ce, agent, confirmed_at, user_id) VALUES (?,?,?,?,?,?)", (name, "/f/" + name, "lab-a", "agent-t", time.time(), uid))
 st.close()
-for name in ("live-run", "live-1", "live-2", "live-3", "live-ok", "live-file"):      # the listing of every run is answered already: the page that a flip to succeeded makes needs no new ask
+for name in ("live-run", "live-4", "live-1", "live-2", "live-3", "live-ok", "live-file"):      # the listing of every run is answered already: the page that a flip to succeeded makes needs no new ask
     path = "/f/%s/results" % name
     job = jobs.enqueue_listing(state, "lab-a", path, time.time, caller_user_id=uid)
     con = sqlite3.connect(state)
@@ -193,8 +193,8 @@ class Watch:
     """The page loads and the requests of one page, as the browser reports them."""
 
     def __init__(self, page, base):
-        self.loads, self.requests, self.base = 0, [], base
-        page.on("load", lambda *_: setattr(self, "loads", self.loads + 1))
+        self.loads, self.requests, self.base, self.load_times = 0, [], base, []
+        page.on("load", lambda *_: (setattr(self, "loads", self.loads + 1), self.load_times.append(time.monotonic())))
         page.on("request", lambda r: self.requests.append((time.monotonic(), r.method, r.url)))
 
     def live(self, kind="version"):
@@ -505,6 +505,50 @@ def case_s3(browser, plat):
     return {"S3": (got == want and len(set(got)) == len(got) and len(got) == len(before) + 2 and asks >= 2, "the page %s, a fresh load %s, %d content asks" % (got, want, asks))}
 
 
+def case_s3_reload(browser, plat):
+    """The page keeps changing under every answer: the script throws the answers away and may load the page whole, but never sooner than 15 seconds after it came."""
+    plat.publish("m0.png")
+    ctx, page = login(browser, plat)
+    watch = Watch(page, plat.base)
+    page.goto(plat.base + "/?run=id-live-ok&stage=finished")
+    page.wait_for_selector("input[name=fig]")
+    count = [0]
+
+    def meddle(route, request):
+        count[0] += 1
+        plat.publish("m%d.png" % count[0])      # every content answer is already old when it arrives
+        route.continue_()
+    page.route("**/live/content*", meddle)
+    plat.publish("mx.png")
+    nap(page, 26)
+    times = watch.load_times
+    first, gaps = times[0], [b - a for a, b in zip(times, times[1:])]
+    ok = count[0] >= 3 and all(g >= 14.5 for g in gaps)
+    ctx.close()
+    return {"S3B": (ok, "%d content asks, %d page loads, gaps between loads %s" % (count[0], len(times), ", ".join("%.1f" % g for g in gaps) or "none"))}
+
+
+def case_two_tabs(browser, plat):
+    """Two tabs of one login look at one page: when it changes both update within a few seconds (neither is starved by the other)."""
+    ctx, a = login(browser, plat)
+    b = ctx.new_page()
+    for pg in (a, b):
+        pg.goto(plat.base + "/?run=id-live-4")
+        pg.wait_for_selector("main[data-pane=middle] .badge")
+    nap(a, 3)
+    plat.finish_run("live-4")
+    t0 = time.monotonic()
+    took = {}
+    for name, pg in (("A", a), ("B", b)):
+        try:
+            pg.wait_for_selector("main[data-pane=middle] .badge.state-succeeded", timeout=6000)
+            took[name] = time.monotonic() - t0
+        except Exception:
+            took[name] = None
+    ctx.close()
+    return {"TWO-TABS": (all(v is not None and v <= 6 for v in took.values()), "tab A updated after %s s, tab B after %s s" % tuple("%.1f" % took[k] if took[k] is not None else "never" for k in ("A", "B")))}
+
+
 def case_dirty(browser, plat):
     """A box that was changed and changed back is not touched any more: its region is replaced when the server's content changes; one that still differs is kept."""
     out = {}
@@ -561,7 +605,8 @@ def main(argv=None):
                     (["TC-009"], lambda: tc009(browser, plat)), (["TC-011"], lambda: tc011(browser, plat)),
                     (["TC-014"], lambda: tc014(browser, plat)), (["TC-017", "TC-018", "TC-019"], lambda: launch_flow(browser, plat, want)),
                     (["TC-032"], lambda: tc032(browser, plat)), (["TC-034", "TC-035"], lambda: tc034_035(browser, plat, want)),
-                    (["TC-040"], lambda: tc040(browser, plat)), (["S3"], lambda: case_s3(browser, plat)), (["DIRTY"], lambda: case_dirty(browser, plat))]
+                    (["TC-040"], lambda: tc040(browser, plat)), (["S3"], lambda: case_s3(browser, plat)), (["S3B"], lambda: case_s3_reload(browser, plat)), (["DIRTY"], lambda: case_dirty(browser, plat)),
+                    (["TWO-TABS"], lambda: case_two_tabs(browser, plat))]
             for cases, run in plan:
                 if not want & set(cases):
                     continue

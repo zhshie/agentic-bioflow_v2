@@ -807,24 +807,112 @@ def test_s2_a_page_asked_about_twice_is_read_once(w, monkeypatch):
     assert len(calls) == n, "the look parsed the same text again"
 
 
-def test_s2_the_floor_of_one_second_and_the_script_is_not_told_to_reload(w):
-    # S2 (b): the same login asking the same route about the same page inside a second is told to slow down (429, Retry-After), nothing is run
+def look(c, kind, u, at, names=None):
+    """One ask of one tab at a given moment of the app's clock (no sleeping: the clock is moved)."""
+    c.app.state.clock.t = at
+    params = {"u": u} if names is None else {"u": u, "n": ",".join(names)}
+    return c.get("/live/%s?%s" % (kind, urllib.parse.urlencode(params)))
+
+
+def test_s2_inside_the_floor_the_same_login_is_given_its_last_answer_as_it_was(w, monkeypatch):
+    # S2 (b): no 429; the answer, status and headers as they were; the handler of the page is not run
+    from abf_platform import web_board
     ann, bob, ids, c, cb = scene(w)
     u = "/?run=" + ids["run"]
-    first = c.get("/live/version?" + urllib.parse.urlencode({"u": u}))
+    t0 = c.app.state.clock.t + 10
+    first = look(c, "version", u, t0)
     assert first.status_code == 200
+    renders = []
+    real = web_board.render_board
+    monkeypatch.setattr(web_board, "render_board", lambda *a, **kw: renders.append(1) or real(*a, **kw))
     jobs = len(w.sql("SELECT * FROM jobs"))
-    second = c.get("/live/version?" + urllib.parse.urlencode({"u": u}))
-    assert second.status_code == 429 and second.headers["retry-after"] == "1" and second.json() == {"s": "slow"}
-    assert second.headers["cache-control"] == "private, no-store" and len(w.sql("SELECT * FROM jobs")) == jobs
-    other = c.get("/live/version?" + urllib.parse.urlencode({"u": "/?run=" + ids["bad"]}))      # another page is another question
-    assert other.status_code == 200
-    kind = c.get("/live/content?" + urllib.parse.urlencode({"u": u, "n": "mid-0"}))      # another route is another question
-    assert kind.status_code == 200
-    c.app.state.clock.t += 1.5
-    assert c.get("/live/version?" + urllib.parse.urlencode({"u": u})).status_code == 200
+    again = look(c, "version", u, t0 + 0.5)
+    assert again.status_code == 200 and again.content == first.content and again.headers["cache-control"] == "private, no-store"
+    assert dict(again.headers) == dict(first.headers) and renders == [] and len(w.sql("SELECT * FROM jobs")) == jobs
+    assert look(c, "version", "/?run=" + ids["bad"], t0 + 0.6).status_code == 200 and renders      # another page is another question: it is made
+    renders.clear()
+    later = look(c, "version", u, t0 + 1.0)      # a full second after the first: made afresh
+    assert later.status_code == 200 and renders
     js = (PLATFORM_DIR / "abf_platform" / "data" / "live.js").read_text(encoding="utf-8")
-    assert "429" in js and "slow" in js      # the script treats it as "ask again at the usual time", not as a failure and not as a reload
+    assert "429" in js and "Math.random" in js      # the script still reads a 429 as "ask again later" and asks with a little jitter
+
+
+def test_s2_two_tabs_of_one_login_both_get_every_answer_and_both_see_a_change(w):
+    # S2 (b), the blocking case: tab A asks at 0, 1, 2 ... and tab B at 0.5, 1.5 ... about the same page; nobody is starved
+    ann, bob, ids, c, cb = scene(w)
+    u = "/?run=" + ids["run"]
+    t0 = c.app.state.clock.t + 10
+    seen = {"A": [], "B": []}
+    changed_at = t0 + 2.2
+    for step in range(12):
+        at = t0 + step * 0.5
+        tab = "A" if step % 2 == 0 else "B"
+        if at >= changed_at and "done" not in seen:
+            con = sqlite3.connect(str(w.ip.index))
+            with con:
+                con.execute("UPDATE runs SET n_succeeded = 3, n_running = 0 WHERE id = ?", (ids["run"],))
+            con.close()
+            seen["done"] = True
+        r = look(c, "version", u, at)
+        assert r.status_code == 200 and r.json()["s"] == "ok", (tab, at, r.status_code)
+        seen[tab].append((at, vmap(r.json())))
+    first = seen["A"][0][1]
+    for tab in ("A", "B"):
+        assert len(seen[tab]) == 6
+        newer = [at for at, v in seen[tab] if v != first]
+        assert newer, tab + " never saw the change"
+        assert newer[0] <= changed_at + 1.5, (tab, newer[0] - t0)      # no later than the first ask after the floor has passed
+
+
+def test_s2_another_login_inside_the_floor_gets_its_own_answer_never_the_kept_one_of_another(w):
+    # S2 (b): the answer kept for one login is not given to another, even for the same page and the same question
+    ann, bob, ids, c, cb = scene(w)
+    c2 = login(w, "ann")      # a second login of the same person
+    t0 = c.app.state.clock.t + 10
+    names = ["page-0"]
+    mine = look(c, "content", "/", t0, names).json()["r"]["page-0"]
+    theirs = look(cb, "content", "/", t0 + 0.2, names).json()["r"]["page-0"]      # bob, inside the floor of ann's question
+    assert "ann" in mine and "bob" not in mine and "bob" in theirs and "ann" not in theirs
+    bad = "/?run=" + ids["bad"]
+    forms = look(c, "version", bad, t0 + 3)
+    names = [n for n in names_of(forms.json()) if n.startswith("mid-") or n.startswith("right-")]
+    one = look(c, "content", bad, t0 + 3, names).json()["r"]
+    two = look(c2, "content", bad, t0 + 3.2, names).json()["r"]      # the other login of the same person, inside the floor
+    tok_one = set(re.findall(r'name="csrf" value="([^"]+)"', "".join(one.values())))
+    tok_two = set(re.findall(r'name="csrf" value="([^"]+)"', "".join(two.values())))
+    assert tok_one and tok_two and not tok_one & tok_two
+    assert tok_two <= set(re.findall(r'name="csrf" value="([^"]+)"', c2.get(bad).text))      # the tokens of its own page
+    anon = w.web()
+    for _ in range(2):
+        r = look(anon, "version", "/", t0 + 3.3)      # no login: a plain 401 each time, nothing kept for anybody
+        assert r.status_code == 401 and "ann" not in r.text
+
+
+def test_s3_an_old_answer_given_inside_the_floor_carries_the_old_versions_so_the_script_throws_it_away(w):
+    # S3 with the kept answers: content kept a moment ago is old after the page changed; its `v` is the old version, which is not the one the script planned for
+    ann, bob, ids, c, cb = scene(w)
+    u = "/?run=" + ids["run"]
+    t0 = c.app.state.clock.t + 10
+    old_v = look(c, "version", u, t0).json()
+    con = sqlite3.connect(str(w.ip.index))
+    with con:
+        con.execute("UPDATE runs SET n_succeeded = 3, n_running = 0 WHERE id = ?", (ids["run"],))
+    con.close()
+    new_v = look(c, "version", u, t0 + 2).json()      # the script now plans for the new versions
+    moved = [n for n in vmap(new_v) if vmap(old_v).get(n) != vmap(new_v)[n]][:3]
+    assert moved
+    stale_first = look(c, "content", u, t0 + 2.1, moved).json()      # the first content ask after the change: made now
+    assert all(stale_first["v"][n] == vmap(new_v)[n] for n in moved)
+    con = sqlite3.connect(str(w.ip.index))
+    with con:
+        con.execute("UPDATE runs SET n_succeeded = 4, n_running = 0 WHERE id = ?", (ids["run"],))
+    con.close()
+    kept = look(c, "content", u, t0 + 2.6, moved).json()      # the page changed again; inside the floor the answer is the kept one, as it was
+    assert kept == stale_first
+    newer_v = look(c, "version", u, t0 + 4).json()      # what the script plans for next
+    assert any(vmap(newer_v)[n] != kept["v"][n] for n in moved), "the kept answer must not look like the newer version"      # so the script would throw it away
+    fresh = look(c, "content", u, t0 + 4.2, moved).json()
+    assert all(fresh["v"][n] == vmap(newer_v)[n] for n in moved)      # asked again after the floor: it matches what was planned
 
 
 def test_s2_the_memories_of_the_server_are_bounded():
@@ -835,12 +923,31 @@ def test_s2_the_memories_of_the_server_are_bounded():
     assert len(recent) == 50 and recent.get(("u", "page-999")) == 999.0 and recent.get(("u", "page-0")) is None
 
 
-def test_s2_the_reload_limit_still_holds_for_a_page_while_others_flood_the_memory(w, monkeypatch):
-    # S2 (c): with a tiny memory the newest page keeps its 15-second limit
+def test_s2_when_the_memory_is_flooded_the_oldest_page_loses_its_15_second_limit_and_that_is_accepted(w, monkeypatch):
+    # S2 (c): the choice, stated: the memory of reloads is bounded and the oldest entry goes first. A page pushed out within 15 seconds can be told to load whole once
+    # more, which is what a person pressing reload makes; to push it out someone must make more than MEMORY_CAP (4096) distinct would-ask pages within 15 seconds. A
+    # page whose entry is older than 15 seconds is simply old (nothing is lost by evicting it).
+    monkeypatch.setattr(live(), "MEMORY_CAP", 20)
     ann, bob, ids, c, cb = scene(w)
-    u = "/?run=%s&stage=results&tab=outputs" % ids["ok"]
-    assert version(c, u).json() == {"s": "reload"}
-    assert version(c, u).json()["s"] == "ok"      # 2 seconds later: not again
+    t0 = c.app.state.clock.t + 10
+    base = "/?run=%s&stage=results&tab=outputs" % ids["ok"]
+    assert look(c, "version", base, t0).json() == {"s": "reload"}
+    assert look(c, "version", base, t0 + 2).json()["s"] == "ok"      # inside 15 seconds: not again
+    for n in range(30):      # thirty other pages that would ask the site, all inside the window
+        assert look(c, "version", base + "&path=d%d" % n, t0 + 3 + n * 0.1).json() == {"s": "reload"}
+    assert look(c, "version", base, t0 + 7).json() == {"s": "reload"}      # pushed out of the small memory: told again (accepted)
+    assert look(c, "version", base, t0 + 9).json()["s"] == "ok"      # and limited again from now on
+
+
+def test_s2_the_reload_limit_holds_with_the_normal_memory_when_other_pages_ask(w):
+    # S2 (c): with the normal size the page keeps its limit while thirty others ask
+    ann, bob, ids, c, cb = scene(w)
+    t0 = c.app.state.clock.t + 10
+    base = "/?run=%s&stage=results&tab=outputs" % ids["ok"]
+    assert look(c, "version", base, t0).json() == {"s": "reload"}
+    for n in range(30):
+        look(c, "version", base + "&path=d%d" % n, t0 + 1 + n * 0.1)
+    assert look(c, "version", base, t0 + 7).json()["s"] == "ok"
 
 
 # ---- N6: a page nested too deeply --------------------------------------------------------------------------------------------------
