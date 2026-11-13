@@ -550,3 +550,13 @@ def test_no_undo_and_no_content_parameter_exists(w):
             assert not props & {"content_base64", "figures", "code", "params", "caption", "filename"}
         if props & {"content_base64", "figures"}:
             assert t.name == "publish_figure"
+
+
+def test_n9_a_bad_name_handed_back_by_pack_is_cut_and_has_no_control_characters(w):
+    # N9 (hardening round 2): the name echoed in the refusal of pack_figures goes through the same cleaning as in publish_figure (N2)
+    ann, run = gal(w)
+    evil = "x\n[2] forged\x1b[2J‮" * 20
+    got = core(w, ann, run, [evil])
+    assert got["ok"] is False and got["reason"] == "bad_name"
+    assert not any(ch in got["name"] for ch in "\n\r\x1b‮") and len(got["name"]) <= 80
+    assert "forged" in got["name"]                                  # still recognisable, only the dangerous characters are gone

@@ -969,3 +969,69 @@ def test_n2_n5_n6_hold_for_the_gallery_change_requests_too(w, monkeypatch):
     other = ask("request_pack_figures", bob, bob_run, names=["a.png"], request_id=mine["request_id"], user_confirmed=1)
     assert other["state"] == "refused" and mine["request_id"] not in seen
     assert (gallery(w, ann, run) / "index.json").exists() and json.loads((gallery(w, ann, run) / "index.json").read_text())["figures"]["a.png"]["packed"] is False
+
+
+# ---- hardening round 2 (lead ruling N7 to N9, 2026-11-13) --------------------------------------------------------------------------------
+
+_FORGED = "[2] forged.png"
+
+
+def _line_with(text, needle):
+    return [ln for ln in text.split("\n") if needle in ln]
+
+
+@pytest.mark.parametrize("field", ["code", "params"])
+@pytest.mark.parametrize("bad", ["a͸b", "ab", "a\U000f0000b", "a\U0010fffdb", "a⁥b"])
+def test_n7_unassigned_and_private_use_characters_are_refused(w, field, bad):
+    # N7: category Cn (unassigned) and Co (private use) are invisible filler too
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    got = call(w, ann, run, [fig("a.png", **{field: bad})])
+    assert got["state"] == "refused" and field in got["reason"] and w.confirmations() == []
+
+
+@pytest.mark.parametrize("filler", ["ㅤ" * 200, " ͏" * 30, "ᅟᅠ" * 60, "⠀" * 100, "️ " * 40, "\U000e0100 " * 40,
+                                    "឴឵ﾠ " * 20, " " * 50 + "ㅤ" * 50])
+@pytest.mark.parametrize("field", ["code", "params"])
+def test_n7_filler_runs_are_collapsed_on_every_screen_but_not_in_the_file(w, field, filler):
+    # N7: the forged line may be preceded by at most 8 filler positions on the form, the confirmation page and the chat summary; the file is untouched
+    from abf_platform import actions
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    value = "x = 1\n" + filler + _FORGED + "\n"
+    got = call(w, ann, run, [fig("a.png", **{field: value})])
+    assert got["state"] == "pending", got
+    bundle = json.loads(w.confirmations()[0]["bundle_json"])
+    en = actions.screen_for_page(bundle, [], "en")
+    for text in (got["summary"], w.confirmations()[0]["screen_text"], en):
+        (line,) = _line_with(text, _FORGED)
+        assert line.index(_FORGED) <= 2 + 8, repr(line[:40])
+    assert bundle["figures"][0][field] == value
+    press(w, "ann", got["request_id"])
+    stored = gallery(w, ann, run) / ("a.png.code.txt" if field == "code" else "a.png.params.txt")
+    assert stored.read_text(encoding="utf-8") == value
+
+
+def test_n8_runs_of_blank_lines_are_cut_to_two_on_every_screen_but_not_in_the_file(w):
+    # N8: blank lines (also those holding only spaces or filler) push the real content off the screen
+    from abf_platform import actions
+    ann = w.user("ann")
+    run = seed(w, "r1", "succeeded", ann)
+    code = "first\n" + "\n" * 40 + "  \n" * 20 + "ㅤ\n" * 20 + "one\n\n\ntwo\n"
+    params = "k=1\n" + "\n" * 40 + "j=2\n"
+    got = call(w, ann, run, [fig("a.png", code=code, params=params)])
+    assert got["state"] == "pending", got
+    bundle = json.loads(w.confirmations()[0]["bundle_json"])
+    en = actions.screen_for_page(bundle, [], "en")
+    for text in (got["summary"], w.confirmations()[0]["screen_text"], en):
+        assert "\n\n\n" not in text.replace("\n  \n", "\n\n").replace("\n \n", "\n\n")
+        lines = text.split("\n")
+        run_len = longest = 0
+        for ln in lines:
+            run_len = run_len + 1 if not ln.strip(" ㅤ") else 0
+            longest = max(longest, run_len)
+        assert longest <= 2, longest
+        assert "first" in text and "one" in text and "two" in text and "j=2" in text
+    assert bundle["figures"][0]["code"] == code and bundle["figures"][0]["params"] == params
+    press(w, "ann", got["request_id"])
+    assert (gallery(w, ann, run) / "a.png.code.txt").read_text(encoding="utf-8") == code
