@@ -25,7 +25,7 @@ PKG = PLATFORM_DIR / "abf_platform"
 SCAN_DIRS = [PLATFORM_DIR / "abf_platform", PLATFORM_DIR / "abf_station", PLATFORM_DIR / "abf_launch"]
 REFUSED = "no human confirmation channel"
 READ_NAMES = ["list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines", "read_task_log",
-              "run_outputs", "read_run_file", "my_usage"]    # results-outputs: the Outputs tab of the results stage; a read like the others, never waiting for the site
+              "run_outputs", "read_run_file", "list_figures", "my_usage"]    # results-outputs: the Outputs tab of the results stage; a read like the others, never waiting for the site
 WRITE_NAMES = ["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"]    # 009c: the two tools that make a request a person must say yes to; 009e: and the two for a failed run
 WRITE_NAMES = WRITE_NAMES + ["publish_figure"]    # mcp-publish-figure: added after the pinned literal above (keep-submissions TC-040 compares that line)
 WRITE_NAMES = WRITE_NAMES + ["pack_figures", "delete_figure"]    # mcp-gallery-actions: two more tools that ask (TC-072)
@@ -224,7 +224,7 @@ def test_tca10_the_server_is_byte_for_byte_the_one_of_the_starting_point(tmp_pat
     assert server.instructions == guidance.routing_instructions()
     for word in ("setup", "launch", "runs", "downstream", "finish", "read-only", "terminal"):
         assert word in server.instructions
-    tools = sorted([t for t in _tools(server) if t.name in READ_NAMES and t.name not in ("read_run_file", "get_run")], key=lambda t: t.name)    # ruling R2: get_run changed on purpose (annotation, one sentence of its description); see test_head_nodefail.py TC-046/047    # mcp-run-file: read_run_file is new, so it is not in the starting point; run_outputs took an optional path    # 009c: the six read tools, unchanged; launch and cancel are new
+    tools = sorted([t for t in _tools(server) if t.name in READ_NAMES and t.name not in ("read_run_file", "list_figures", "get_run")], key=lambda t: t.name)    # ruling R2: get_run changed on purpose (annotation, one sentence of its description); see test_head_nodefail.py TC-046/047    # mcp-run-file: read_run_file is new, so it is not in the starting point; run_outputs took an optional path    # 009c: the six read tools, unchanged; launch and cancel are new
     got = [{"name": t.name, "description": t.description,
             "annotations": t.annotations.model_dump(exclude_none=True) if t.annotations else None,
             "schema": t.input_schema} for t in tools]
@@ -758,4 +758,4 @@ def test_gallery_page_actions_exist_in_the_action_layer_and_are_not_tools(tmp_pa
     # mcp-gallery-actions R2 (maintainer, 2026-11-12: "AI要能夠代使用者完成所有事，包括按按鈕"): the only point loosened is that pack_figures and delete_figure
     # are not tools; they are now tools that go through the confirmation channel. read_figure is still not a tool.
     assert not names & {"read_figure"} and {"pack_figures", "delete_figure"} <= names and not names & {"pack_figure", "delete_figures", "unpack_figures"}
-    assert len(names) == 25
+    assert len(names) == 26

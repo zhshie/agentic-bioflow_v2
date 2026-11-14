@@ -1,10 +1,10 @@
-# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers fifteen read-only tools, and is built on the official Python mcp SDK.
-"""MCP server: fifteen read-only tools: list_runs, list_compute_envs, get_compute_env, list_agents,
-list_site_files, list_used_pipelines, my_usage, run_outputs, read_run_file, read_task_log, and the five canvas reads find_module, describe_module,
+# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers sixteen read-only tools, and is built on the official Python mcp SDK.
+"""MCP server: sixteen read-only tools: list_runs, list_compute_envs, get_compute_env, list_agents,
+list_site_files, list_used_pipelines, my_usage, run_outputs, read_run_file, list_figures, read_task_log, and the five canvas reads find_module, describe_module,
 list_pipelines, get_pipeline, get_validation; and nine tools that ask a person:
 launch, launch_pipeline, cancel, forget, resume, relaunch, publish_figure, pack_figures, delete_figure.
 
-get_run is the one query that is not marked read-only: for a lost run it queues one read of the site (ruling R2). The fifteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
+get_run is the one query that is not marked read-only: for a lost run it queues one read of the site (ruling R2). The sixteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
   - toward runs: this module never writes the run index (status.py opens it read-only);
   - toward the site: list_site_files may put one read-only question (list a folder) in the job queue of
@@ -135,6 +135,16 @@ def build_server(index_path, platform_path=None):
                              "An HTML file (.html, .htm) is treated as a binary file.")
     def read_run_file(ctx: Context, run_id: str, path: str, offset: Any = 0) -> dict:
         return actions.read_run_file(index_path, platform_path, run_id, path, caller=_caller(ctx), offset=offset)
+
+    @server.tool(name="list_figures", annotations=_READ_ONLY,
+                 description="Read-only: the gallery of one of your own runs (run_id). It answers found and figures: every figure that was "
+                             "published with publish_figure, each with name, type, size, caption, created and packed (whether it is in "
+                             "the delivery package). Pass packed_only=true for just the figures in the package. found is false, in the "
+                             "same words, for a run that is not yours and for one that does not exist. Call it after the person "
+                             "confirmed a publish, to check the figure is there, then give pack_figures the whole set of names. "
+                             "Not for the files a run produced: that is run_outputs. Nothing is written or run.")
+    def list_figures(ctx: Context, run_id: str, packed_only: bool = False) -> dict:
+        return actions.list_figures(index_path, platform_path, run_id, caller=_caller(ctx), packed_only=packed_only)
 
     @server.tool(name="read_task_log", annotations=_READ_ONLY,
                  description="Read the end of one log file of a failed task of a run you launched, through the run's agent: "
