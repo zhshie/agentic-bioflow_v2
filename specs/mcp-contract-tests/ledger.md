@@ -2,7 +2,7 @@
 
 - [x] TC-001..008, 019, 020 tool list snapshot and description lint (test_mcp_contract_tools.py, snapshots/tools.json)
 - [x] TC-009..011 write tools: zero side effect, reply says not sent (test_mcp_contract_writes.py)
-- [x] TC-012..015 error path per tool: 15 product gaps marked xfail(strict) in GAPS (cancel, get_compute_env, get_pipeline, get_validation, get_run, launch, list_site_files, read_task_log, relaunch, resume: no next step; find_module, forget, my_usage, read_run_file, run_outputs: no name). abf_platform/ untouched.
+- [x] TC-012..015 error path per tool: 15 product gaps marked xfail(strict) in GAPS (cancel, get_compute_env, get_pipeline, get_validation, get_run, launch, list_site_files, read_task_log, relaunch, resume: no next step; find_module, forget, my_usage, read_run_file, run_outputs: no name; 2026-11-14 mcp-list-figures adds a 16th, list_figures: its refusal is the shared "run not found" sentence, no name and no next step). abf_platform/ untouched.
 - [x] TC-016..018 HTTP: test_mcp_contract_http.py. list_site_files over HTTP with the site's agent offline answers ok false "offline" at once (not 60 s wait).
 
 ## 給維護者的清單（測試找到的產品缺口；abf_platform/ 一行都沒改）

@@ -24,7 +24,7 @@ WEB_VIA_REQUEST = {"launch": "request_launch", "cancel": "request_cancel", "resu
 # The PAGE confirmation channel is web-only by design: the MCP side uses the form channel and request_launch/request_cancel.
 WEB_ONLY = {
     "run_usage": "the cost row of the run page (cost-page-by-environment): one run of the caller, in its environment's unit; a read, not an MCP tool",
-    "list_figures": "mcp-publish-figure: reads the caller's own private gallery of one run; the gallery page is slice 2",
+    "list_figures": "an MCP tool since mcp-list-figures (the caller's own gallery of one run, read only); it stays in this table because no web route calls it: the finished page reads the same gallery through gallery_view",
     "screen_for_page": "mcp-publish-figure: the confirmation page shows the publish_figure screen in the page's language",
     "request_pack_figures": "mcp-gallery-actions: what the MCP tool pack_figures calls; the page's own button calls the core pack_figures of actions/figures.py (TC-072)",
     "request_delete_figure": "mcp-gallery-actions: what the MCP tool delete_figure calls; the page's own button calls the core delete_figure of actions/figures.py (TC-072)",

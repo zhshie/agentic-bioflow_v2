@@ -15,12 +15,20 @@ runs and the columns stop meaning anything (PITFALLS 35).
 
 ## Through the platform's MCP server (a chat client with no shell on the deployment)
 
-**If `run_outputs`, `read_run_file` and `publish_figure` are in your tool
-list and you have no shell on the deployment, this section is the whole
-procedure. Follow it and stop at its end.** In that case do not run `scripts/`
+**If `scripts/env.sh` cannot be run where you are (a chat client: no shell,
+or no copy of this plugin's files) and `run_outputs`, `read_run_file` and
+`publish_figure` are in your tool list, this section is the whole procedure.
+Follow it and stop at its end.** In that case do not run `scripts/`
 commands, `tw`, or anything under "Before anything else" and "Steps" below:
 they need a shell on the deployment, and from a chat client they fail or run
-in the wrong place. The plotting rules above (hues, axes, labels) still hold.
+in the wrong place. When `scripts/env.sh` does run, skip this section and
+start at "Before anything else".
+
+The plotting rules of that later section hold here too, so they are repeated:
+one hue from light to dark for magnitude, two hues around a neutral grey for
+polarity, no rainbow ramp; no second y-axis (two measures are two figures);
+a figure must still read in greyscale and for colour-blind eyes, with a
+legend or direct labels carrying identity; thin marks and quiet axes.
 
 M1. **Pick the run.** `list_runs`, and work only on a run that succeeded.
    Say its name back before reading anything.
@@ -30,8 +38,10 @@ M2. **Say once where the text goes.** Before the first read: what you read
 
 M3. **Look before proposing.** `run_outputs(run_id)`, then
    `run_outputs(run_id, path=<enter>)` one folder at a time. Tell the person
-   what the run already made — its own reports and figures first, with their
-   web download addresses — and draw nothing that is already drawn.
+   what the run already made — its own reports and figures first, by name
+   and folder — and draw nothing that is already drawn. A listing carries no
+   web address; one comes back from `read_run_file` for a binary or web page
+   file, so ask it only for a file the person wants to open.
 
 M4. **Ask what they want answered.** Invite the study's background in their
    own words. Then propose one to three figures, each naming the table it
@@ -47,10 +57,12 @@ M6. **Draw where you can run code, and say where that is.** With a code
    tool in this client, write one self-contained script (R first; another
    language only if R is not there) that reads the table as you saved it and
    writes a PNG or SVG. The script runs in your own sandbox, not on the site
-   and not inside the platform's RStudio: say so. With no code tool, say
-   that, hand the person the script to run in RStudio (the Downstream tab of
-   the run's page, where the administrator set it up), and stop there —
-   never claim a figure exists that you did not make.
+   and not in the person's RStudio: say so. With no code tool, say that and
+   hand the person the script to run themselves in RStudio: the Downstream
+   tab of the run's page says how to open it and how to bring the run's
+   tables there, and the path the script reads must be the one that page
+   gives, not yours. Stop there — never claim a figure exists that you did
+   not make.
 
 M7. **Show it, then publish it.** Show the figure in the chat and let the
    person accept or change it. Then `publish_figure(run_id, figures=[...])`,
@@ -60,15 +72,18 @@ M7. **Show it, then publish it.** Show the figure in the chat and let the
    page the answer names, in their client's form, or — for a new name only —
    by answering in the chat, after which you call again with `request_id`
    and `user_confirmed=true`. Replacing a figure of the same name is theirs
-   alone to confirm on the page.
+   alone to confirm, on the page or in their client's form, never in the
+   chat.
 
 M8. **Check the gallery.** `list_figures(run_id)` and tell the person what
    is there now. A publish they did not confirm is not there; say so.
 
 M9. **Package what they choose.** When they name the figures for the
    delivery package, `pack_figures(run_id, names=<the whole set>)`; figures
-   left out stay in the gallery. `delete_figure` is confirmed only by the
-   person on its page, never in the chat.
+   left out stay in the gallery. It changes nothing until the person says
+   yes, the same three ways as a publish of a new name. `delete_figure` is
+   confirmed only by the person, on its page or in their client's form,
+   never in the chat.
 
 M10. **End with where to look and what is next.** The figures are on the
    run's finished page on the web; the `finish` prompt is the next step.
