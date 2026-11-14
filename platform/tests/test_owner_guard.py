@@ -129,7 +129,6 @@ TOOL_ACTION = {"launch": "request_launch", "cancel": "request_cancel", "forget":
 
 # actions with a `caller` that no tool is named after, each with the reason
 NO_TOOL = {
-    "list_figures": "mcp-publish-figure slice 1: reads the caller's own gallery of one run; the gallery page and its tool come in slice 2",
     "run_usage": "web run page (cost-page-by-environment): the cost row of one run; read only; get_run already carries su",
     "task_log_view": "web run log page (web-run-tasks-log): the tail of one failed task log, read only; read_task_log is the tool for the same file",
     "get_my_settings": "web settings page (012a): the person's own two switches, read only",
@@ -202,7 +201,7 @@ def test_every_mcp_tool_has_an_action_and_every_caller_action_has_a_tool(tmp_pat
     # TC-058, TC-076
     tools = tool_names(tmp_path)
     assert tools == {"cancel", "forget", "get_compute_env", "get_run", "launch", "list_agents", "list_compute_envs", "list_runs",
-                     "list_site_files", "list_used_pipelines", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch_pipeline", "delete_figure", "pack_figures", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"}
+                     "list_site_files", "list_used_pipelines", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "launch_pipeline", "delete_figure", "pack_figures", "publish_figure", "read_run_file", "list_figures", "read_task_log", "relaunch", "resume", "run_outputs"}
     # canvas-mcp-read: the five canvas reads have their actions in the submodules actions.catalogue and actions.pipelines (not in the
     # package), so those are looked up there by name; every tool, the five included, still goes through parity_problems
     import abf_platform.actions.catalogue as cat_actions

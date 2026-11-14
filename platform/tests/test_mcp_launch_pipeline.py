@@ -266,7 +266,7 @@ def test_classify_check_still_rejects_an_unlisted_tool(w):
 def test_tool_count_and_no_extra_tools(w):
     # TC-021, TC-026
     t = tools_of(w)
-    assert len(t) == 25 and sum(1 for x in t.values() if x.annotations.read_only_hint) == 15      # ruling R2: get_run is no longer read-only
+    assert len(t) == 26 and sum(1 for x in t.values() if x.annotations.read_only_hint) == 16      # ruling R2: get_run is no longer read-only
     for n in ("create_pipeline", "update_pipeline", "export_pipeline", "validate_pipeline"):
         assert n not in t
     doc = (PKG / "mcp_server.py").read_text(encoding="utf-8")

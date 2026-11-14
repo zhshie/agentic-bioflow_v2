@@ -317,8 +317,8 @@ def tools_of(w):
 def test_tc007_030_031_032_035_tool_registration(w):
     # TC-007, TC-030, TC-031, TC-032, TC-035
     by, tools = tools_of(w)
-    assert len(tools) == 25 and "read_run_file" in by and by["read_run_file"].annotations.read_only_hint is True
-    assert sum(1 for t in tools if t.annotations and t.annotations.read_only_hint) == 15      # ruling R2: get_run is no longer one of them
+    assert len(tools) == 26 and "read_run_file" in by and by["read_run_file"].annotations.read_only_hint is True
+    assert sum(1 for t in tools if t.annotations and t.annotations.read_only_hint) == 16      # ruling R2: get_run is no longer one of them
     d = by["read_run_file"].description
     for s in ("the text goes to the model you chose", "200,000", "next_offset", "/run/file", "25 MB", "loading", "ready", "error", "unavailable",
               "too_large", "site path", "results/", "run_outputs", "Read-only", "your own"):
@@ -360,7 +360,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 def test_tc036_037_downstream_prompt_is_extended_not_changed():
     # TC-036, TC-037
     new = (ROOT / "skills" / "downstream" / "SKILL.md").read_text(encoding="utf-8")
-    for s in ("read_run_file", "run_outputs", "enter", "200,000", "next_offset", "loading", "too_large", "download", "25 MB", "model the person chose"):
+    for s in ("read_run_file", "list_figures", "run_outputs", "enter", "200,000", "next_offset", "loading", "too_large", "download", "25 MB", "model the person chose"):
         assert s in " ".join(new.split()), s
     # Frozen from skills/downstream/SKILL.md at v3 commit 861ef5ae (identical at the
     # merge-base with this branch): CI checkouts are shallow, so origin/v3 cannot be

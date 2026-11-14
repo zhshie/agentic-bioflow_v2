@@ -183,6 +183,7 @@ def test_tc010_tc061_no_web_page_and_no_mcp_tool_can_launch_or_cancel(world):
     # 009c: the six read tools plus launch and cancel, which only make a pending request (no job without a person's yes);
     # 009e: plus resume and relaunch, asked the same way
     assert sorted(t.name for t in tools) == ["cancel", "delete_figure", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "launch_pipeline", "list_agents", "list_compute_envs",
+                                              "list_figures",
                                               "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "pack_figures", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
 
 

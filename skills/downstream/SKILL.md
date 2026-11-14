@@ -13,6 +13,66 @@ and `why_pending.sh` line their output up with runs of spaces. Relay what they
 printed inside a fenced code block: outside one, a GUI surface collapses those
 runs and the columns stop meaning anything (PITFALLS 35).
 
+## Through the platform's MCP server (a chat client with no shell on the deployment)
+
+**If `run_outputs`, `read_run_file` and `publish_figure` are in your tool
+list and you have no shell on the deployment, this section is the whole
+procedure. Follow it and stop at its end.** In that case do not run `scripts/`
+commands, `tw`, or anything under "Before anything else" and "Steps" below:
+they need a shell on the deployment, and from a chat client they fail or run
+in the wrong place. The plotting rules above (hues, axes, labels) still hold.
+
+M1. **Pick the run.** `list_runs`, and work only on a run that succeeded.
+   Say its name back before reading anything.
+
+M2. **Say once where the text goes.** Before the first read: what you read
+   from the run is sent to the model the person chose.
+
+M3. **Look before proposing.** `run_outputs(run_id)`, then
+   `run_outputs(run_id, path=<enter>)` one folder at a time. Tell the person
+   what the run already made — its own reports and figures first, with their
+   web download addresses — and draw nothing that is already drawn.
+
+M4. **Ask what they want answered.** Invite the study's background in their
+   own words. Then propose one to three figures, each naming the table it
+   would read, and wait for their choice. Do not pick for them.
+
+M5. **Read the tables.** `read_run_file(run_id, path)` with the `download`
+   path a row gave; follow `next_offset` until the table is whole; on
+   `loading` ask again a few seconds later. For `too_large`, a binary file or
+   a web page file, say plainly that you did not read it and give its
+   address; never describe a file you did not read.
+
+M6. **Draw where you can run code, and say where that is.** With a code
+   tool in this client, write one self-contained script (R first; another
+   language only if R is not there) that reads the table as you saved it and
+   writes a PNG or SVG. The script runs in your own sandbox, not on the site
+   and not inside the platform's RStudio: say so. With no code tool, say
+   that, hand the person the script to run in RStudio (the Downstream tab of
+   the run's page, where the administrator set it up), and stop there —
+   never claim a figure exists that you did not make.
+
+M7. **Show it, then publish it.** Show the figure in the chat and let the
+   person accept or change it. Then `publish_figure(run_id, figures=[...])`,
+   each with `filename`, `content_base64`, the whole script as `code`, the
+   settings as `params` and a one-line `caption` (10 per call, 5 MB
+   together, 30 per run). Nothing is stored until the person says yes: on the
+   page the answer names, in their client's form, or — for a new name only —
+   by answering in the chat, after which you call again with `request_id`
+   and `user_confirmed=true`. Replacing a figure of the same name is theirs
+   alone to confirm on the page.
+
+M8. **Check the gallery.** `list_figures(run_id)` and tell the person what
+   is there now. A publish they did not confirm is not there; say so.
+
+M9. **Package what they choose.** When they name the figures for the
+   delivery package, `pack_figures(run_id, names=<the whole set>)`; figures
+   left out stay in the gallery. `delete_figure` is confirmed only by the
+   person on its page, never in the chat.
+
+M10. **End with where to look and what is next.** The figures are on the
+   run's finished page on the web; the `finish` prompt is the next step.
+
 ## Before anything else
 
 Run `. scripts/env.sh && scripts/intro.sh downstream` — sourcing `env.sh`

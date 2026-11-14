@@ -461,6 +461,27 @@
   },
   {
     "inputSchema": {
+      "properties": {
+        "packed_only": {
+          "default": false,
+          "title": "Packed Only",
+          "type": "boolean"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "title": "list_figuresArguments",
+      "type": "object"
+    },
+    "name": "list_figures"
+  },
+  {
+    "inputSchema": {
       "properties": {},
       "title": "list_pipelinesArguments",
       "type": "object"

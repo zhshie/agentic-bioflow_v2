@@ -129,6 +129,7 @@ ERROR_INPUTS = {
     "my_usage": {"month": "nope-month"},
     "run_outputs": {"run_id": "nope-run-zz"},
     "read_run_file": {"run_id": "nope-run-zz", "path": "nope.txt"},
+    "list_figures": {"run_id": "nope-run-zz"},
     "publish_figure": {"run_id": "nope-run-zz", "figures": [{"filename": "a.png", "content_base64": "iVBORw0KGgo="}]},
     "pack_figures": {"run_id": "nope-run-zz", "names": ["a.png"]},
     "delete_figure": {"run_id": "nope-run-zz", "name": "a.png"},
@@ -157,7 +158,7 @@ GAPS = {
     "cancel": NO_NEXT, "launch_pipeline": NO_NEXT, "get_pipeline": NO_NEXT, "get_validation": NO_NEXT, "get_compute_env": NO_NEXT, "get_run": NO_NEXT, "launch": NO_NEXT, "list_site_files": NO_NEXT,
     "read_task_log": NO_NEXT, "relaunch": NO_NEXT, "resume": NO_NEXT,
     "find_module": NO_NAME + " (the hint does not repeat the keyword)", "forget": NO_NAME + " and gives no next step",
-    "my_usage": NO_NAME, "read_run_file": NO_NAME + " and gives no next step", "run_outputs": NO_NAME + " and gives no next step",
+    "my_usage": NO_NAME, "read_run_file": NO_NAME + " and gives no next step", "list_figures": NO_NAME + " and gives no next step", "run_outputs": NO_NAME + " and gives no next step",
 }
 
 # What an answer must never show: stack, internals, secrets. For an error answer also paths (a data answer, like the environment list, holds the site's paths).

@@ -15,7 +15,7 @@ REGEN_CMD = "ABF_UPDATE_MCP_SNAPSHOT=1 python -m pytest tests/mcp/test_mcp_contr
 # The tools of v3, written out by hand. Add or remove a tool and this list must change in the same commit.
 EXPECTED_TOOLS = sorted([
     "list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines",
-    "my_usage", "run_outputs", "read_run_file", "read_task_log", "find_module", "describe_module", "list_pipelines",
+    "my_usage", "run_outputs", "read_run_file", "list_figures", "read_task_log", "find_module", "describe_module", "list_pipelines",
     "get_pipeline", "get_validation",
     "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "delete_figure", "pack_figures", "publish_figure",
 ])
