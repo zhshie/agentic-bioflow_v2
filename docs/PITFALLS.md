@@ -2570,3 +2570,24 @@ Symptom: the connection to the site was found closed only when a launch or a rea
 Root cause: no one recorded how long the connection lived, and a closed one was invisible to the web and to new launches
 Check: `platform/tests/test_site_disconnect_ux.py`, `tests/keepalive_log_test.sh`, `tests/reset_master_test.sh`
 Touches: ControlPersist, ServerAliveCountMax, keepalive_log.sh, site_link, linkbar, --check-master, enqueue_confirmed, WSL terminal
+
+**62. `tests/run_all.sh` refuses native Git Bash; run the full suite in WSL or Linux (2026-11-15, pitfalls-seed).** The full-suite runner `tests/run_all.sh` stops with exit 3 on native Windows Git Bash and sends you to WSL, because most test files would fail there for the known MSYS gaps; `--allow-msys` runs it anyway and flags the failures as that known gap. The reasons are already written up in 16b (no multiplexed ssh in Git Bash) and 20c (the MSYS python3 and output gaps), so this entry only points to them. This is about the runner, not about Git Bash in general: `CLAUDE.md` says a single test file works in Git Bash for most files, and 16g shows WSL's ssh can be called from Git Bash. Sources: `CLAUDE.md` ("For the executor and verifier", Full suite), `docs/TESTING.md` (the Git Bash exception) and the header of `tests/run_all.sh`.
+
+Symptom: `bash tests/run_all.sh` in native Git Bash ends at once with exit 3 and a pointer to WSL instead of running the suite
+Root cause: known MSYS gaps on native Git Bash, written up in 16b and 20c, which make most test files fail there
+Check: `tests/run_all_test.sh` (asserts the exit 3, the WSL pointer and the 20c reference under a faked MINGW64, MSYS or CYGWIN)
+Touches: tests/run_all.sh, Git Bash, WSL, MSYS, --allow-msys
+
+**63. Calling `wsl.exe` to run the suite from a non-ASCII working directory is reported to fail with "Failed to translate" (2026-11-15, pitfalls-seed; the bridge case is 16i).** Entry 16i covers the wsl_ssh.sh bridge, where the cloud-drive directory only produces a warning; this entry is about starting `tests/run_all.sh` itself. `CLAUDE.md` says that calling `wsl.exe` from a non-ASCII directory fails with "Failed to translate", and that `--cd` was unreliable. So start from an ASCII directory such as `$HOME` and change directory inside WSL, as `CLAUDE.md` writes it: `cd ~ && wsl.exe -d Ubuntu -- bash -c 'cd /mnt/c/<path to the worktree> && bash tests/run_all.sh'`. The repo and its worktrees sit on a local disk (see 64). This entry repeats what `CLAUDE.md` states and was not re-measured here.
+
+Symptom: `wsl.exe` called from a non-ASCII (for example Chinese) working directory fails with "Failed to translate" and the suite does not start; `--cd` did not help
+Root cause: as `CLAUDE.md` states it, `wsl.exe` fails from a non-ASCII directory and `--cd` was unreliable; no further cause is established
+Check: none automated: run the `cd ~ && wsl.exe ...` command above from `$HOME`, not from the non-ASCII directory
+Touches: wsl.exe, --cd, Failed to translate, non-ASCII, tests/run_all.sh, $HOME
+
+**64. Two runs on one checkout, or a checkout on a synced drive, break the suite (2026-11-15, pitfalls-seed).** `CLAUDE.md` states it in one sentence: "The repo and worktrees must be on a local disk, never a synced drive. Two runs on one checkout at once corrupt each other's temporary copies." So keep each worktree on a local disk (a synced drive (e.g. Google Drive) is the kind it means), and run `tests/run_all.sh` once at a time per checkout. The mechanism is not described in `CLAUDE.md` and is not guessed here.
+
+Symptom: the suite gives corrupted or mixed results when two runs share one checkout, or when the worktree is on a synced drive
+Root cause: as `CLAUDE.md` states it, two runs on one checkout at once corrupt each other's temporary copies, and a worktree must be on a local disk; no mechanism is given
+Check: none automated: before a run, confirm the worktree is on a local disk and no other run is using it
+Touches: tests/run_all.sh, synced drive (e.g. Google Drive), worktree, temporary copies
