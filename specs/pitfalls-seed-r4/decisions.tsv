@@ -1,0 +1,2 @@
+ts	phase	decision	why	evidence	result
+2026-11-15	green	T5 baseline by hardcoded sha256	origin/v3 will gain the entries	tests/test_pitfalls_seed.py:t5	6 passed

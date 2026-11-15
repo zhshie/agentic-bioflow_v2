@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DOC = ROOT / "docs" / "PITFALLS.md"
-HEAD_RE = re.compile(r"^\*\*(\d+[a-z]?)\. ")
+HEAD_RE = re.compile(r"^\*\*(\d+[a-z0-9]*)\.( |\*\*)")
 FIELDS = ["Symptom:", "Root cause:", "Check:", "Touches:"]
 # sha256 of the first 2572 lines of docs/PITFALLS.md at origin/v3 aebb7a59
 BASE_LINES = 2572
