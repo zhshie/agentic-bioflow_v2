@@ -182,10 +182,10 @@ def _add_downstream_read(server):
 
     @server.tool(name="list_downstream", annotations=_READ_ONLY,
                  description="Read-only. List the certified downstream analysis methods (plots, statistics) of one pipeline, such as "
-                             "ampliseq or rnaseq: method, link, grade A or B, version, licence, which pipeline output files it needs, "
-                             "and whether it plots without a person. Call it only when the user asks which downstream methods exist. "
-                             "Only certified methods are listed; grade C is not. It runs no analysis. An unknown pipeline gives an empty "
-                             "list; if none fits, discuss the plot with the user.")
+                             "ampliseq or rnaseq. It returns, for each method: link, grade A or B, version, licence, the pipeline output "
+                             "files it needs, and whether it plots without a person. Call it only when the user asks which downstream "
+                             "methods exist; it runs no analysis. Only certified methods are listed; grade C is not. An unknown pipeline "
+                             "gives an empty list; then discuss the plot with the user.")
     @_plain_errors
     def list_downstream(ctx: Context, pipeline: Annotated[str, Field(description="The pipeline name, for example ampliseq or rnaseq")]) -> dict:
         return downstream_actions.list_downstream(pipeline)

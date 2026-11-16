@@ -16,7 +16,7 @@ REGEN_CMD = "ABF_UPDATE_MCP_SNAPSHOT=1 python -m pytest tests/mcp/test_mcp_contr
 EXPECTED_TOOLS = sorted([
     "list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents", "list_site_files", "list_used_pipelines",
     "my_usage", "run_outputs", "read_run_file", "list_figures", "read_task_log", "find_module", "describe_module", "list_pipelines",
-    "get_pipeline", "get_validation",
+    "get_pipeline", "get_validation", "list_downstream",
     "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "delete_figure", "pack_figures", "publish_figure",
 ])
 

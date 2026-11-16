@@ -17,7 +17,7 @@ import pytest
 
 from helpers import (CHAT_ARGS, Clock, Platform, PLATFORM_DIR, db_bytes, free_port, mcp_call, mcp_http_call, pkg_env, run_cli,
                      start_cli, stop_proc, tool_json, wait_port)
-from test_actions_layer import READ_NAMES, WRITE_NAMES, imported_names, platform_submodules, action_refs
+from test_actions_layer import READ_NAMES, DOWNSTREAM_NAMES, WRITE_NAMES, imported_names, platform_submodules, action_refs
 from test_launch_platform import bundle, own_all, setup, sql
 from test_actions_layer import _cancel_bundle
 from test_station_platform import agent_token, bearer, state_db
@@ -279,7 +279,7 @@ def test_tca11_no_tool_route_or_action_creates_or_revokes_users_or_pats(tmp_path
     from abf_platform import actions, mcp_server
     tools = asyncio.run(mcp_server.build_server(str(tmp_path / "i.db")).list_tools())
     canvas = ["find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]    # canvas-mcp-read
-    assert sorted(t.name for t in tools) == sorted(READ_NAMES + canvas + WRITE_NAMES)    # 009c: plus launch and cancel
+    assert sorted(t.name for t in tools) == sorted(READ_NAMES + canvas + DOWNSTREAM_NAMES + WRITE_NAMES)    # 009c: plus launch and cancel
     for t in tools:
         text = t.name + " " + " ".join(set(t.input_schema.get("properties", {})) - CHAT_ARGS)    # the CHAT arguments are the one exception (mcp-chat-confirm)
         assert not re.search(r"(^|[\s_])(user|pat|token)s?($|[\s_])", text)
@@ -371,7 +371,7 @@ def test_tcb08_b09_a_valid_pat_gives_the_six_tools_and_the_stdio_answers(tmp_pat
         tools, via_http = mcp_http_call("http://127.0.0.1:%d/mcp" % port, calls, token=pat)
     finally:
         stop_proc(proc)
-    assert sorted(t.name for t in tools) == sorted(READ_NAMES + ["find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"] + WRITE_NAMES)    # 009c: plus launch and cancel
+    assert sorted(t.name for t in tools) == sorted(READ_NAMES + ["find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"] + DOWNSTREAM_NAMES + WRITE_NAMES)    # 009c: plus launch and cancel
     for a, b in zip(via_stdio, via_http):
         assert tool_json(a) == tool_json(b)
 
@@ -381,7 +381,7 @@ def test_tcb10_stdio_needs_no_token_and_no_user(tmp_path):
     plat, _ = _three_runs(tmp_path)
     assert not plat.tokens.exists() or _rows(plat.tokens, "SELECT COUNT(*) FROM tokens WHERE kind = 'pat'")[0][0] == 0
     tools, outs = mcp_call(pkg_env(ABF_PLATFORM_DB=plat.index), [("list_runs", {})])
-    assert len(tools) == 26 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch; run-diag-tools: plus read_task_log; results-outputs: plus run_outputs; guided-launch-1: plus list_used_pipelines; cost-page: plus my_usage
+    assert len(tools) == 27 and len(tool_json(outs[0])["runs"]) == 3    # 009c: six read tools plus launch and cancel; 009e: plus resume and relaunch; run-diag-tools: plus read_task_log; results-outputs: plus run_outputs; guided-launch-1: plus list_used_pipelines; cost-page: plus my_usage
 
 
 def test_tcb11_without_users_http_starts_says_so_and_answers_401(tmp_path):

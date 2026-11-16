@@ -138,6 +138,7 @@ ERROR_INPUTS = {
     "describe_module": {"name": "nope_module_zz"},
     "get_pipeline": {"pipeline_id": 999999},
     "get_validation": {"pipeline_id": 999999},
+    "list_downstream": {"pipeline": ""},
     "launch": {"pipeline": "nope/pipe", "revision": "0", "run_name": "nope-run-zz", "samplesheet_text": "a,b\n1,2\n", "ce_name": "no-such-env"},
     "launch_pipeline": {"pipeline_id": 999999, "run_name": "nope-run-zz", "samplesheet_text": "a,b\n1,2\n"},
     "cancel": {"run_name": "nope-run-zz"},
@@ -147,7 +148,7 @@ ERROR_INPUTS = {
 }
 
 # The object the message must name, where it is not the first text argument.
-NAMED = {"launch": "no-such-env", "launch_pipeline": "999999", "get_pipeline": "999999", "get_validation": "999999"}
+NAMED = {"launch": "no-such-env", "launch_pipeline": "999999", "get_pipeline": "999999", "get_validation": "999999", "list_downstream": "pipeline"}
 
 # Product gaps found by this test, one per tool: the current message lacks the name of the failed object or a next step (請/用/先).
 # They are listed in the ledger for the maintainer; strict, so the day the product is fixed the mark must come off. Nothing under

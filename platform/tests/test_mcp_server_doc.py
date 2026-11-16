@@ -9,11 +9,11 @@ TEXT = SRC.read_text(encoding="utf-8")
 TREE = ast.parse(TEXT)
 DOC = ast.get_docstring(TREE) or ""
 
-NUMBERS = {"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16}
+NUMBERS = {"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17}
 
 EXPECTED = {
     "list_runs", "get_run", "list_compute_envs", "get_compute_env", "list_agents",
-    "list_site_files", "list_used_pipelines", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "run_outputs", "read_run_file", "list_figures", "read_task_log",
+    "list_site_files", "list_used_pipelines", "my_usage", "find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation", "list_downstream", "run_outputs", "read_run_file", "list_figures", "read_task_log",
     "launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch", "delete_figure", "pack_figures", "publish_figure",
 }
 
@@ -37,8 +37,8 @@ def test_registered_tools_are_the_known_twenty_one():
     # TC-012
     tools = _tools()
     assert {n for n, _ in tools} == EXPECTED
-    assert len(tools) == 26
-    assert sum(1 for _, a in tools if a == "_READ_ONLY") == 16      # ruling R2: get_run is _QUERY now
+    assert len(tools) == 27
+    assert sum(1 for _, a in tools if a == "_READ_ONLY") == 17      # ruling R2: get_run is _QUERY now
 
 
 def test_module_doc_names_every_registered_tool():
@@ -50,7 +50,7 @@ def test_module_doc_names_every_registered_tool():
 def test_module_doc_counts_the_read_only_tools():
     # TC-004, TC-005, TC-011
     n = sum(1 for _, a in _tools() if a == "_READ_ONLY")
-    found = re.findall(r"\b(six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen)\b read", DOC)
+    found = re.findall(r"\b(six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\b read", DOC)
     assert found, "module docstring states no read-only tool count"
     assert all(NUMBERS[w] == n for w in found), f"{found} vs actual {n}"
 
