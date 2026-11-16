@@ -123,5 +123,5 @@ def test_first_line_guard_accepts_six_when_n_is_six():
 
 def test_first_line_guard_demands_wider_numbers_when_n_out_of_range():
     # TC-008
-    problems = _first_line_problems("# offers fifteen read-only tools", 17)
+    problems = _first_line_problems("# offers fifteen read-only tools", 18)
     assert problems and any("NUMBERS" in p for p in problems)

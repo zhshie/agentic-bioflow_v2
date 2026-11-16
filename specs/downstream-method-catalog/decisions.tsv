@@ -2,4 +2,4 @@ ts	phase	decision	why	evidence	result
 2026-11-17	RED	先寫目錄與 MCP 兩支測試再寫程式	測試先行	260a4120	紅
 2026-11-17	GREEN	目錄收 19 筆，tximeta 不收	依 lead 裁決	93df8521	49 測試綠
 2026-11-17	GREEN	空 pipeline 錯誤用 _plain_errors 轉 ToolError，不放進 tool 本體	本體須為單一呼叫；actions 須只用標準函式庫	platform/abf_platform/mcp_server.py _plain_errors	test_ld02/test_ld04 綠
-2026-11-17	GREEN	既有測試只改計數與名單（26→27、16→17）	計畫數字過時，基底為 26/16	git diff 2678ae99..HEAD -- platform/tests	待全套確認
+2026-11-17	GREEN	既有測試只改計數與名單（26→27、16→17）	計畫數字過時，基底為 26/16	git diff 2678ae99..HEAD -- platform/tests	本機只跑動到的檔案與 tests/mcp；全套由 CI 跑；tc010 刻意留紅等 owner 裁決
