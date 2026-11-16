@@ -177,7 +177,7 @@ def _plain_errors(fn):
 
 
 def _add_downstream_read(server):
-    """The certified downstream method catalogue: one read, called only when the person asks. The catalogue is shared and public data;
+    """The certified downstream methods: one read, called only when the person asks. The list is shared and public data;
     nothing of it goes into the instructions or any prompt, and nothing is written."""
 
     @server.tool(name="list_downstream", annotations=_READ_ONLY,
