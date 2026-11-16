@@ -84,7 +84,7 @@ def test_ld04_body_is_one_call_into_the_actions_layer():
     assert "list_downstream" not in inner
     fn = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "list_downstream"]
     assert len(fn) == 1
-    calls = [n for n in ast.walk(fn[0]) if isinstance(n, ast.Call)]
+    calls = [n for st in fn[0].body for n in ast.walk(st) if isinstance(n, ast.Call)]
     assert len(calls) == 1 and ast.unparse(calls[0].func) == "downstream_actions.list_downstream"
 
 

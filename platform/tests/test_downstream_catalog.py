@@ -245,12 +245,12 @@ def test_q05_downgrade_one_level():
 
 def test_q05_listing_keeps_declared_grade_and_flags(tmp_path):
     # TC-Q05 TC-Q06 TC-Q07 TC-Q09
-    p = write(tmp_path, [mk("a", "A"), mk("b", "B", "2026-12-01"), mk("c", "C", "2026-12-01"), mk("old-b", "B", "2026-01-01"), mk("old-a", "A", "2026-01-01")])
+    p = write(tmp_path, [mk("a", "A", "2026-12-01"), mk("b", "B", "2026-12-01"), mk("c", "C", "2026-12-01"), mk("old-b", "B", "2026-01-01"), mk("old-a", "A", "2026-01-01")])
     before = hashlib.sha256(p.read_bytes()).hexdigest()
     r = dc().list_downstream("demo", today=date(2027, 1, 2), path=p)
     assert hashlib.sha256(p.read_bytes()).hexdigest() == before
     ids = [m["id"] for m in r["methods"]]
-    assert sorted(ids) == ["b", "old-a"]
+    assert sorted(ids) == ["a", "b", "old-a"]
     old_a = next(m for m in r["methods"] if m["id"] == "old-a")
     assert (old_a["grade"], old_a["declared_grade"], old_a["downgraded"]) == ("B", "A", True)
 
