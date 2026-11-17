@@ -153,9 +153,27 @@ def test_a_waiting_entry_is_never_a_source_for_a_resume_or_relaunch(w):
     ann = w.user("ann")
     w.launch(caller=ann, answer=form_answer(), run="tp_src")
     c = logged_in(w, "ann")
-    for path in ("/run/resume", "/run/relaunch", "/run/cancel"):
-        r = c.post(path, data={"run": "tp_src", "csrf": "x"})
-        assert r.status_code in (400, 403, 404, 405), (path, r.status_code)
+    cookie = c.cookies.get("abf_web")
+    before = (len(w.sql("SELECT * FROM jobs")), len(w.sql("SELECT * FROM confirmations")), len(w.sql("SELECT * FROM launches")))
+    for verb in ("resume", "relaunch", "cancel"):
+        for ident in ("tp_src", "waiting:tp_src"):
+            token = c.app.state.csrf_token(cookie, "act:" + ident)
+            r = c.post("/act/" + verb, data={"run": ident, "csrf": token})
+            assert r.status_code == 404, (verb, ident, r.status_code)
+    assert (len(w.sql("SELECT * FROM jobs")), len(w.sql("SELECT * FROM confirmations")), len(w.sql("SELECT * FROM launches"))) == before
+
+
+def test_launch_from_a_waiting_entry_does_not_treat_it_as_a_source_run(w):
+    ann = w.user("ann")
+    w.launch(caller=ann, answer=form_answer(), run="tp_from")
+    c = logged_in(w, "ann")
+    for ident in ("tp_from", "waiting:tp_from"):
+        r = c.get("/launch?from=" + ident)
+        assert "已送出，等待啟動" not in pane(r.text, "middle") and "waiting:tp_from" not in r.text, ident
+        assert "Sent, waiting to start" not in r.text
+    # the prefixed id names nothing: no source, no prefill. The bare name still reads the person's own launch record for the boxes, as it
+    # did before this change (that is the hand-off record, not a run of the list), and shows no waiting state.
+    assert "tp_from" not in plain(pane(c.get("/launch?from=waiting:tp_from").text, "middle")).replace("waiting:tp_from", "")
 
 
 def test_launch_with_a_slurm_number_that_nextflow_never_reported_ages_out(w):
