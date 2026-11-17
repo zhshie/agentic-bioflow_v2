@@ -120,4 +120,4 @@ def test_sidebar_lists_it_with_the_same_words(w):
     assert page.status_code == 200 and "◌ 已送出，等待站台回報執行狀態" in plain(pane(page.text, "middle"))
     seed(w, "tp_side", "running", None, launch_row=False)
     left = pane(c.get("/").text, "left")
-    assert left.count("tp_side") == 1 and "已送出，等待啟動" not in plain(left)
+    assert left.count(">tp_side<") == 1 and "已送出，等待啟動" not in plain(left)

@@ -918,7 +918,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
 
     def find_by_name(caller, name):
         """(the id of the newest run of this name among the person's own runs in the index, whether only the person's own hand-off record has it)."""
-        run_id = next((r["id"] for r in read_runs(caller) if r.get("name") == name), None)
+        run_id = next((r["id"] for r in read_runs(caller) if r.get("name") == name and r.get("status") != "waiting"), None)
         sent = run_id is None and actions.launch_prefill(platform_path, name, caller=caller).get("found") is True
         return run_id, sent
 

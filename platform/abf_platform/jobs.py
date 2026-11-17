@@ -695,6 +695,40 @@ def owned_run_names(state_path, user_id):
         con.close()
 
 
+def sent_launches(state_path, user_id, clock=time.time):
+    """The launches a person confirmed that are on their way but that Nextflow has not reported on: [{name, job_id, confirmed_at,
+    slurm_job_id}], newest first. Only reads, and derives everything from facts that exist (the newest launches row of a run name, its own
+    job, the clock); it stores nothing. The caller drops the names the index already has. `user_id` None means every user's (stdio).
+
+    A launch counts while its launch job is still queued or handed out within its deadline, or once Slurm gave it a number and no read-back
+    of that head job has said it ended badly. A launch the agent refused, that errored, that expired without a Slurm number, or whose
+    head job Slurm ended badly is not waiting for anything and is left out."""
+    con = store.open_readonly(state_path)
+    if con is None:
+        return []
+    try:
+        rows = con.execute("SELECT * FROM launches WHERE id IN (SELECT MAX(id) FROM launches GROUP BY run_name) ORDER BY id DESC").fetchall()
+        now = clock()
+        out = []
+        for row in rows:
+            if user_id is not None and _col(row, "user_id") != user_id:
+                continue
+            if row["slurm_job_id"] is None:
+                if launch_job(con, row, now)[0] != "waiting":
+                    continue
+            else:
+                fact = _newest_fact(_fetches_of(con, row), row)
+                if fact is not None and fact["state"] in failures.ENDED_BAD:
+                    continue
+            out.append({"name": row["run_name"], "job_id": _col(row, "job_id"), "confirmed_at": row["confirmed_at"],
+                        "slurm_job_id": row["slurm_job_id"]})
+        return out
+    except sqlite3.Error:
+        return []
+    finally:
+        con.close()
+
+
 def latest_launch_ce(state_path, run_name):
     """The name of the compute environment the newest row of the hand-off record for this run name was sent to, or None (no row, no state
     database yet, or a row without one). Only reads."""
