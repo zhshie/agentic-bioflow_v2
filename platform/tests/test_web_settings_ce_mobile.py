@@ -98,7 +98,7 @@ def test_ce08_no_new_strings():
     from abf_platform import web_board, web_settings
     got = [hashlib.sha256(json.dumps(m.STRINGS, sort_keys=True, ensure_ascii=False).encode()).hexdigest() for m in (web_settings, web_board)]
     assert got == ["82228e36c502def9667ae1c87a618f96b4b53baa811f2bfa4338621cb081094b",
-                   "e486e6de3605fd9b14d8b1f2c585fb47fe050228c14e237403c6c6783541d64e"]      # launch-stage-card (#387) adds the lc_* strings of the launch stage card; web-run-tasks-log adds the l_* log-page strings (l_reload, l_asof, no auto-refresh sentence) and th_log; cost-page-by-environment adds the run-page cost row strings; refusal-visibility adds refusal_* strings; web-bugs-a adds failed_unlisted/failed_partial and placeholder strings; 012b-2 adds g_pv_* guided preview strings; resume-edit-web merges RESUME_EDIT into web_board.STRINGS; web-bugs-b adds the title-row meta labels
+                   "70305a80eefa5efc42040a44a8235097f063c67517422491e4d7fbbd377b326d"]      # queued-launch-visible adds state_waiting/row_waiting; launch-stage-card (#387) adds the lc_* strings of the launch stage card; web-run-tasks-log adds the l_* log-page strings (l_reload, l_asof, no auto-refresh sentence) and th_log; cost-page-by-environment adds the run-page cost row strings; refusal-visibility adds refusal_* strings; web-bugs-a adds failed_unlisted/failed_partial and placeholder strings; 012b-2 adds g_pv_* guided preview strings; resume-edit-web merges RESUME_EDIT into web_board.STRINGS; web-bugs-b adds the title-row meta labels
 
 
 def test_ce09_no_inline_style(w):

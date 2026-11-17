@@ -109,7 +109,7 @@ def list_runs(index_path, *, caller=None, platform_path=None):
     return {"runs": rows}
 
 
-WAITING_TEXT = ("已送出，等待叢集啟動（工作編號 %s）；Nextflow 回報之後會顯示執行狀態 "
+_WAITING_TEXT = ("已送出，等待叢集啟動（工作編號 %s）；Nextflow 回報之後會顯示執行狀態 "
                 "(Sent; waiting for the cluster to start it (job %s). The run's state shows once Nextflow reports.)")
 
 
@@ -130,7 +130,7 @@ def _waiting_view(sent):
     return {"id": sent["name"], "name": sent["name"], "session_id": None, "status": "waiting", "started_at": None, "ended_at": None,
             "tasks": zero, "project": None, "failure": None, "job_id": sent["job_id"], "slurm_job_id": sent["slurm_job_id"],
             "sent_at": common.epoch_iso(sent["confirmed_at"]), "_confirmed": sent["confirmed_at"],
-            "message": WAITING_TEXT % (sent["job_id"], sent["job_id"])}
+            "message": _WAITING_TEXT % (sent["job_id"], sent["job_id"])}
 
 
 def _shown_status(platform_path, row):
