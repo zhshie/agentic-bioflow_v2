@@ -1170,7 +1170,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         pvals = web_launch.fields_of(dict(q.items()))      # the boxes of the parameter table, when the address carries any
 
         def run_name_of(origin):      # the page is asked for a run by its id or by its name
-            return next((r["name"] for r in runs if r["id"] == origin), origin)
+            return next((r["name"] for r in runs if r["id"] == origin and r.get("status") != "waiting"), origin)      # the id of a waiting launch names no run
         origin = given.get("from", "")
         if origin:       # re-run with the same settings: the boxes of an earlier run of this person, when its content is still kept
             name = run_name_of(origin)

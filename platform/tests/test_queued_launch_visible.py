@@ -167,13 +167,12 @@ def test_launch_from_a_waiting_entry_does_not_treat_it_as_a_source_run(w):
     ann = w.user("ann")
     w.launch(caller=ann, answer=form_answer(), run="tp_from")
     c = logged_in(w, "ann")
-    for ident in ("tp_from", "waiting:tp_from"):
-        r = c.get("/launch?from=" + ident)
-        assert "已送出，等待啟動" not in pane(r.text, "middle") and "waiting:tp_from" not in r.text, ident
-        assert "Sent, waiting to start" not in r.text
-    # the prefixed id names nothing: no source, no prefill. The bare name still reads the person's own launch record for the boxes, as it
-    # did before this change (that is the hand-off record, not a run of the list), and shows no waiting state.
-    assert "tp_from" not in plain(pane(c.get("/launch?from=waiting:tp_from").text, "middle")).replace("waiting:tp_from", "")
+    # the id of a waiting launch names no run: not a source, not a prefill, the plain not-found
+    assert c.get("/launch?from=waiting:tp_from").status_code == 404
+    # the bare name reads the person's own launch record for the boxes, as it did before this change, and never shows the waiting state
+    r = c.get("/launch?from=tp_from")
+    assert r.status_code == 200 and "waiting:tp_from" not in r.text
+    assert "已送出，等待啟動" not in pane(r.text, "middle")
 
 
 def test_launch_with_a_slurm_number_that_nextflow_never_reported_ages_out(w):
