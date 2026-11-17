@@ -113,3 +113,14 @@ def find_run(index_path, run_name, at=None):
         return _view(con, row, at, detail=False) if row else None
     finally:
         con.close()
+
+
+def run_names(index_path):
+    """The set of every run name the index has (no view built). Empty when there is no index yet."""
+    con = _open_readonly(index_path)
+    if con is None:
+        return set()
+    try:
+        return {r[0] for r in con.execute("SELECT run_name FROM runs")}
+    finally:
+        con.close()

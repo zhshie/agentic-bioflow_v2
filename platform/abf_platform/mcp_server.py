@@ -54,7 +54,8 @@ def build_server(index_path, platform_path=None):
 
     @server.tool(name="list_runs", annotations=_READ_ONLY,
                  description="List the Nextflow runs the platform knows, newest first, each with its name, status "
-                             "(running, succeeded, failed or lost), start time and task numbers.")
+                             "(running, succeeded, failed or lost), start time and task numbers. A launch you confirmed that Nextflow has not "
+                             "reported on yet is listed too, with status waiting (sent, waiting for the cluster to start it), its job number and sent_at.")
     def list_runs(ctx: Context) -> dict:
         return actions.list_runs(index_path, caller=_caller(ctx), platform_path=platform_path)
 

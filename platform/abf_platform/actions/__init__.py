@@ -101,7 +101,37 @@ def list_runs(index_path, *, caller=None, platform_path=None):
                 if asked is not None:
                     full["cancel_requested_at"] = common.epoch_iso_ms(asked)
                 row["failure"] = failures.summarize(full)
+    waiting = [_waiting_view(s) for s in _sent_not_reported(index_path, path, caller)]
+    if waiting:      # newest first, by the start time Nextflow gave a run and the confirmation time of a launch
+        rows = sorted(waiting + rows, key=lambda r: -(common.parse_iso_epoch(r["started_at"]) or r.get("_confirmed") or 0))
+        for row in rows:
+            row.pop("_confirmed", None)
     return {"runs": rows}
+
+
+_WAITING_ID_PREFIX = "waiting:"      # the id of a launch only sent so far: no index run id can start so (those are session id + name)
+_WAITING_TEXT = ("已送出，等待叢集啟動（工作編號 %s）；Nextflow 回報之後會顯示執行狀態 "
+                "(Sent; waiting for the cluster to start it (job %s). The run's state shows once Nextflow reports.)")
+
+
+def _sent_not_reported(index_path, path, caller):
+    """The caller's confirmed launches that the index has no run for yet (derived at read time; nothing is stored)."""
+    try:
+        known = status.run_names(index_path)
+    except sqlite3.Error:
+        return []
+    mine = jobs.sent_launches(path, caller.user_id if caller is not None else None)
+    return [s for s in mine if s["name"] not in known]
+
+
+def _waiting_view(sent):
+    """A run that was sent and that Nextflow has not reported on: id is the run name, status `waiting`; not an index status."""
+    zero = {f: 0 for f in status.COUNT_FIELDS}
+    zero["total"] = 0
+    return {"id": _WAITING_ID_PREFIX + sent["name"], "name": sent["name"], "session_id": None, "status": "waiting", "started_at": None, "ended_at": None,
+            "tasks": zero, "project": None, "failure": None, "job_id": sent["job_id"], "slurm_job_id": sent["slurm_job_id"],
+            "sent_at": common.epoch_iso(sent["confirmed_at"]), "_confirmed": sent["confirmed_at"],
+            "message": _WAITING_TEXT % (sent["job_id"], sent["job_id"])}
 
 
 def _shown_status(platform_path, row):
@@ -120,7 +150,14 @@ def get_run(index_path, run_id, *, caller=None, platform_path=None):
     if view is not None and caller is not None and view["name"] not in jobs.owned_run_names(
             platform_path_for(index_path, platform_path), caller.user_id):
         view = None
-    if view is None:
+    if view is None:      # not in the index: maybe a confirmed launch that Nextflow has not reported on yet (by run name)
+        path = platform_path_for(index_path, platform_path)
+        sent = next((s for s in _sent_not_reported(index_path, path, caller) if run_id in (s["name"], _WAITING_ID_PREFIX + s["name"])), None)
+        if sent is not None:
+            view = _waiting_view(sent)
+            view.pop("_confirmed")
+            view.pop("failure")
+            return view
         return {"found": False, "id": run_id, "message": RUN_NOT_FOUND_TEXT % run_id}
     if view["status"] == "lost":     # the one place that asks the site: only for a run the caller owns, and the answer is there next time
         path = platform_path_for(index_path, platform_path)

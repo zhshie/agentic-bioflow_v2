@@ -63,7 +63,7 @@ STRINGS = {
         "lc_pipeline": "管線", "lc_revision": "版本", "lc_samples": "樣本數", "lc_params": "已變更的參數", "lc_when": "送出時間",
         "lc_job": "工作編號", "lc_state": "狀態", "lc_defaults": "沿用預設", "lc_gone": "該次送出的內容已不保留。",
         "stage_launch": "送出", "stage_running": "執行中", "stage_results": "結果", "stage_downstream": "下游", "stage_finished": "完成",
-        "state_running": "執行中", "state_succeeded": "完成", "state_failed": "失敗", "state_lost": "失敗", "state_unknown": "未知",
+        "state_waiting": "已送出，等待啟動", "row_waiting": "等待叢集啟動", "state_running": "執行中", "state_succeeded": "完成", "state_failed": "失敗", "state_lost": "失敗", "state_unknown": "未知",
         "count_succeeded": "完成", "count_cached": "快取", "count_failed": "失敗", "count_aborted": "中止", "count_running": "執行中",
         "count_pending": "等待", "count_submitted": "已送出",
         "started": "開始", "ended": "結束", "prev": "← 上一階段", "next": "下一階段 →", "not_reached": "該次分析尚未進行至此階段。",
@@ -143,7 +143,7 @@ STRINGS = {
         "lc_gone": "The content of this launch is no longer kept.",
         "stage_launch": "Launch", "stage_running": "Running", "stage_results": "Results", "stage_downstream": "Downstream",
         "stage_finished": "Finished",
-        "state_running": "Running", "state_succeeded": "Done", "state_failed": "Failed", "state_lost": "Failed", "state_unknown": "Unknown",
+        "state_waiting": "Sent, waiting to start", "row_waiting": "Waiting for the cluster to start it", "state_running": "Running", "state_succeeded": "Done", "state_failed": "Failed", "state_lost": "Failed", "state_unknown": "Unknown",
         "count_succeeded": "Done", "count_cached": "Cached", "count_failed": "Failed", "count_aborted": "Aborted",
         "count_running": "Running", "count_pending": "Pending", "count_submitted": "Submitted",
         "started": "Started", "ended": "Ended", "prev": "← Previous stage", "next": "Next stage →",
@@ -381,12 +381,14 @@ def pick_results_tab(raw):
     return raw if raw in RESULT_TABS else "outputs"
 
 
-def _url(lang, run=None, stage=None, path="/", tab=None, relist=False, sub=None, retry=False, task=None, which=None):
+def _url(lang, run=None, stage=None, path="/", tab=None, relist=False, sub=None, retry=False, task=None, which=None, run_name=None):
     """A link to a board page: `/` or `/settings` with a query. `lang=en` is kept on every link of an English page. Only the
     Read-again link of the Outputs tab carries `relist`; no other link, and never the page's own refresh, does."""
     query = []
     if run:
         query.append("run=" + urllib.parse.quote(str(run), safe=""))
+    if run_name:      # a run only sent so far has no id in the index: its page is found by name
+        query.append("run_name=" + urllib.parse.quote(str(run_name), safe=""))
     if task:      # the failed task and the log file of /run/log
         query.append("task=" + urllib.parse.quote(str(task), safe=""))
     if which:
@@ -408,7 +410,7 @@ def _url(lang, run=None, stage=None, path="/", tab=None, relist=False, sub=None,
 
 def _css(status):
     """The style class of a state: lost looks like failed (the page has three states)."""
-    return "failed" if status == "lost" else (status if status in KNOWN else "unknown")
+    return "failed" if status == "lost" else (status if status in KNOWN else "unknown")      # a run that was only sent (waiting) is muted, like unknown
 
 
 class _Html(str):
@@ -416,7 +418,7 @@ class _Html(str):
 
 
 def _state(t, status):
-    return t["state_" + (status if status in KNOWN else "unknown")]
+    return t["state_" + (status if status in KNOWN or status == "waiting" else "unknown")]
 
 
 def _time(iso):
@@ -484,6 +486,8 @@ def _failure_of(run):
 def _detail(t, run):
     """Line 2 of a list row: `stage · detail` (DESIGN.md v2), from the run's own record."""
     status = run["status"]
+    if status == "waiting":
+        return t["row_waiting"]
     if status == "running":
         done, total = _done_total(run)
         return "%s · %d / %d" % (t["row_run"], done, total)
@@ -502,7 +506,7 @@ def _row(t, run, selected_id, lang):
     mark = " here" if run["id"] == selected_id else ""
     return ('<a class="row state-%s%s" href="%s"><span class="r1"><span class="sq"></span><span class="nm">%s</span>'
             '<span class="stg">%s</span></span><span class="r2">%s</span></a>'
-            % (_css(run["status"]), mark, _url(lang, run["id"]), esc(run["name"]),
+            % (_css(run["status"]), mark, _url(lang, run_name=run["name"]) if run["status"] == "waiting" else _url(lang, run["id"]), esc(run["name"]),
                esc(_state(t, run["status"])), esc(_detail(t, run))))
 
 
@@ -1001,6 +1005,7 @@ def document(title, body, refresh=False, board=False, lang="zh", refresh_url=Non
 def default_run(runs):
     """The id of the run `/` opens when no run is named: the newest failed or lost one (it needs the person), else the newest; None when
     there is no run. `runs` are newest first, as list_runs gives them, and only the caller's own."""
+    runs = [r for r in runs if r["status"] != "waiting"]      # a launch only sent so far has no board to open
     for run in runs:
         if run["status"] in ("failed", "lost"):
             return run["id"]
