@@ -686,7 +686,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
             view = actions.get_run(index_path, run_id, caller=caller, platform_path=platform_path)
         except sqlite3.Error:
             return None
-        if view.get("found") is False:
+        if view.get("found") is False or view.get("status") == "waiting":      # a launch only sent so far is not a run to act on
             return None
         ce = actions.run_environment(actions.platform_path_for(index_path, platform_path), view["name"])
         if ce:        # the Compute card: the environment the newest hand-off record names (the page's own addition; the action's answer is unchanged)
@@ -749,8 +749,12 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         gallery = None
         embed = None
         headers = _HEADERS
-        if run_id or runs:
-            selected = await run_in_threadpool(read_run, run_id or web_board.default_run(runs), caller)
+        sent_only = next((r for r in runs if r.get("status") == "waiting" and run_id in (r["id"], r["name"])), None) if run_id else None
+        if sent_only is not None:      # a launch Nextflow has not reported on has no run board (no forms, no stages): the page that says so
+            return await _html(web_board.render_waiting(user["name"], csrf(sid, "logout"), runs, lang, sent_only["name"]))
+        pick = run_id or web_board.default_run(runs)
+        if pick:
+            selected = await run_in_threadpool(read_run, pick, caller)
             if selected is None:        # another person's run and a missing id answer alike, and the page never repeats the id
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)
             try:        # the cost row under the cards: the run's own cost in its environment's unit; a read that fails is a row of dashes
@@ -1170,7 +1174,7 @@ def create_app(index_path, tokens_path=None, platform_path=None, *, clock=time.t
         origin = given.get("from", "")
         if origin:       # re-run with the same settings: the boxes of an earlier run of this person, when its content is still kept
             name = run_name_of(origin)
-            match = next((r for r in runs if r["id"] == origin or r["name"] == origin), None)
+            match = next((r for r in runs if (r["id"] == origin or r["name"] == origin) and r.get("status") != "waiting"), None)
             earlier = await run_in_threadpool(actions.launch_prefill, platform_path, name, caller=caller)
             if match is None and not earlier.get("found"):
                 return HTMLResponse(web_board.render_not_found(user["name"], lang), status_code=404, headers=_HEADERS)

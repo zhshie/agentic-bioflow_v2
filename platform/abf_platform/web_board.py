@@ -1005,6 +1005,7 @@ def document(title, body, refresh=False, board=False, lang="zh", refresh_url=Non
 def default_run(runs):
     """The id of the run `/` opens when no run is named: the newest failed or lost one (it needs the person), else the newest; None when
     there is no run. `runs` are newest first, as list_runs gives them, and only the caller's own."""
+    runs = [r for r in runs if r["status"] != "waiting"]      # a launch only sent so far has no board to open
     for run in runs:
         if run["status"] in ("failed", "lost"):
             return run["id"]

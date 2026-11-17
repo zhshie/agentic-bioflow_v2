@@ -695,6 +695,12 @@ def owned_run_names(state_path, user_id):
         con.close()
 
 
+# A launch with a Slurm number that Nextflow never reported on stops being "waiting" this long after it was submitted: the head job's own
+# time limit is two days, so past this the head job has ended one way or another and nothing is waiting for the cluster any more. The
+# entry is hidden then (the truth about a run is Nextflow's records; none came), not shown under a new status.
+SENT_WAITING_MAX_SECONDS = 48 * 3600
+
+
 def sent_launches(state_path, user_id, clock=time.time):
     """The launches a person confirmed that are on their way but that Nextflow has not reported on: [{name, job_id, confirmed_at,
     slurm_job_id}], newest first. Only reads, and derives everything from facts that exist (the newest launches row of a run name, its own
@@ -713,10 +719,14 @@ def sent_launches(state_path, user_id, clock=time.time):
         for row in rows:
             if user_id is not None and _col(row, "user_id") != user_id:
                 continue
+            if _col(row, "cancel_requested_at") is not None:      # a confirmed cancel was sent: nothing is waiting for the cluster to start it
+                continue
             if row["slurm_job_id"] is None:
                 if launch_job(con, row, now)[0] != "waiting":
                     continue
             else:
+                if now - (_col(row, "submitted_at") or row["confirmed_at"]) > SENT_WAITING_MAX_SECONDS:
+                    continue
                 fact = _newest_fact(_fetches_of(con, row), row)
                 if fact is not None and fact["state"] in failures.ENDED_BAD:
                     continue

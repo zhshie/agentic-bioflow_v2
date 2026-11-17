@@ -127,7 +127,6 @@ def test_sidebar_lists_it_with_the_same_words(w):
 
 def test_home_page_with_a_waiting_newest_entry_is_not_a_run_board(w):
     ann = w.user("ann")
-    seed(w, "tp_old", "succeeded", ann, started=time.time() - 7200)
     w.launch(caller=ann, answer=form_answer(), run="tp_new")
     c = logged_in(w, "ann")
     rid = listed(w, ann, "tp_new")[0]["id"]
@@ -137,7 +136,7 @@ def test_home_page_with_a_waiting_newest_entry_is_not_a_run_board(w):
         assert r.status_code == 200, url
         for word in ("/run/resume", "/run/relaunch", "/run/cancel", "Resume", "Relaunch", "stage=", "<form"):
             assert word not in mid, (url, word)
-    # with no other run the home page is the empty board, not a board of the waiting launch
+    # the only run is a waiting one: the home page is the empty board, not a board of the waiting launch
     assert "tp_new" in pane(c.get("/").text, "left")
 
 
