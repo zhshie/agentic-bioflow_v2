@@ -121,3 +121,77 @@ def test_sidebar_lists_it_with_the_same_words(w):
     seed(w, "tp_side", "running", None, launch_row=False)
     left = pane(c.get("/").text, "left")
     assert left.count(">tp_side<") == 1 and "已送出，等待啟動" not in plain(left)
+
+
+# ---- review fixes: the home page, an aged launch, a cancel, an id collision -------------------------------------------------------------
+
+def test_home_page_with_a_waiting_newest_entry_is_not_a_run_board(w):
+    ann = w.user("ann")
+    seed(w, "tp_old", "succeeded", ann, started=time.time() - 7200)
+    w.launch(caller=ann, answer=form_answer(), run="tp_new")
+    c = logged_in(w, "ann")
+    rid = listed(w, ann, "tp_new")[0]["id"]
+    for url in ("/", "/?run=tp_new", "/?run=" + rid, "/?run_name=tp_new"):
+        r = c.get(url)
+        mid = pane(r.text, "middle")
+        assert r.status_code == 200, url
+        for word in ("/run/resume", "/run/relaunch", "/run/cancel", "Resume", "Relaunch", "stage=", "<form"):
+            assert word not in mid, (url, word)
+    # with no other run the home page is the empty board, not a board of the waiting launch
+    assert "tp_new" in pane(c.get("/").text, "left")
+
+
+def test_home_page_opens_the_newest_real_run_not_the_waiting_one(w):
+    ann = w.user("ann")
+    rid = seed(w, "tp_real", "running", ann, started=time.time() - 7200)
+    w.launch(caller=ann, answer=form_answer(), run="tp_new")
+    c = logged_in(w, "ann")
+    assert "tp_real" in plain(pane(c.get("/").text, "middle"))
+    assert w.sql("SELECT 1") and rid
+
+
+def test_a_waiting_entry_is_never_a_source_for_a_resume_or_relaunch(w):
+    ann = w.user("ann")
+    w.launch(caller=ann, answer=form_answer(), run="tp_src")
+    c = logged_in(w, "ann")
+    for path in ("/run/resume", "/run/relaunch", "/run/cancel"):
+        r = c.post(path, data={"run": "tp_src", "csrf": "x"})
+        assert r.status_code in (400, 403, 404, 405), (path, r.status_code)
+
+
+def test_launch_with_a_slurm_number_that_nextflow_never_reported_ages_out(w):
+    ann = w.user("ann")
+    w.hand_over(by=ann, run="tp_aged")
+    from abf_platform import jobs
+    assert [r["status"] for r in listed(w, ann, "tp_aged")] == ["waiting"]
+    old = time.time() - jobs.SENT_WAITING_MAX_SECONDS - 60
+    sql_exec(w, "UPDATE launches SET confirmed_at = ?, submitted_at = ? WHERE run_name = 'tp_aged'", (old, old))
+    assert listed(w, ann, "tp_aged") == []
+    assert got(w, ann, "tp_aged").get("found") is False
+
+
+def test_a_confirmed_cancel_is_not_waiting(w):
+    ann = w.user("ann")
+    w.hand_over(by=ann, run="tp_cancel")
+    assert listed(w, ann, "tp_cancel")
+    sql_exec(w, "UPDATE launches SET cancel_requested_at = ? WHERE run_name = 'tp_cancel'", (time.time(),))
+    assert listed(w, ann, "tp_cancel") == []
+    assert got(w, ann, "tp_cancel").get("found") is False
+
+
+def test_waiting_id_cannot_collide_with_an_index_id(w):
+    ann = w.user("ann")
+    w.launch(caller=ann, answer=form_answer(), run="tp_clash")
+    seed(w, "another", "running", None, launch_row=False, run_id="tp_clash")      # an index run whose id equals the waiting launch's name
+    rows = listed(w, ann)
+    ids = [r["id"] for r in rows]
+    assert len(ids) == len(set(ids))
+    waiting = [r for r in rows if r["status"] == "waiting"]
+    assert len(waiting) == 1 and waiting[0]["id"] != "tp_clash"
+    assert got(w, ann, waiting[0]["id"])["status"] == "waiting" and got(w, ann, waiting[0]["id"])["name"] == "tp_clash"
+
+
+def test_list_runs_description_names_waiting(w):
+    tools, _ = w.mcp([("list_runs", {})])
+    d = [t for t in tools if t.name == "list_runs"][0].description
+    assert "waiting" in d

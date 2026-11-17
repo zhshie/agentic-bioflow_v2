@@ -161,8 +161,6 @@ ASPECT_GAPS = {
     ('list_pipelines', 'return'),
     ('list_pipelines', 'when'),
     ('list_runs', 'next_step'),
-    ('list_runs', 'when'),
-    ('list_runs', 'when_not'),
     ('list_site_files', 'next_step'),
     ('list_site_files', 'params'),
     ('list_site_files', 'return'),

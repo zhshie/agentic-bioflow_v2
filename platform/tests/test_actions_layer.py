@@ -228,12 +228,16 @@ def test_tca10_the_server_is_byte_for_byte_the_one_of_the_starting_point(tmp_pat
     assert server.instructions == guidance.routing_instructions()
     for word in ("setup", "launch", "runs", "downstream", "finish", "read-only", "terminal"):
         assert word in server.instructions
-    tools = sorted([t for t in _tools(server) if t.name in READ_NAMES and t.name not in ("read_run_file", "list_figures", "get_run")], key=lambda t: t.name)    # ruling R2: get_run changed on purpose (annotation, one sentence of its description); see test_head_nodefail.py TC-046/047    # mcp-run-file: read_run_file is new, so it is not in the starting point; run_outputs took an optional path    # 009c: the six read tools, unchanged; launch and cancel are new
+    tools = sorted([t for t in _tools(server) if t.name in READ_NAMES and t.name not in ("read_run_file", "list_figures", "get_run", "list_runs")], key=lambda t: t.name)    # ruling R2: get_run changed on purpose (annotation, one sentence of its description); see test_head_nodefail.py TC-046/047    # mcp-run-file: read_run_file is new, so it is not in the starting point; run_outputs took an optional path    # 009c: the six read tools, unchanged; launch and cancel are new
     got = [{"name": t.name, "description": t.description,
             "annotations": t.annotations.model_dump(exclude_none=True) if t.annotations else None,
             "schema": t.input_schema} for t in tools]
-    want = [t for t in base["tools"] if t["name"] != "get_run"]      # ruling R2: get_run is checked below against its old self
+    want = [t for t in base["tools"] if t["name"] not in ("get_run", "list_runs")]      # ruling R2: get_run is checked below against its old self
     assert json.loads(json.dumps(got)) == want
+    lr = [t for t in _tools(server) if t.name == "list_runs"][0]      # queued-launch-visible: the description gained a sentence on status waiting
+    lr_old = [t for t in base["tools"] if t["name"] == "list_runs"][0]
+    assert lr.description.startswith(lr_old["description"]) and lr.input_schema == lr_old["schema"]
+    assert lr.annotations.model_dump(exclude_none=True) == lr_old["annotations"]
     run = [t for t in _tools(server) if t.name == "get_run"][0]
     old = [t for t in base["tools"] if t["name"] == "get_run"][0]
     assert run.description.startswith(old["description"]) and run.input_schema == old["schema"]
