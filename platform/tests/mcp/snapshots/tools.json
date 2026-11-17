@@ -462,6 +462,23 @@
   {
     "inputSchema": {
       "properties": {
+        "pipeline": {
+          "description": "The pipeline name, for example ampliseq or rnaseq",
+          "title": "Pipeline",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pipeline"
+      ],
+      "title": "list_downstreamArguments",
+      "type": "object"
+    },
+    "name": "list_downstream"
+  },
+  {
+    "inputSchema": {
+      "properties": {
         "packed_only": {
           "default": false,
           "title": "Packed Only",

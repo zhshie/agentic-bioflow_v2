@@ -1,0 +1,450 @@
+{
+ "schema": 1,
+ "entries": [
+  {
+   "id": "ampliseq-summary-report",
+   "pipeline": "ampliseq",
+   "pipeline_version": "3.1.0",
+   "method": "summary_report",
+   "link": "https://nf-co.re/ampliseq/3.1.0/docs/output/",
+   "doi": "10.3389/fmicb.2020.550420",
+   "grade": "A",
+   "version_pin": "nf-core/ampliseq 3.1.0 (release 2026-10-28)",
+   "license": "MIT",
+   "inputs": [
+    {
+     "pipeline_output": "summary_report/summary_report.html",
+     "role": "standalone HTML report (R Markdown) produced by the pipeline itself; plots also saved as summary_report/*.svg"
+    }
+   ],
+   "non_interactive_plot": true,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "未在 nano4 實測 singularity;module 容器為 depot.galaxyproject.org 的 singularity 映像(modules/local/summary_report/main.nf@3.1.0)。doi 為 ampliseq 論文(Front Microbiol 2020);Zenodo 版本 DOI 10.5281/zenodo.1493841 見 README。ampliseq issue #1081(舊 singularity .img 拉取卡住,屬 FORMAT_TAXONOMY 模組)已於 2026-09-28 closed。此條是 pipeline 自帶報告,不是外加下游腳本。"
+  },
+  {
+   "id": "ampliseq-ancombc",
+   "pipeline": "ampliseq",
+   "pipeline_version": "3.1.0",
+   "method": "ancombc (ampliseq --ancombc)",
+   "link": "https://nf-co.re/ampliseq/3.1.0/docs/output/",
+   "doi": "10.1038/s41467-020-17041-7",
+   "grade": "A",
+   "version_pin": "QIIME2 container qiime2/qiime2:2026.4 (modules/local/qiime2_ancombc_tax/main.nf@3.1.0)",
+   "license": "MIT",
+   "inputs": [
+    {
+     "pipeline_output": "qiime2/ancombc/ or qiime2/ancombc_formula/ : differentials/Category-<formula>-<level>/*.csv",
+     "role": "statistical result tables for taxonomic levels 2-6 and ASV; produced when --ancombc / --ancombc_formula is set"
+    },
+    {
+     "pipeline_output": "qiime2/ancombc/da_barplot/Category-<formula>-<level>/<formula><treatment>-ancombc-barplot.html",
+     "role": "interactive plots (HTML)"
+    }
+   ],
+   "non_interactive_plot": false,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline 內以 QIIME2 執行的 ANCOM-BC,圖為互動 HTML(headless=false);csv 可另行重畫。license 欄是 nf-core/ampliseq 的 MIT,QIIME2 與 ANCOM-BC 本身授權另計,未逐一查。官方文件另有 --ancombc2(後繼版,輸出含 svg 火山圖),不在本批名單。未實測 singularity。"
+  },
+  {
+   "id": "ampliseq-phyloseq",
+   "pipeline": "ampliseq",
+   "pipeline_version": "3.1.0",
+   "method": "phyloseq",
+   "link": "https://bioconductor.org/packages/phyloseq",
+   "doi": "10.1371/journal.pone.0061217",
+   "grade": "A",
+   "version_pin": "1.50.0 (ampliseq 3.1.0 container bioconductor-phyloseq:1.50.0--r44hdfd78af_0); Bioconductor 3.23 current = 1.56.0",
+   "license": "AGPL-3",
+   "inputs": [
+    {
+     "pipeline_output": "phyloseq/<taxonomy>_phyloseq.rds",
+     "role": "phyloseq object, e.g. dada2_phyloseq.rds, consolidated_across_classifiers_phyloseq.rds; ASV table + taxonomy, optionally sequences/metadata/tree"
+    }
+   ],
+   "non_interactive_plot": null,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "license 取自 Bioconductor 頁(GitHub 顯示無授權)。last_update_utc 為 GitHub joey711/phyloseq 最後 push;Bioconductor 3.23 仍收錄 1.56.0。headless 未查證(官方文件未明示可無互動出圖;未實測),填 null。未實測 singularity。 non_interactive_plot 待驗證（種子檔 headless 為 null，不猜）。"
+  },
+  {
+   "id": "ampliseq-mia-miaviz-oma",
+   "pipeline": "ampliseq",
+   "pipeline_version": "3.1.0",
+   "method": "mia/miaViz (OMA)",
+   "link": "https://microbiome.github.io/OMA/",
+   "doi": "10.1101/2025.10.29.685036",
+   "grade": "A",
+   "version_pin": "mia 1.20.0; miaViz 1.20.0 (Bioconductor 3.23)",
+   "license": "Artistic-2.0 (mia, miaViz)",
+   "inputs": [
+    {
+     "pipeline_output": "treesummarizedexperiment/<taxonomy>_TreeSummarizedExperiment.rds",
+     "role": "TreeSummarizedExperiment object"
+    }
+   ],
+   "non_interactive_plot": null,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "doi 為 OMA 預印本(Orchestrating Microbiome Analysis with Bioconductor,2025,非同儕審查),依標題由 Crossref 檢索,官方頁未明指;TreeSE 類別論文為 10.12688/f1000research.26669.2(ampliseq README 引用)。last_update_utc 取 miaViz GitHub push(mia 為 2026-11-05T08:03:38Z)。OMA repo 本身 GitHub 無授權標示(查不到),此處 license 為 mia/miaViz。headless 未查證(官方文件未明示可無互動出圖;未實測),填 null。未實測 singularity。 non_interactive_plot 待驗證（種子檔 headless 為 null，不猜）。"
+  },
+  {
+   "id": "ampliseq-ancom-bc",
+   "pipeline": "ampliseq",
+   "pipeline_version": "3.1.0",
+   "method": "ANCOM-BC",
+   "link": "https://bioconductor.org/packages/ANCOMBC",
+   "doi": "10.1038/s41467-020-17041-7",
+   "grade": "A",
+   "version_pin": "2.14.0 (Bioconductor 3.23; requires R >= 4.5.0)",
+   "license": "Artistic-2.0",
+   "inputs": [
+    {
+     "pipeline_output": "qiime2/abundance_tables/feature-table.tsv",
+     "role": "ASV x sample abundance table after unwanted-taxa removal (also feature-table.biom)"
+    },
+    {
+     "pipeline_output": "dada2/ASV_tax.tsv",
+     "role": "ASV taxonomy table (other classifiers: ASV_tax.consolidated.<method>.tsv)"
+    },
+    {
+     "pipeline_output": "input/*.tsv",
+     "role": "metadata copied from --metadata (sample groups/covariates)"
+    },
+    {
+     "pipeline_output": "phyloseq/<taxonomy>_phyloseq.rds",
+     "role": "phyloseq object, e.g. dada2_phyloseq.rds, consolidated_across_classifiers_phyloseq.rds; ASV table + taxonomy, optionally sequences/metadata/tree"
+    }
+   ],
+   "non_interactive_plot": null,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "license 取自 Bioconductor 頁(GitHub 顯示無授權)。ANCOM-BC2 論文為 10.1038/s41592-023-02092-7。輸入可用 phyloseq/TreeSE .rds,或自 feature-table.tsv 組裝。headless 未查證(官方文件未明示可無互動出圖;未實測),填 null。未實測 singularity。 non_interactive_plot 待驗證（種子檔 headless 為 null，不猜）。"
+  },
+  {
+   "id": "ampliseq-aldex2",
+   "pipeline": "ampliseq",
+   "pipeline_version": "3.1.0",
+   "method": "ALDEx2",
+   "link": "https://bioconductor.org/packages/ALDEx2",
+   "doi": "10.1186/2049-2618-2-15",
+   "grade": "A",
+   "version_pin": "1.44.0 (Bioconductor 3.23)",
+   "license": "GPL (>=3)",
+   "inputs": [
+    {
+     "pipeline_output": "qiime2/abundance_tables/feature-table.tsv",
+     "role": "ASV x sample abundance table after unwanted-taxa removal (also feature-table.biom)"
+    },
+    {
+     "pipeline_output": "input/*.tsv",
+     "role": "metadata copied from --metadata (sample groups/covariates)"
+    }
+   ],
+   "non_interactive_plot": null,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "doi 為 Fernandes 等 2014 Microbiome(依標題由 Crossref 檢索;Bioconductor 頁只給套件 DOI 10.18129/B9.bioc.ALDEx2,未明指論文)。last_update_utc 取 GitHub ggloor/ALDEx_bioc;該 mirror 的 DESCRIPTION 版本為 1.35.0,與 Bioconductor release 1.44.0 不一致,日期僅供參考(Bioconductor 3.23 仍收錄 1.44.0)。headless 未查證(官方文件未明示可無互動出圖;未實測),填 null。未實測 singularity。 non_interactive_plot 待驗證（種子檔 headless 為 null，不猜）。"
+  },
+  {
+   "id": "ampliseq-microeco",
+   "pipeline": "ampliseq",
+   "pipeline_version": "3.1.0",
+   "method": "microeco",
+   "link": "https://github.com/ChiLiubio/microeco",
+   "doi": "10.1093/femsec/fiaa255",
+   "grade": "B",
+   "version_pin": "2.4.1 (CRAN, published 2026-10-20)",
+   "license": "GPL-3",
+   "inputs": [
+    {
+     "pipeline_output": "qiime2/abundance_tables/feature-table.tsv",
+     "role": "ASV x sample abundance table after unwanted-taxa removal (also feature-table.biom)"
+    },
+    {
+     "pipeline_output": "dada2/ASV_tax.tsv",
+     "role": "ASV taxonomy table (other classifiers: ASV_tax.consolidated.<method>.tsv)"
+    },
+    {
+     "pipeline_output": "input/*.tsv",
+     "role": "metadata copied from --metadata (sample groups/covariates)"
+    },
+    {
+     "pipeline_output": "qiime2/phylogenetic_tree/tree.nwk",
+     "role": "ASV phylogenetic tree (only if QIIME2 diversity step was run)"
+    }
+   ],
+   "non_interactive_plot": null,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "同儕審查論文 FEMS Microbiol Ecol 2020,仍維護。headless 未查證(官方文件未明示可無互動出圖;未實測),填 null。未實測 singularity。 non_interactive_plot 待驗證（種子檔 headless 為 null，不猜）。"
+  },
+  {
+   "id": "ampliseq-maaslin2",
+   "pipeline": "ampliseq",
+   "pipeline_version": "3.1.0",
+   "method": "MaAsLin2",
+   "link": "https://github.com/biobakery/Maaslin2",
+   "doi": "10.1371/journal.pcbi.1009442",
+   "grade": "B",
+   "version_pin": "1.26.0 (Bioconductor 3.23)",
+   "license": "MIT + file LICENSE",
+   "inputs": [
+    {
+     "pipeline_output": "qiime2/abundance_tables/feature-table.tsv",
+     "role": "ASV x sample abundance table after unwanted-taxa removal (also feature-table.biom)"
+    },
+    {
+     "pipeline_output": "input/*.tsv",
+     "role": "metadata copied from --metadata (sample groups/covariates)"
+    }
+   ],
+   "non_interactive_plot": null,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "維護者裁示列 B;依 grade 規則字面(Bioconductor 審查且近 12 個月有更新)亦符合 A,待維護者決定是否升級。license 取自 Bioconductor 頁與 DESCRIPTION(GitHub 顯示 NOASSERTION)。headless 未查證(官方文件未明示可無互動出圖;未實測),填 null。未實測 singularity。 non_interactive_plot 待驗證（種子檔 headless 為 null，不猜）。"
+  },
+  {
+   "id": "ampliseq-vegan",
+   "pipeline": "ampliseq",
+   "pipeline_version": "3.1.0",
+   "method": "vegan (adonis2)",
+   "link": "https://github.com/vegandevs/vegan",
+   "doi": "10.32614/CRAN.package.vegan",
+   "grade": "B",
+   "version_pin": "2.7-6 (CRAN, published 2026-08-31)",
+   "license": "GPL-2",
+   "inputs": [
+    {
+     "pipeline_output": "qiime2/abundance_tables/feature-table.tsv",
+     "role": "ASV x sample abundance table after unwanted-taxa removal (also feature-table.biom)"
+    },
+    {
+     "pipeline_output": "input/*.tsv",
+     "role": "metadata copied from --metadata (sample groups/covariates)"
+    },
+    {
+     "pipeline_output": "qiime2/phylogenetic_tree/tree.nwk",
+     "role": "ASV phylogenetic tree (only if QIIME2 diversity step was run)"
+    }
+   ],
+   "non_interactive_plot": null,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "doi 為 CRAN 套件 DOI,不是同儕審查論文;未查到 vegan 的官方論文引用,B 級依維護者裁示,若嚴格按『同儕審查論文』規則則應為 C,待維護者確認。ampliseq 本身另有 --qiime_adonis_formula 的 ADONIS 輸出(官方 output 文件 Beta diversity 節)。headless 未查證(官方文件未明示可無互動出圖;未實測),填 null。未實測 singularity。 non_interactive_plot 待驗證（種子檔 headless 為 null，不猜）。"
+  },
+  {
+   "id": "rnaseq-differentialabundance",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "nf-core/differentialabundance",
+   "link": "https://github.com/nf-core/differentialabundance",
+   "doi": "10.5281/zenodo.7568000",
+   "grade": "A",
+   "version_pin": "2.0.0",
+   "license": "MIT",
+   "inputs": [
+    {
+     "pipeline_output": "star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
+     "role": "length-scaled gene counts matrix"
+    },
+    {
+     "pipeline_output": "star_salmon/salmon.merged.gene_lengths.tsv",
+     "role": "gene length matrix (offset for DESeq2)"
+    }
+   ],
+   "non_interactive_plot": true,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "待實測；nano4 無 docker，不行就只列方法並標待驗證。 pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 nf-core official; GitHub pushed_at 2026-10-29, 97 stars, release 2.0.0 published 2026-06-23. License MIT from GitHub API. Input per usage doc: --matrix salmon.merged.gene_counts.tsv with --feature_length_matrix salmon.merged.gene_lengths.tsv; for older workflows use gene_counts_length_scaled.tsv or gene_counts_scaled.tsv (usage doc). Headless: output doc lists static png under plots/ and an HTML Quarto report under report/. Singularity: usage doc says a singularity profile exists; nano4 has no docker; actual run on nano4 not tested (待實測). doi is the Zenodo DOI from the README, not a peer-reviewed paper; nf-core framework paper is 10.1038/s41587-020-0439-x. A shinyngs Shiny app is an optional extra output; the pipeline itself is non-interactive."
+  },
+  {
+   "id": "rnaseq-deseq2",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "DESeq2",
+   "link": "https://bioconductor.org/packages/DESeq2",
+   "doi": "10.1186/s13059-014-0550-8",
+   "grade": "A",
+   "version_pin": "1.52.0 (Bioconductor 3.23)",
+   "license": "LGPL (>= 3)",
+   "inputs": [
+    {
+     "pipeline_output": "star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
+     "role": "length-scaled gene counts matrix"
+    },
+    {
+     "pipeline_output": "star_salmon/salmon.merged.gene_lengths.tsv",
+     "role": "gene length matrix (offset for DESeq2)"
+    }
+   ],
+   "non_interactive_plot": true,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 Grade rule: A = nf-core official or Bioconductor-reviewed with an update in the last 12 months (Bioconductor 3.23 released 2026-04-29, https://bioconductor.org/about/release-announcements/). Version and license from the Bioconductor page; GitHub mirror thelovelab/DESeq2 pushed_at 2026-10-30, 489 stars, GitHub license field null (license taken from Bioc page). Input per nf-core/differentialabundance usage doc: gene_counts.tsv plus gene_lengths.tsv (length offset). nf-core/rnaseq itself runs DESeq2 QC producing deseq2_qc/*.plots.pdf (PDF only, so plots must be redrawn as png/svg). Singularity untested on nano4. Headless: ordinary R library, not run-tested here."
+  },
+  {
+   "id": "rnaseq-edger",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "edgeR",
+   "link": "https://bioconductor.org/packages/edgeR",
+   "doi": "10.1093/bioinformatics/btp616",
+   "grade": "A",
+   "version_pin": "4.10.7 (Bioconductor 3.23)",
+   "license": "GPL (>=2)",
+   "inputs": [
+    {
+     "pipeline_output": "star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
+     "role": "length-scaled gene counts matrix"
+    }
+   ],
+   "non_interactive_plot": true,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 Grade rule: A = nf-core official or Bioconductor-reviewed with an update in the last 12 months (Bioconductor 3.23 released 2026-04-29, https://bioconductor.org/about/release-announcements/). No GitHub repo found (Bioconductor/edgeR returned 404), so last_update_utc is null (查不到); currency rests only on its presence in the Bioc 3.23 release page. Input: length-scaled gene counts (tximport recommendation quoted in the nf-core usage doc). Singularity untested. DOI is the original edgeR paper (Bioinformatics, Crossref)."
+  },
+  {
+   "id": "rnaseq-limma",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "limma",
+   "link": "https://bioconductor.org/packages/limma",
+   "doi": "10.1093/nar/gkv007",
+   "grade": "A",
+   "version_pin": "3.68.5 (Bioconductor 3.23)",
+   "license": "GPL (>=2)",
+   "inputs": [
+    {
+     "pipeline_output": "star_salmon/salmon.merged.gene_counts_length_scaled.tsv",
+     "role": "length-scaled gene counts matrix"
+    }
+   ],
+   "non_interactive_plot": true,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 Grade rule: A = nf-core official or Bioconductor-reviewed with an update in the last 12 months (Bioconductor 3.23 released 2026-04-29, https://bioconductor.org/about/release-announcements/). No GitHub repo found (Bioconductor/limma returned 404), so last_update_utc is null (查不到). The nf-core/differentialabundance usage doc lists an rnaseq_limma profile, so limma is also reachable through the A-grade pipeline. Input: length-scaled gene counts. Singularity untested."
+  },
+  {
+   "id": "rnaseq-clusterprofiler",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "clusterProfiler",
+   "link": "https://bioconductor.org/packages/clusterProfiler",
+   "doi": "10.1016/j.xinn.2021.100141",
+   "grade": "A",
+   "version_pin": "4.20.3 (Bioconductor 3.23)",
+   "license": "Artistic-2.0",
+   "inputs": [],
+   "non_interactive_plot": true,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 Grade rule: A = nf-core official or Bioconductor-reviewed with an update in the last 12 months (Bioconductor 3.23 released 2026-04-29, https://bioconductor.org/about/release-announcements/). GitHub YuLab-SMU/clusterProfiler pushed_at 2026-11-03, 1248 stars; GitHub license null, Bioc page says Artistic-2.0. Enrichment tool: needs a DE gene list, so its input is not a direct rnaseq file (the input_contract entry is a description, not a verified file path). Singularity untested. 輸入檔契約待驗證（種子檔給的是文字描述不是路徑，inputs 留空）。種子檔描述原文：differential results table from a prior DESeq2/edgeR/limma step (gene list or ranking)；gene list for enrichment; not a direct nf-core/rnaseq output"
+  },
+  {
+   "id": "rnaseq-fgsea",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "fgsea",
+   "link": "https://bioconductor.org/packages/fgsea",
+   "doi": "10.1101/060012",
+   "grade": "A",
+   "version_pin": "1.38.0 (Bioconductor 3.23)",
+   "license": "MIT + file LICENCE",
+   "inputs": [],
+   "non_interactive_plot": true,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 Grade rule: A = nf-core official or Bioconductor-reviewed with an update in the last 12 months (Bioconductor 3.23 released 2026-04-29, https://bioconductor.org/about/release-announcements/). GitHub alserglab/fgsea (old URL ctlab/fgsea redirects) pushed_at 2026-09-22, 461 stars; GitHub license NOASSERTION, license text from Bioc page. DOI is a bioRxiv preprint (10.1101/060012); no peer-reviewed paper found via Crossref (查不到 peer-reviewed DOI). Singularity untested. 輸入檔契約待驗證（種子檔給的是文字描述不是路徑，inputs 留空）。種子檔描述原文：differential results table from a prior DESeq2/edgeR/limma step (ranked statistic per gene)；named ranking vector for GSEA; not a direct nf-core/rnaseq output"
+  },
+  {
+   "id": "rnaseq-tximport",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "tximport",
+   "link": "https://bioconductor.org/packages/tximport",
+   "doi": "10.12688/f1000research.7563.1",
+   "grade": "A",
+   "version_pin": "1.40.0 (Bioconductor 3.23)",
+   "license": "LGPL (>=2)",
+   "inputs": [
+    {
+     "pipeline_output": "star_salmon/<SAMPLE>/quant.sf",
+     "role": "per-sample Salmon quantification"
+    },
+    {
+     "pipeline_output": "star_salmon/salmon.merged.tx2gene_augmented.tsv",
+     "role": "transcript-to-gene map actually used by tximport"
+    }
+   ],
+   "non_interactive_plot": true,
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 Grade rule: A = nf-core official or Bioconductor-reviewed with an update in the last 12 months (Bioconductor 3.23 released 2026-04-29, https://bioconductor.org/about/release-announcements/). GitHub thelovelab/tximport pushed_at 2026-09-28, 146 stars; GitHub license null, license from Bioc page. nf-core/rnaseq already runs tximport and writes merged matrices, so this is only needed to re-import from quant.sf. Singularity untested."
+  },
+  {
+   "id": "rnaseq-pcaexplorer",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "pcaExplorer",
+   "link": "https://bioconductor.org/packages/pcaExplorer",
+   "doi": "10.1186/s12859-019-2879-1",
+   "grade": "A",
+   "version_pin": "3.6.0 (Bioconductor 3.23)",
+   "license": "MIT + file LICENSE",
+   "inputs": [
+    {
+     "pipeline_output": "star_salmon/deseq2_qc/*.dds.RData or *.rds",
+     "role": "DESeqDataSet from rnaseq DESeq2 QC (compatibility with pcaExplorer not verified, 待驗證)"
+    }
+   ],
+   "non_interactive_plot": "needs_person",
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 Grade rule: A = nf-core official or Bioconductor-reviewed with an update in the last 12 months (Bioconductor 3.23 released 2026-04-29, https://bioconductor.org/about/release-announcements/). Shiny app (interactive, needs a person). GitHub federicomarini/pcaExplorer pushed_at 2026-11-03, 57 stars, GitHub license NOASSERTION; license from Bioc page. rnaseq output doc lists deseq2_qc/*.dds.RData and *.rds. Interactive A-grade tools keep A with the interactive flag (maintainer ruling)."
+  },
+  {
+   "id": "rnaseq-isee",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "iSEE",
+   "link": "https://bioconductor.org/packages/iSEE",
+   "doi": "10.12688/f1000research.14966.1",
+   "grade": "A",
+   "version_pin": "2.24.0 (Bioconductor 3.23)",
+   "license": "MIT + file LICENSE",
+   "inputs": [
+    {
+     "pipeline_output": "star_salmon/salmon.merged.gene.SummarizedExperiment.rds",
+     "role": "SummarizedExperiment with gene-level abundance"
+    }
+   ],
+   "non_interactive_plot": "needs_person",
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 Grade rule: A = nf-core official or Bioconductor-reviewed with an update in the last 12 months (Bioconductor 3.23 released 2026-04-29, https://bioconductor.org/about/release-announcements/). Shiny app (interactive, needs a person). GitHub iSEE/iSEE pushed_at 2026-11-03, 230 stars, license NOASSERTION; license from Bioc page. Input file path is in the rnaseq output doc."
+  },
+  {
+   "id": "rnaseq-debrowser",
+   "pipeline": "rnaseq",
+   "pipeline_version": null,
+   "method": "DEBrowser",
+   "link": "https://github.com/UMMS-Biocore/debrowser",
+   "doi": "10.1186/s12864-018-5362-x",
+   "grade": "B",
+   "version_pin": null,
+   "license": "GPL-3.0",
+   "inputs": [
+    {
+     "pipeline_output": "star_salmon/salmon.merged.gene_counts.tsv",
+     "role": "count matrix; format compatibility not verified (待驗證)"
+    }
+   ],
+   "non_interactive_plot": "needs_person",
+   "singularity": "untested",
+   "reviewed": "2026-11-07",
+   "notes": "pipeline_version 查不到（種子檔未提供 rnaseq 版本，值留 null）。 Not grade A: the Bioconductor release page returns 404 for DEBrowser (also devel), so it is not currently Bioconductor-reviewed. Grade B: peer-reviewed paper (BMC Genomics 2019) and the repo was pushed 2026-07-23 (62 stars, GPL-3.0 via GitHub API). version_pin is null (查不到: no release or tag was queried). Interactive Shiny app."
+  }
+ ]
+}

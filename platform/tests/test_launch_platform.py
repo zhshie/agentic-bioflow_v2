@@ -301,7 +301,7 @@ def test_tc010_the_mcp_tools_are_six_read_only_ones_and_two_that_ask_a_person_wi
     ts = asyncio.run(tools())
     # 009e: plus resume and relaunch, which are asked the same way and take the name of a run and nothing else
     assert sorted(t.name for t in ts) == ["cancel", "delete_figure", "describe_module", "find_module", "forget", "get_compute_env", "get_pipeline", "get_run", "get_validation", "launch", "launch_pipeline", "list_agents", "list_compute_envs",
-                                          "list_figures",
+                                          "list_downstream", "list_figures",
                                           "list_pipelines", "list_runs", "list_site_files", "list_used_pipelines", "my_usage", "pack_figures", "publish_figure", "read_run_file", "read_task_log", "relaunch", "resume", "run_outputs"]
     banned = {"confirm", "confirmation", "yes", "y", "launch", "cancel", "kind", "command", "fetch", "run_name", "pipeline"}
     saying_yes = {"confirm", "confirmed", "confirmation", "confirmation_id", "yes", "y", "approve", "approved", "kind", "command"}
@@ -313,7 +313,10 @@ def test_tc010_the_mcp_tools_are_six_read_only_ones_and_two_that_ask_a_person_wi
         assert t.annotations.read_only_hint is (t.name != "get_run")      # ruling R2: get_run queues a read of the site for a lost run
         # run-diag-tools: read_task_log names the run it reads about (plan, Goal 2: read_task_log(run_name, task, which)); it is the one read-only
         # tool allowed that argument, and it still has no field that could launch, cancel, confirm or name a kind or a command
-        allowed = {"run_name"} if t.name == "read_task_log" else set()
+        # downstream-method-catalog (owner's yes, 2026-11-17): list_downstream names the pipeline whose certified methods it lists
+        # (plan: list_downstream(pipeline)); it reads a list shipped with the code and nothing else, and it is the one read-only
+        # tool allowed that argument
+        allowed = {"run_name"} if t.name == "read_task_log" else {"pipeline"} if t.name == "list_downstream" else set()
         assert not (set(t.input_schema.get("properties", {})) & (banned - allowed)), t.name
 
 

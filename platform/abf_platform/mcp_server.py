@@ -1,10 +1,10 @@
-# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers sixteen read-only tools, and is built on the official Python mcp SDK.
-"""MCP server: sixteen read-only tools: list_runs, list_compute_envs, get_compute_env, list_agents,
+# Not the Seqera MCP server: it is hosted only and ends in Seqera's cloud; this one reads the local index and the compute environments, offers seventeen read-only tools, and is built on the official Python mcp SDK.
+"""MCP server: seventeen read-only tools: list_runs, list_compute_envs, get_compute_env, list_agents,
 list_site_files, list_used_pipelines, my_usage, run_outputs, read_run_file, list_figures, read_task_log, and the five canvas reads find_module, describe_module,
-list_pipelines, get_pipeline, get_validation; and nine tools that ask a person:
+list_pipelines, get_pipeline, get_validation, and list_downstream (the certified downstream methods of one pipeline, only when asked); and nine tools that ask a person:
 launch, launch_pipeline, cancel, forget, resume, relaunch, publish_figure, pack_figures, delete_figure.
 
-get_run is the one query that is not marked read-only: for a lost run it queues one read of the site (ruling R2). The sixteen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
+get_run is the one query that is not marked read-only: for a lost run it queues one read of the site (ruling R2). The seventeen read tools carry readOnlyHint, which is only a hint; read-only here means two things:
 
   - toward runs: this module never writes the run index (status.py opens it read-only);
   - toward the site: list_site_files may put one read-only question (list a folder) in the job queue of
@@ -21,13 +21,16 @@ resume and relaunch (spec 009e) are the same kind of tool, for a run that failed
 run. resume may also carry params (only the keys to change) and extra_config (settings text); the pipeline, revision, samples and
 environment are those of the first launch and cannot be said again.
 """
+import functools
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 from pydantic import Field
 
 import abf_platform.actions.catalogue as catalogue_actions
+import abf_platform.actions.downstream as downstream_actions
 import abf_platform.actions.pipelines as pipeline_actions
 
 from . import actions, guidance, http_auth
@@ -156,9 +159,36 @@ def build_server(index_path, platform_path=None):
         return await actions.read_task_log(platform_path, index_path, run_name, task, which, caller=_caller(ctx))
 
     _add_canvas_reads(server, platform_path)
+    _add_downstream_read(server)
     _add_write_tools(server, platform_path, index_path)
     _add_guidance(server)
     return server
+
+
+def _plain_errors(fn):
+    """A ValueError raised for a bad argument reaches the client as its plain sentence, not as a crash with a trace."""
+    @functools.wraps(fn)
+    def run(*a, **k):
+        try:
+            return fn(*a, **k)
+        except ValueError as e:
+            raise ToolError(str(e)) from None
+    return run
+
+
+def _add_downstream_read(server):
+    """The certified downstream methods: one read, called only when the person asks. The list is shared and public data;
+    nothing of it goes into the instructions or any prompt, and nothing is written."""
+
+    @server.tool(name="list_downstream", annotations=_READ_ONLY,
+                 description="Read-only. List the certified downstream analysis methods (plots, statistics) of one pipeline, such as "
+                             "ampliseq or rnaseq. It returns, for each method: link, grade A or B, version, licence, the pipeline output "
+                             "files it needs, and whether it plots without a person. Call it only when the user asks which downstream "
+                             "methods exist; it runs no analysis. Only certified methods are listed; grade C is not. An unknown pipeline "
+                             "gives an empty list; then discuss the plot with the user.")
+    @_plain_errors
+    def list_downstream(ctx: Context, pipeline: Annotated[str, Field(description="The pipeline name, for example ampliseq or rnaseq")]) -> dict:
+        return downstream_actions.list_downstream(pipeline)
 
 
 def _add_canvas_reads(server, platform_path):

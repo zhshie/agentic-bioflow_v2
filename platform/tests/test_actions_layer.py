@@ -28,6 +28,7 @@ READ_NAMES = ["list_runs", "get_run", "list_compute_envs", "get_compute_env", "l
               "run_outputs", "read_run_file", "list_figures", "my_usage"]    # results-outputs: the Outputs tab of the results stage; a read like the others, never waiting for the site
 WRITE_NAMES = ["launch", "launch_pipeline", "cancel", "forget", "resume", "relaunch"]    # 009c: the two tools that make a request a person must say yes to; 009e: and the two for a failed run
 WRITE_NAMES = WRITE_NAMES + ["publish_figure"]    # mcp-publish-figure: added after the pinned literal above (keep-submissions TC-040 compares that line)
+DOWNSTREAM_NAMES = ["list_downstream"]    # downstream-method-catalog: one read whose action lives in the submodule actions.downstream (not exported by the package)
 WRITE_NAMES = WRITE_NAMES + ["pack_figures", "delete_figure"]    # mcp-gallery-actions: two more tools that ask (TC-072)
 CANVAS_NAMES = ["find_module", "describe_module", "list_pipelines", "get_pipeline", "get_validation"]    # canvas-mcp-read: five reads whose actions live in the submodules actions.catalogue and actions.pipelines, not in the actions package
 ROUTES_V3 = [('/agent/hello', ('POST',)), ('/agent/poll', ('POST',)), ('/agent/result/{jid}', ('POST',)),
@@ -153,9 +154,12 @@ def test_tca02_every_tool_has_a_same_named_action_and_there_are_exactly_the_six_
     # 009c (TC-A08): was "exactly the six read ones"; now the same six plus launch and cancel, each still with an action of its name
     a = actions()
     names = {t.name for t in _tools(_server(str(tmp_path / "index.db")))}
-    assert names == set(READ_NAMES + CANVAS_NAMES + WRITE_NAMES)
+    assert names == set(READ_NAMES + CANVAS_NAMES + DOWNSTREAM_NAMES + WRITE_NAMES)
     for n in names:
         # 009e: the action of resume and relaunch is the request (they only ask; the terminal's yes goes through `launch`, with a new bundle)
+        if n in DOWNSTREAM_NAMES:    # downstream-method-catalog: the action is in a submodule (the package does not export it)
+            assert callable(getattr(__import__("abf_platform.actions.downstream", fromlist=[n]), n)), n
+            continue
         if n in CANVAS_NAMES:    # canvas-mcp-read: the action is in a submodule (the package does not export it)
             assert callable(getattr(__import__("abf_platform.actions.catalogue" if n.endswith("_module") else "abf_platform.actions.pipelines", fromlist=[n]), n)), n
             continue
@@ -630,10 +634,10 @@ def test_tce01_the_only_write_tools_are_launch_and_cancel_and_none_can_confirm(t
     # 009c (TC-A08): was "no write tool"; the two tools only make a request a person must say yes to (see test_human_channel.py)
     tools = _tools(_server(str(tmp_path / "index.db")))
     names = {t.name for t in tools}
-    assert names == set(READ_NAMES + CANVAS_NAMES + WRITE_NAMES) and not any(re.search(r"confirm|approve|passwd|login", n) for n in names)
+    assert names == set(READ_NAMES + CANVAS_NAMES + DOWNSTREAM_NAMES + WRITE_NAMES) and not any(re.search(r"confirm|approve|passwd|login", n) for n in names)
     for t in tools:
         # ruling R2: get_run is the one query that is not marked read-only (a lost run queues one read of the site)
-        assert t.annotations.read_only_hint is (t.name in READ_NAMES + CANVAS_NAMES and t.name != "get_run")
+        assert t.annotations.read_only_hint is (t.name in READ_NAMES + CANVAS_NAMES + DOWNSTREAM_NAMES and t.name != "get_run")
 
 
 def test_tce02_the_receiver_has_the_routes_of_the_starting_point(tmp_path):
@@ -758,4 +762,4 @@ def test_gallery_page_actions_exist_in_the_action_layer_and_are_not_tools(tmp_pa
     # mcp-gallery-actions R2 (maintainer, 2026-11-12: "AI要能夠代使用者完成所有事，包括按按鈕"): the only point loosened is that pack_figures and delete_figure
     # are not tools; they are now tools that go through the confirmation channel. read_figure is still not a tool.
     assert not names & {"read_figure"} and {"pack_figures", "delete_figure"} <= names and not names & {"pack_figure", "delete_figures", "unpack_figures"}
-    assert len(names) == 26
+    assert len(names) == 27
